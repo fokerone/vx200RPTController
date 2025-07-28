@@ -6,6 +6,47 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 
 ---
 
+## 📦 Dependencias del Proyecto
+
+### Dependencias Principales
+
+| Paquete | Versión | Propósito |
+|---------|---------|-----------|
+| `express` | ^5.1.0 | Servidor web y API REST |
+| `socket.io` | ^4.8.1 | Comunicación en tiempo real |
+| `ejs` | ^3.1.10 | Motor de plantillas |
+| `cors` | ^2.8.5 | Configuración CORS |
+| `dotenv` | ^17.2.1 | Variables de entorno |
+
+### Audio y Procesamiento Digital
+
+| Paquete | Versión | Propósito |
+|---------|---------|-----------|
+| `node-record-lpcm16` | ^1.0.1 | Grabación de audio |
+| `speaker` | ^0.5.5 | Reproducción de audio |
+| `wav` | ^1.0.2 | Procesamiento archivos WAV |
+| `fft-js` | ^0.0.12 | Transformada rápida de Fourier |
+| `say` | ^0.16.0 | Text-to-Speech nativo |
+
+### APIs y Servicios
+
+| Paquete | Versión | Propósito |
+|---------|---------|-----------|
+| `openai` | ^5.10.2 | Integración con ChatGPT/Whisper |
+| `twilio` | ^5.8.0 | Servicios SMS y telefonía |
+| `axios` | ^1.11.0 | Cliente HTTP para APIs |
+
+### Utilidades
+
+| Paquete | Versión | Propósito |
+|---------|---------|-----------|
+| `moment` | ^2.30.1 | Manejo de fechas y tiempo |
+| `fs-extra` | ^11.3.0 | Operaciones de sistema de archivos |
+| `multer` | ^2.0.2 | Carga de archivos multipart |
+| `express-static` | ^1.2.6 | Servir archivos estáticos |
+
+---
+
 ## ✨ Características Principales
 
 ### 🎵 **Decodificador DTMF Personalizado**
