@@ -2,12 +2,13 @@ const fs = require('fs');
 const path = require('path');
 
 class RogerBeep {
-    constructor(audioManager, configFromFile = {}) {
+    constructor(audioManager) {
         this.audioManager = audioManager;
+        this.enabled = true;
         
-        // Configuración por defecto
-        const defaultConfig = {
-            type: 'classic',
+        // Configuración del roger beep
+        this.config = {
+            type: 'classic', // 'classic', 'motorola', 'kenwood', 'custom'
             volume: 0.7,
             duration: 250,
             delay: 100,
@@ -19,22 +20,7 @@ class RogerBeep {
             }
         };
 
-        // Combinar configuración por defecto con la del archivo
-        this.config = { ...defaultConfig, ...configFromFile };
-        this.enabled = configFromFile.enabled !== undefined ? configFromFile.enabled : true;
-
-        console.log(`🔊 Roger Beep inicializado: ${this.config.type} (${this.enabled ? 'habilitado' : 'deshabilitado'})`);
-    }
-
-    /**
-     * Actualizar configuración desde archivo
-     */
-    updateConfig(newConfig) {
-        this.config = { ...this.config, ...newConfig };
-        if (newConfig.enabled !== undefined) {
-            this.enabled = newConfig.enabled;
-        }
-        console.log('🔧 Configuración Roger Beep actualizada');
+        console.log(`🔊 Roger Beep inicializado: ${this.config.type}`);
     }
 
     /**
@@ -46,7 +32,7 @@ class RogerBeep {
         }
 
         const beepType = type || this.config.type;
-        console.log(`📻 Reproduciendo roger beep: ${beepType}`);
+        console.log(`📻 Roger beep: ${beepType}`);
 
         try {
             // Delay antes del beep
@@ -72,7 +58,7 @@ class RogerBeep {
             }
 
         } catch (error) {
-            console.error('❌ Error reproduciendo roger beep:', error.message);
+            console.log('⚠️  Error roger beep:', error.message);
         }
     }
 
@@ -140,7 +126,7 @@ class RogerBeep {
                 this.audioManager.playTone(frequency, duration, volume);
                 setTimeout(resolve, duration + 10);
             } catch (error) {
-                console.error('❌ Error en playTone:', error);
+                console.log('⚠️  Error playTone:', error.message);
                 resolve();
             }
         });
@@ -181,7 +167,7 @@ class RogerBeep {
     setType(type) {
         if (this.config.frequencies[type]) {
             this.config.type = type;
-            console.log(`🔧 Roger beep configurado: ${type}`);
+            console.log(`🔧 Roger beep: ${type}`);
             return true;
         }
         return false;
@@ -224,7 +210,7 @@ class RogerBeep {
      */
     setCustomFrequencies(freq1, freq2) {
         this.config.frequencies.custom = [freq1, freq2];
-        console.log(`🎵 Frecuencias personalizadas: ${freq1}Hz, ${freq2}Hz`);
+        console.log(`🎵 Frecuencias custom: ${freq1}Hz, ${freq2}Hz`);
     }
 
     /**
@@ -245,61 +231,25 @@ class RogerBeep {
      * Probar roger beep actual
      */
     async test() {
-        console.log('🧪 Probando roger beep...');
+        console.log('🧪 Test roger beep...');
         await this.play();
     }
 
     /**
-     * Probar todos los tipos de roger beep
+     * Probar todos los tipos
      */
     async testAll() {
-        console.log('🧪 Probando todos los roger beeps...');
+        console.log('🧪 Test todos los roger beeps...');
         
         const types = ['classic', 'motorola', 'kenwood', 'custom'];
         
         for (const type of types) {
-            console.log(`🔊 Probando: ${type}`);
+            console.log(`🔊 Test: ${type}`);
             await this.play(type);
-            await this.delay(1000); // Pausa entre tests
+            await this.delay(1000);
         }
         
-        console.log('✅ Test de roger beeps completado');
-    }
-
-    /**
-     * Cargar configuración desde archivo
-     */
-    loadConfig(configPath) {
-        try {
-            if (fs.existsSync(configPath)) {
-                const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                Object.assign(this.config, config);
-                console.log('✅ Configuración roger beep cargada');
-            }
-        } catch (error) {
-            console.error('❌ Error cargando configuración roger beep:', error);
-        }
-    }
-
-    /**
-     * Guardar configuración actual
-     */
-    saveConfig(configPath) {
-        try {
-            const configData = {
-                type: this.config.type,
-                volume: this.config.volume,
-                duration: this.config.duration,
-                delay: this.config.delay,
-                frequencies: this.config.frequencies,
-                enabled: this.enabled
-            };
-
-            fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
-            console.log('✅ Configuración roger beep guardada');
-        } catch (error) {
-            console.error('❌ Error guardando configuración roger beep:', error);
-        }
+        console.log('✅ Test completo');
     }
 }
 

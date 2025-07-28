@@ -72,6 +72,14 @@ class VX200Panel {
         this.socket.on('signal_level', (data) => {
          this.updateSignalLevel(data);
         });
+
+        this.socket.on('roger_beep_config_changed', (data) => {
+        this.handleRogerBeepConfigChanged(data);
+        });
+
+        this.socket.on('roger_beep_test', (data) => {
+        this.handleRogerBeepTest(data);
+        });
     }
 
     setupEventListeners() {
@@ -146,6 +154,11 @@ class VX200Panel {
         document.getElementById('dtmf-last').textContent = lastDTMF;
 
           this.updateServiceButtons(status);
+        
+        // ROGER BEEP status
+        if (status.rogerBeep) {
+        this.updateRogerBeepStatus(status.rogerBeep);
+        }
     }
 
     // Manejar DTMF detectado
@@ -376,8 +389,6 @@ updateSignalLevel(data) {
         });
     }
 
-    // Agregar después del método showNotification():
-
 // Toggle de servicios
 toggleService(service) {
     console.log(`🔄 Toggle service: ${service}`);
@@ -444,6 +455,164 @@ updateServiceButtons(status) {
         balizaBtn.innerHTML = `<i class="bi bi-broadcast${isRunning ? '' : '-pin'}"></i> Baliza ${isRunning ? 'ON' : 'OFF'}`;
     }
 }
+
+/**
+ * Actualizar estado del roger beep en el panel
+ */
+updateRogerBeepStatus(rogerBeepConfig) {
+    if (!rogerBeepConfig) return;
+
+    // Actualizar tipo
+    const typeElement = document.getElementById('roger-beep-type');
+    if (typeElement) {
+        typeElement.textContent = rogerBeepConfig.type || 'Classic';
+        typeElement.className = `badge ${this.getRogerBeepTypeColor(rogerBeepConfig.type)}`;
+    }
+
+    // Actualizar estado
+    const statusElement = document.getElementById('roger-beep-status');
+    if (statusElement) {
+        statusElement.textContent = rogerBeepConfig.enabled ? 'Habilitado' : 'Deshabilitado';
+        statusElement.className = `badge ${rogerBeepConfig.enabled ? 'bg-success' : 'bg-danger'}`;
+    }
+
+    // Actualizar volumen
+    const volumeElement = document.getElementById('roger-beep-volume');
+    if (volumeElement) {
+        volumeElement.textContent = `${Math.round((rogerBeepConfig.volume || 0.7) * 100)}%`;
+    }
+
+    // Actualizar duración
+    const durationElement = document.getElementById('roger-beep-duration');
+    if (durationElement) {
+        durationElement.textContent = `${rogerBeepConfig.duration || 250}ms`;
+    }
+
+    // Actualizar botón toggle
+    const toggleBtn = document.getElementById('roger-beep-toggle-btn');
+    if (toggleBtn) {
+        const isEnabled = rogerBeepConfig.enabled;
+        toggleBtn.className = `btn ${isEnabled ? 'btn-primary' : 'btn-outline-primary'} w-100 mb-2`;
+        toggleBtn.innerHTML = `<i class="bi bi-power"></i> ${isEnabled ? 'ON' : 'OFF'}`;
+    }
+}
+
+/**
+ * Obtener color del badge según el tipo de roger beep
+ */
+getRogerBeepTypeColor(type) {
+    const colors = {
+        'classic': 'bg-primary',
+        'motorola': 'bg-warning',
+        'kenwood': 'bg-info',
+        'custom': 'bg-secondary'
+    };
+    return colors[type] || 'bg-primary';
+}
+
+/**
+ * Manejar cambio de configuración de roger beep
+ */
+handleRogerBeepConfigChanged(data) {
+    console.log('🔊 Configuración roger beep actualizada:', data.config);
+    this.updateRogerBeepStatus(data.config);
+    this.addLog('info', `Roger beep configurado: ${data.config.type} (${data.config.enabled ? 'ON' : 'OFF'})`);
+}
+
+/**
+ * Manejar test de roger beep
+ */
+handleRogerBeepTest(data) {
+    console.log('🧪 Test roger beep:', data.type);
+    this.addLog('info', `Test roger beep ${data.type || 'actual'} ejecutado`);
+    
+    // Efecto visual en el botón de test
+    const testBtn = document.querySelector('button[onclick="executeCommand(\'roger_beep_test\')"]');
+    if (testBtn) {
+        testBtn.classList.add('pulse');
+        setTimeout(() => {
+            testBtn.classList.remove('pulse');
+        }, 1000);
+    }
+}
+
+/**
+ * Configurar roger beep desde panel web
+ */
+async configureRogerBeep(config) {
+    try {
+        const response = await fetch('/api/roger-beep/config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(config)
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            this.showNotification('success', 'Roger Beep configurado correctamente');
+            this.addLog('info', 'Configuración roger beep actualizada desde panel web');
+            
+            // Refrescar estado
+            this.refreshSystemStatus();
+        } else {
+            this.showNotification('error', result.message);
+        }
+    } catch (error) {
+        console.error('Error configurando roger beep:', error);
+        this.showNotification('error', 'Error configurando roger beep');
+    }
+}
+
+/**
+ * Test manual de roger beep
+ */
+async testRogerBeep(type = null) {
+    try {
+        const response = await fetch('/api/roger-beep/test', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ type })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            this.showNotification('info', result.message);
+            this.addLog('info', `Test roger beep ${type || 'actual'} desde panel web`);
+        } else {
+            this.showNotification('error', result.message);
+        }
+    } catch (error) {
+        console.error('Error en test roger beep:', error);
+        this.showNotification('error', 'Error ejecutando test');
+    }
+}
+
+/**
+ * Obtener estado actual del roger beep
+ */
+async getRogerBeepStatus() {
+    try {
+        const response = await fetch('/api/roger-beep/status');
+        const result = await response.json();
+        
+        if (result.success) {
+            this.updateRogerBeepStatus(result.data);
+            return result.data;
+        } else {
+            console.error('Error obteniendo estado roger beep:', result.message);
+        }
+    } catch (error) {
+        console.error('Error en getRogerBeepStatus:', error);
+    }
+    return null;
+}
+
 }
 
 // Funciones globales para los botones
@@ -462,4 +631,25 @@ function toggleService(service) {
 
 function confirmAction(action) {
     window.vx200Panel.confirmAction(action);
+}
+
+
+function configureRogerBeep(config) {
+    if (window.vx200Panel) {
+        window.vx200Panel.configureRogerBeep(config);
+    }
+}
+
+function testRogerBeep(type) {
+    if (window.vx200Panel) {
+        window.vx200Panel.testRogerBeep(type);
+    }
+}
+
+
+function getRogerBeepStatus() {
+    if (window.vx200Panel) {
+        return window.vx200Panel.getRogerBeepStatus();
+    }
+    return null;
 }

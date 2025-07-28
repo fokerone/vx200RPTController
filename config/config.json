@@ -27,45 +27,22 @@
       "volume": 0.7
     },
     "message": "Repetidora Simplex",
-    "rogerBeep": true,
-    "rogerBeepType": "classic"
+    "rogerBeep": true
   },
   "dtmf": {
     "commands": {
       "*1": "datetime",
       "*2": "ai_chat",
       "*3": "sms",
-      "*9": "baliza"
-    }
-  },
-  "modules": {
-    "datetime": {
-      "enabled": true,
-      "rogerBeep": true,
-      "rogerBeepType": "classic"
-    },
-    "ai_chat": {
-      "enabled": true,
-      "rogerBeep": true,
-      "rogerBeepType": "classic"
-    },
-    "sms": {
-      "enabled": true,
-      "rogerBeep": true,
-      "rogerBeepType": "classic"
+      "*9": "baliza",
+      "*90": "roger_beep_toggle",
+      "*91": "roger_beep_classic",
+      "*92": "roger_beep_motorola",
+      "*93": "roger_beep_kenwood",
+      "*94": "roger_beep_custom"
     }
   },
   "web": {
     "port": 3000
-  },
-  "tts": {
-    "provider": "espeak",
-    "fallback": true,
-    "google": {
-      "enabled": false,
-      "languageCode": "es-AR",
-      "voiceName": "es-AR-Standard-A",
-      "gender": "FEMALE"
-    }
   }
 }

@@ -15,6 +15,12 @@ class VX200Controller {
         
         this.initializeModules();
         this.setupEventHandlers();
+        
+        // ===== CONFIGURAR ROGER BEEP DESDE CONFIG =====
+        if (config.rogerBeep) {
+            this.audio.configureRogerBeep(config.rogerBeep);
+            console.log(`🔊 Roger Beep configurado: ${config.rogerBeep.type} (${config.rogerBeep.enabled ? 'ON' : 'OFF'})`);
+        }
     }
 
     initializeModules() {
@@ -38,24 +44,23 @@ class VX200Controller {
         });
 
          // Escuchar actividad del canal
-    this.audio.on('channel_active', (data) => {
-        console.log('📻 Canal ocupado');
-        this.webServer.broadcastChannelActivity(true, data.level);
-    });
+        this.audio.on('channel_active', (data) => {
+            console.log('📻 Canal ocupado');
+            this.webServer.broadcastChannelActivity(true, data.level);
+        });
 
-    this.audio.on('channel_inactive', (data) => {
-        console.log('📻 Canal libre');
-        this.webServer.broadcastChannelActivity(false, 0);
-    });
+        this.audio.on('channel_inactive', (data) => {
+            console.log('📻 Canal libre');
+            this.webServer.broadcastChannelActivity(false, 0);
+        });
 
-    this.audio.on('signal_level', (data) => {
-        // Enviar nivel de señal al panel web (throttled)
-        this.webServer.broadcastSignalLevel(data);
-    });
+        this.audio.on('signal_level', (data) => {
+            // Enviar nivel de señal al panel web (throttled)
+            this.webServer.broadcastSignalLevel(data);
+        });
 
-    // Configurar eventos para el panel web
-    this.setupWebEvents();
-
+        // Configurar eventos para el panel web
+        this.setupWebEvents();
     }
 
     setupWebEvents() {
@@ -78,7 +83,7 @@ class VX200Controller {
             const message = args.join(' ');
             if (message.includes('DTMF') || message.includes('Baliza') || 
                 message.includes('SMS') || message.includes('IA') || 
-                message.includes('DateTime')) {
+                message.includes('DateTime') || message.includes('Roger')) {
                 this.webServer.broadcastLog('info', message);
             }
         };
@@ -124,6 +129,48 @@ class VX200Controller {
             return;
         }
         
+        // ===== COMANDOS ROGER BEEP =====
+        const rogerBeepCommands = {
+            '*90': async () => {
+                const isEnabled = this.audio.getRogerBeep().getConfig().enabled;
+                this.audio.getRogerBeep().setEnabled(!isEnabled);
+                await this.audio.speakNoBeep(`Roger beep ${!isEnabled ? 'habilitado' : 'deshabilitado'}`);
+                this.webServer.broadcastLog('info', `Roger beep ${!isEnabled ? 'habilitado' : 'deshabilitado'}`);
+            },
+            '*91': async () => {
+                this.audio.getRogerBeep().setType('classic');
+                await this.audio.speak('Roger beep clásico activado');
+                this.webServer.broadcastLog('info', 'Roger beep classic activado');
+            },
+            '*92': async () => {
+                this.audio.getRogerBeep().setType('motorola');
+                await this.audio.speak('Roger beep Motorola activado');
+                this.webServer.broadcastLog('info', 'Roger beep Motorola activado');
+            },
+            '*93': async () => {
+                this.audio.getRogerBeep().setType('kenwood');
+                await this.audio.speak('Roger beep Kenwood activado');
+                this.webServer.broadcastLog('info', 'Roger beep Kenwood activado');
+            },
+            '*94': async () => {
+                this.audio.getRogerBeep().setType('custom');
+                await this.audio.speak('Roger beep personalizado activado');
+                this.webServer.broadcastLog('info', 'Roger beep custom activado');
+            },
+            '*95': async () => {
+                console.log('🧪 Test de roger beep solicitado');
+                await this.audio.testRogerBeep();
+                this.webServer.broadcastLog('info', 'Test roger beep ejecutado');
+            }
+        };
+
+        // Verificar comandos roger beep primero
+        if (rogerBeepCommands[sequence]) {
+            console.log(`🔧 Comando Roger Beep: ${sequence}`);
+            await rogerBeepCommands[sequence]();
+            return;
+        }
+        
         // Comandos normales cuando SMS está idle
         const commands = {
             '*1': this.modules.datetime,  // Fecha y hora
@@ -159,10 +206,10 @@ class VX200Controller {
     }
 
     async transmitText(text) {
-    await this.safeTransmit(async () => {
-        console.log(`🗣️ Transmitiendo texto: ${text}`);
-        await this.audio.speak(text);
-    });
+        await this.safeTransmit(async () => {
+            console.log(`🗣️ Transmitiendo texto: ${text}`);
+            await this.audio.speak(text);
+        });
     }
 
     start() {
@@ -181,13 +228,24 @@ class VX200Controller {
         console.log('🎉 VX200 Controller iniciado correctamente');
         console.log('='.repeat(60));
         console.log(`🌐 Panel web disponible en: http://localhost:3000`);
+        console.log(`📡 Indicativo: ${config.callsign || 'VX200'}`);
         console.log('📞 Comandos DTMF disponibles:');
         console.log('   *1 = Fecha y hora actual');
         console.log('   *2 = Consulta a IA (simulado)');
         console.log('   *3 = Enviar SMS (número + mensaje)');
         console.log('   *9 = Baliza manual');
+        console.log('');
+        console.log('🔊 Comandos Roger Beep:');
+        console.log('   *90 = ON/OFF roger beep');
+        console.log('   *91 = Roger beep Classic');
+        console.log('   *92 = Roger beep Motorola');
+        console.log('   *93 = Roger beep Kenwood');
+        console.log('   *94 = Roger beep Custom');
+        console.log('   *95 = Test roger beep');
+        console.log('');
         console.log('📡 Baliza automática: ' + (config.baliza?.enabled ? 
             `Cada ${config.baliza.interval} minutos` : 'Deshabilitada'));
+        console.log(`🔊 Roger Beep: ${config.rogerBeep?.enabled ? 'Habilitado' : 'Deshabilitado'} (${config.rogerBeep?.type || 'classic'})`);
         console.log('='.repeat(60));
     }
 
@@ -231,6 +289,7 @@ class VX200Controller {
             datetime: this.modules.datetime.getStatus(),
             aiChat: this.modules.aiChat.getStatus(),
             sms: this.modules.sms.getStatus(),
+            rogerBeep: this.audio.getRogerBeep().getConfig(), // NUEVO
             dtmf: {
                 lastSequence: 'N/A',
                 activeSession: this.modules.sms.sessionState
@@ -255,6 +314,33 @@ class VX200Controller {
             case 'sms':
                 await this.modules.sms.execute('*3');
                 break;
+                
+            // ===== COMANDOS ROGER BEEP DESDE WEB =====
+            case 'roger_beep_toggle':
+                const isEnabled = this.audio.getRogerBeep().getConfig().enabled;
+                this.audio.getRogerBeep().setEnabled(!isEnabled);
+                await this.audio.speakNoBeep(`Roger beep ${!isEnabled ? 'habilitado' : 'deshabilitado'}`);
+                break;
+            case 'roger_beep_classic':
+                this.audio.getRogerBeep().setType('classic');
+                await this.audio.speak('Roger beep clásico activado');
+                break;
+            case 'roger_beep_motorola':
+                this.audio.getRogerBeep().setType('motorola');
+                await this.audio.speak('Roger beep Motorola activado');
+                break;
+            case 'roger_beep_kenwood':
+                this.audio.getRogerBeep().setType('kenwood');
+                await this.audio.speak('Roger beep Kenwood activado');
+                break;
+            case 'roger_beep_custom':
+                this.audio.getRogerBeep().setType('custom');
+                await this.audio.speak('Roger beep personalizado activado');
+                break;
+            case 'roger_beep_test':
+                await this.audio.testRogerBeep();
+                break;
+                
             default:
                 throw new Error(`Comando desconocido: ${command}`);
         }
@@ -271,122 +357,165 @@ class VX200Controller {
         }
     }
 
-    // NUEVO: Verificar si es seguro transmitir
-async safeTransmit(callback) {
-    if (!this.audio.isSafeToTransmit()) {
-        console.log('⚠️  Canal ocupado - Transmisión diferida');
-        this.webServer.broadcastLog('warning', 'Canal ocupado - Esperando...');
+    // ===== CONFIGURAR ROGER BEEP DESDE PANEL WEB =====
+    configureRogerBeepFromWeb(newConfig) {
+        console.log('🌐 Configurando roger beep desde panel web:', newConfig);
+        this.audio.configureRogerBeep(newConfig);
         
-        // Esperar hasta que el canal esté libre
-        const waitForChannel = () => {
-            return new Promise((resolve) => {
-                const checkInterval = setInterval(() => {
-                    if (this.audio.isSafeToTransmit()) {
+        // Actualizar config si es necesario
+        if (config.rogerBeep) {
+            Object.assign(config.rogerBeep, newConfig);
+        }
+        
+        this.webServer.broadcastLog('info', `Roger Beep configurado: ${newConfig.type || 'sin cambios'}`);
+    }
+
+    // NUEVO: Verificar si es seguro transmitir
+    async safeTransmit(callback) {
+        if (!this.audio.isSafeToTransmit()) {
+            console.log('⚠️  Canal ocupado - Transmisión diferida');
+            this.webServer.broadcastLog('warning', 'Canal ocupado - Esperando...');
+            
+            // Esperar hasta que el canal esté libre
+            const waitForChannel = () => {
+                return new Promise((resolve) => {
+                    const checkInterval = setInterval(() => {
+                        if (this.audio.isSafeToTransmit()) {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 500);
+                    
+                    // Timeout después de 30 segundos
+                    setTimeout(() => {
                         clearInterval(checkInterval);
                         resolve();
-                    }
-                }, 500);
-                
-                // Timeout después de 30 segundos
-                setTimeout(() => {
-                    clearInterval(checkInterval);
-                    resolve();
-                }, 30000);
-            });
+                    }, 30000);
+                });
+            };
+            
+            await waitForChannel();
+            
+            if (!this.audio.isSafeToTransmit()) {
+                console.log('⚠️  Timeout esperando canal libre');
+                this.webServer.broadcastLog('warning', 'Timeout - Transmitiendo de todas formas');
+            }
+        }
+        
+        console.log('✅ Canal libre - Transmitiendo');
+        await callback();
+    }
+
+    // Métodos de control del sistema
+    shutdown() {
+        console.log('🔴 Iniciando apagado del sistema...');
+        this.webServer.broadcastLog('warning', 'Sistema apagándose...');
+        
+        this.stop();
+        
+        setTimeout(() => {
+            console.log('👋 Sistema apagado. ¡Hasta luego!');
+            process.exit(0);
+        }, 2000);
+    }
+
+    restart() {
+        console.log('🔄 Iniciando reinicio del sistema...');
+        this.webServer.broadcastLog('warning', 'Sistema reiniciándose...');
+        
+        this.stop();
+        
+        setTimeout(() => {
+            console.log('🔄 Reiniciando...');
+            // En un entorno real, aquí se reiniciaría el proceso
+            // Por ahora solo simularemos
+            this.start();
+            this.webServer.broadcastLog('success', 'Sistema reiniciado correctamente');
+        }, 3000);
+    }
+
+    stopServices() {
+        console.log('⏸️  Deteniendo servicios...');
+        
+        if (this.audio.isRecording) {
+            this.audio.stop();
+        }
+        
+        if (this.modules.baliza.isRunning) {
+            this.modules.baliza.stop();
+        }
+        
+        this.webServer.broadcastLog('info', 'Servicios detenidos');
+    }
+
+    startServices() {
+        console.log('▶️  Iniciando servicios...');
+        
+        if (!this.audio.isRecording) {
+            this.audio.start();
+        }
+        
+        if (config.baliza?.enabled && !this.modules.baliza.isRunning) {
+            this.modules.baliza.start();
+        }
+        
+        this.webServer.broadcastLog('info', 'Servicios iniciados');
+    }
+
+    // Obtener estado detallado del sistema
+    getDetailedStatus() {
+        return {
+            ...this.getSystemStatus(),
+            system: {
+                uptime: process.uptime(),
+                memory: process.memoryUsage(),
+                pid: process.pid,
+                callsign: config.callsign || 'VX200'
+            },
+            services: {
+                audio: this.audio.isRecording,
+                baliza: this.modules.baliza.isRunning,
+                webServer: true, // Si estamos respondiendo, está activo
+                rogerBeep: this.audio.getRogerBeep().getConfig().enabled
+            }
         };
-        
-        await waitForChannel();
-        
-        if (!this.audio.isSafeToTransmit()) {
-            console.log('⚠️  Timeout esperando canal libre');
-            this.webServer.broadcastLog('warning', 'Timeout - Transmitiendo de todas formas');
-        }
     }
-    
-    console.log('✅ Canal libre - Transmitiendo');
-    await callback();
-}
 
-    // Agregar después del método configureBalizaFromWeb():
-
-// Métodos de control del sistema
-shutdown() {
-    console.log('🔴 Iniciando apagado del sistema...');
-    this.webServer.broadcastLog('warning', 'Sistema apagándose...');
+    // ===== MÉTODOS ADICIONALES PARA ROGER BEEP =====
     
-    this.stop();
-    
-    setTimeout(() => {
-        console.log('👋 Sistema apagado. ¡Hasta luego!');
-        process.exit(0);
-    }, 2000);
-}
-
-restart() {
-    console.log('🔄 Iniciando reinicio del sistema...');
-    this.webServer.broadcastLog('warning', 'Sistema reiniciándose...');
-    
-    this.stop();
-    
-    setTimeout(() => {
-        console.log('🔄 Reiniciando...');
-        // En un entorno real, aquí se reiniciaría el proceso
-        // Por ahora solo simularemos
-        this.start();
-        this.webServer.broadcastLog('success', 'Sistema reiniciado correctamente');
-    }, 3000);
-}
-
-stopServices() {
-    console.log('⏸️  Deteniendo servicios...');
-    
-    if (this.audio.isRecording) {
-        this.audio.stop();
+    async testAllRogerBeeps() {
+        console.log('🧪 Test completo de roger beeps...');
+        await this.audio.getRogerBeep().testAll();
+        this.webServer.broadcastLog('info', 'Test completo roger beeps ejecutado');
     }
-    
-    if (this.modules.baliza.isRunning) {
-        this.modules.baliza.stop();
-    }
-    
-    this.webServer.broadcastLog('info', 'Servicios detenidos');
-}
 
-startServices() {
-    console.log('▶️  Iniciando servicios...');
-    
-    if (!this.audio.isRecording) {
-        this.audio.start();
+    getRogerBeepStatus() {
+        return this.audio.getRogerBeep().getConfig();
     }
-    
-    if (config.baliza?.enabled && !this.modules.baliza.isRunning) {
-        this.modules.baliza.start();
-    }
-    
-    this.webServer.broadcastLog('info', 'Servicios iniciados');
-}
 
-// Obtener estado detallado del sistema
-getDetailedStatus() {
-    return {
-        ...this.getSystemStatus(),
-        system: {
-            uptime: process.uptime(),
-            memory: process.memoryUsage(),
-            pid: process.pid
-        },
-        services: {
-            audio: this.audio.isRecording,
-            baliza: this.modules.baliza.isRunning,
-            webServer: true // Si estamos respondiendo, está activo
-        }
-    };
-}
+    async setRogerBeepVolume(volume) {
+        this.audio.getRogerBeep().setVolume(volume);
+        await this.audio.speak(`Volumen roger beep ajustado a ${Math.round(volume * 100)} por ciento`);
+    }
+
+    async setRogerBeepDuration(duration) {
+        this.audio.getRogerBeep().setDuration(duration);
+        await this.audio.speak(`Duración roger beep ajustada a ${duration} milisegundos`);
+    }
 }
 
 // Manejo de señales del sistema para cierre limpio
 process.on('SIGINT', () => {
     console.log('\n🛑 Señal de interrupción recibida (Ctrl+C)...');
+    
+    // Mostrar estadísticas antes de cerrar
     if (global.vx200Controller) {
+        const rogerStatus = global.vx200Controller.getRogerBeepStatus();
+        console.log('📊 Estado final Roger Beep:');
+        console.log(`   Tipo: ${rogerStatus.type}`);
+        console.log(`   Estado: ${rogerStatus.enabled ? 'Habilitado' : 'Deshabilitado'}`);
+        console.log(`   Volumen: ${rogerStatus.volume}`);
+        
         global.vx200Controller.stop();
     }
     process.exit(0);

@@ -115,8 +115,6 @@
             </div>
         </div>
 
-        <!-- Agregar después de la sección "Controles Manuales" -->
-
         <!-- Controles del Sistema -->
         <div class="row mb-4">
             <div class="col-12">
@@ -159,6 +157,82 @@
                 </div>
             </div>
         </div>
+
+        <!-- Roger Beep Controls -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white">
+                <h5><i class="bi bi-volume-up"></i> Control Roger Beep</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-primary w-100 mb-2" onclick="executeCommand('roger_beep_toggle')" id="roger-beep-toggle-btn">
+                                    <i class="bi bi-power"></i> On/Off
+                                </button>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-success w-100 mb-2" onclick="executeCommand('roger_beep_classic')">
+                                    <i class="bi bi-1-circle"></i> Classic
+                                </button>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-warning w-100 mb-2" onclick="executeCommand('roger_beep_motorola')">
+                                    <i class="bi bi-2-circle"></i> Motorola
+                                </button>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-info w-100 mb-2" onclick="executeCommand('roger_beep_kenwood')">
+                                    <i class="bi bi-3-circle"></i> Kenwood
+                                </button>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-secondary w-100 mb-2" onclick="executeCommand('roger_beep_custom')">
+                                    <i class="bi bi-4-circle"></i> Custom
+                                </button>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-dark w-100 mb-2" onclick="executeCommand('roger_beep_test')">
+                                    <i class="bi bi-play"></i> Test
+                                </button>
+                            </div>
+                            <div class="col-md-6">
+                                <button class="btn btn-outline-primary w-100 mb-2" onclick="executeCommand('roger_beep_test_all')">
+                                    <i class="bi bi-collection-play"></i> Test Todos
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Estado Actual</h6>
+                                <p class="mb-1"><strong>Tipo:</strong> <span id="roger-beep-type" class="badge bg-primary">Classic</span></p>
+                                <p class="mb-1"><strong>Estado:</strong> <span id="roger-beep-status" class="badge bg-success">Habilitado</span></p>
+                                <p class="mb-1"><strong>Volumen:</strong> <span id="roger-beep-volume">70%</span></p>
+                                <p class="mb-0"><strong>Duración:</strong> <span id="roger-beep-duration">250ms</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="alert alert-info" role="alert">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Roger Beep:</strong> Tono que se reproduce al final de cada transmisión. 
+                            <strong>Classic</strong> (1000Hz+800Hz), <strong>Motorola</strong> (barrido), <strong>Kenwood</strong> (triple), <strong>Custom</strong> (personalizado).
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
         <!-- Configuración de Baliza -->
         <div class="row mb-4">

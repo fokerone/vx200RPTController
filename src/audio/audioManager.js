@@ -5,21 +5,15 @@ const recorder = require('node-record-lpcm16');
 const Speaker = require('speaker');
 const DTMFDecoder = require('./dtmfDecoder');
 const EventEmitter = require('events');
-const textToSpeech = require('@google-cloud/text-to-speech');
+const say = require('say');
 const RogerBeep = require('./rogerBeep');
 
 class AudioManager extends EventEmitter {
-    constructor(config = {}) {
+    constructor() {
         super();
-        
-        // Cargar configuración
-        this.config = this.loadConfig(config);
-        
-        // Configuración de audio desde config
-        this.sampleRate = this.config.audio?.sampleRate || 48000;
-        this.channels = this.config.audio?.channels || 1;
+        this.sampleRate = 48000;
+        this.channels = 1;
         this.bitDepth = 16;
-        this.device = this.config.audio?.device || 'hw:0,0';
         
         this.dtmfDecoder = new DTMFDecoder(this.sampleRate);
         this.isRecording = false;
@@ -27,24 +21,8 @@ class AudioManager extends EventEmitter {
         this.dtmfBuffer = '';
         this.dtmfTimeout = null;
 
-        // Cliente Google TTS
-        this.ttsClient = null;
-        this.ttsEnabled = false;
-
-        // Configuración de voz desde config
-        const ttsConfig = this.config.tts || {};
-        this.voiceConfig = {
-            languageCode: ttsConfig.google?.languageCode || 'es-AR',
-            name: ttsConfig.google?.voiceName || 'es-AR-Standard-A',
-            ssmlGender: ttsConfig.google?.gender || 'FEMALE'
-        };
-
-        this.audioConfig = {
-            audioEncoding: 'LINEAR16',
-            sampleRateHertz: 24000,
-            speakingRate: 1.0,
-            pitch: 0.0
-        };
+        // Inicializar Roger Beep
+        this.rogerBeep = new RogerBeep(this);
 
         this.channelActivity = {
             isActive: false,
@@ -54,104 +32,13 @@ class AudioManager extends EventEmitter {
             lastActivityTime: 0,
             activityTimer: null
         };
-
-        // Inicializar Roger Beep con configuración
-        this.rogerBeep = new RogerBeep(this, this.config.rogerBeep);
-
-        // Inicializar TTS si está configurado
-        if (ttsConfig.google?.enabled) {
-            this.initializeGoogleTTS();
-        }
-
-        console.log('🎤 AudioManager inicializado con configuración personalizada');
-        console.log(`📡 Indicativo: ${this.config.callsign || 'N/A'}`);
-        console.log(`🔊 Roger Beep: ${this.config.rogerBeep?.enabled ? 'Habilitado' : 'Deshabilitado'}`);
-    }
-
-    /**
-     * Cargar configuración desde archivo o parámetros
-     */
-    loadConfig(config) {
-        // Si se pasa configuración directamente, usarla
-        if (Object.keys(config).length > 0) {
-            return config;
-        }
-
-        // Intentar cargar desde archivo
-        const configPath = path.join(__dirname, '../../config/config.json');
-        try {
-            if (fs.existsSync(configPath)) {
-                const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                console.log('✅ Configuración cargada desde archivo');
-                return fileConfig;
-            }
-        } catch (error) {
-            console.warn('⚠️  Error cargando configuración:', error.message);
-        }
-
-        // Configuración por defecto
-        return {
-            callsign: "VX200",
-            audio: {
-                sampleRate: 48000,
-                channels: 1,
-                device: 'hw:0,0'
-            },
-            rogerBeep: {
-                enabled: true,
-                type: 'classic',
-                volume: 0.7,
-                duration: 250,
-                delay: 100
-            }
-        };
-    }
-
-    /**
-     * Inicializar Google Cloud TTS
-     */
-    async initializeGoogleTTS() {
-        try {
-            if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_CLOUD_PROJECT_ID) {
-                console.log('⚠️  Google TTS no configurado, usando espeak como fallback');
-                return;
-            }
-
-            this.ttsClient = new textToSpeech.TextToSpeechClient();
-            this.ttsEnabled = true;
-            console.log('✅ Google Cloud TTS inicializado correctamente');
-
-            await this.testGoogleTTS();
-
-        } catch (error) {
-            console.warn('⚠️  Google Cloud TTS no disponible:', error.message);
-            console.log('📢 Usando espeak como fallback');
-            this.ttsEnabled = false;
-        }
-    }
-
-    /**
-     * Probar conexión con Google TTS
-     */
-    async testGoogleTTS() {
-        try {
-            const request = {
-                input: { text: 'Test' },
-                voice: this.voiceConfig,
-                audioConfig: { audioEncoding: 'LINEAR16' }
-            };
-
-            await this.ttsClient.synthesizeSpeech(request);
-            console.log('✅ Conexión con Google TTS verificada');
-        } catch (error) {
-            console.error('❌ Error en test de Google TTS:', error.message);
-            this.ttsEnabled = false;
-        }
+        
+        console.log('🎤 AudioManager inicializado con Roger Beep');
     }
 
     start() {
         this.startRecording();
-        console.log(`🔊 Audio iniciado en ${this.device} - Escuchando DTMF...`);
+        console.log('🔊 Audio iniciado - Escuchando DTMF...');
     }
 
     startRecording() {
@@ -161,7 +48,7 @@ class AudioManager extends EventEmitter {
             bitDepth: this.bitDepth,
             audioType: 'raw',
             silence: '5.0',
-            device: this.device
+            device: 'hw:0,0' // Tu dispositivo de audio
         };
 
         this.recordingStream = recorder.record(recordingOptions);
@@ -178,37 +65,51 @@ class AudioManager extends EventEmitter {
     }
 
     processAudioData(audioData) {
+        // Convertir buffer a array de números
         const audioArray = [];
         for (let i = 0; i < audioData.length; i += 2) {
+            // 16-bit little endian
             const sample = audioData.readInt16LE(i) / 32768.0;
             audioArray.push(sample);
         }
 
+        // Detectar actividad del canal
         this.detectChannelActivity(audioArray);
+
+        // Detectar DTMF
         this.dtmfDecoder.detectSequence(audioArray, (dtmf) => {
             this.handleDTMF(dtmf);
         });
 
+        // Emitir audio para otros módulos si es necesario
         this.emit('audio', audioArray);
     }
 
     handleDTMF(dtmf) {
         this.dtmfBuffer += dtmf;
         
+        // Reset del timeout
         if (this.dtmfTimeout) {
             clearTimeout(this.dtmfTimeout);
         }
         
+        // Timeout para detectar final de secuencia
         this.dtmfTimeout = setTimeout(() => {
             if (this.dtmfBuffer.length > 0) {
                 console.log(`📞 Secuencia DTMF completa: ${this.dtmfBuffer}`);
                 this.emit('dtmf', this.dtmfBuffer);
                 this.dtmfBuffer = '';
             }
-        }, 2000);
+        }, 2000); // 2 segundos sin DTMF = fin de secuencia
     }
 
+    // Detectar actividad del canal
     detectChannelActivity(audioArray) {
+        // Calcular nivel promedio de la señal
+        const avgLevel = audioArray.reduce((sum, sample) => 
+            sum + Math.abs(sample), 0) / audioArray.length;
+        
+        // Calcular nivel RMS para mejor detección
         const rmsLevel = Math.sqrt(
             audioArray.reduce((sum, sample) => sum + sample * sample, 0) / audioArray.length
         );
@@ -216,7 +117,9 @@ class AudioManager extends EventEmitter {
         this.channelActivity.level = rmsLevel;
         
         const now = Date.now();
+        const wasActive = this.channelActivity.isActive;
         
+        // Detectar si hay actividad
         if (rmsLevel > this.channelActivity.threshold) {
             this.channelActivity.lastActivityTime = now;
             
@@ -229,11 +132,13 @@ class AudioManager extends EventEmitter {
                 });
             }
             
+            // Cancelar timer de inactividad
             if (this.channelActivity.activityTimer) {
                 clearTimeout(this.channelActivity.activityTimer);
                 this.channelActivity.activityTimer = null;
             }
             
+            // Programar inactividad
             this.channelActivity.activityTimer = setTimeout(() => {
                 if (this.channelActivity.isActive) {
                     this.channelActivity.isActive = false;
@@ -246,6 +151,7 @@ class AudioManager extends EventEmitter {
             }, this.channelActivity.sustainTime);
         }
         
+        // Emitir nivel de señal periódicamente
         this.emit('signal_level', {
             level: rmsLevel,
             active: this.channelActivity.isActive,
@@ -253,118 +159,39 @@ class AudioManager extends EventEmitter {
         });
     }
 
+    // Obtener estado del canal
+    getChannelStatus() {
+        return {
+            isActive: this.channelActivity.isActive,
+            level: this.channelActivity.level,
+            threshold: this.channelActivity.threshold,
+            lastActivity: this.channelActivity.lastActivityTime
+        };
+    }
+
+    //  Configurar sensibilidad
+    setChannelThreshold(threshold) {
+        this.channelActivity.threshold = Math.max(0.001, Math.min(0.1, threshold));
+        console.log(`🎚️  Umbral de canal ajustado a: ${this.channelActivity.threshold}`);
+    }
+
+    // Verificar si es seguro transmitir
+    isSafeToTransmit() {
+        return !this.channelActivity.isActive;
+    }
+
     /**
-     * Text-to-Speech con Roger Beep automático
+     * Función speak principal - CON ROGER BEEP AUTOMÁTICO
      */
-    async speak(text, options = {}) {
+    speak(text, options = {}) {
+        const voice = options.voice || 'es';
+        const speed = options.speed || '150';
+        
         console.log(`🗣️ Hablando: "${text}"`);
         
-        try {
-            // Hablar el mensaje
-            if (this.ttsEnabled && this.config.tts?.google?.enabled) {
-                await this.speakGoogle(text, options);
-            } else {
-                await this.speakEspeak(text, options);
-            }
-
-            // Reproducir roger beep al finalizar (según configuración)
-            const moduleConfig = this.getModuleConfig(options.module);
-            const shouldPlayBeep = options.rogerBeep !== false && 
-                                 (moduleConfig?.rogerBeep !== false) && 
-                                 this.config.rogerBeep?.enabled;
-
-            if (shouldPlayBeep) {
-                const beepType = options.rogerBeepType || 
-                               moduleConfig?.rogerBeepType || 
-                               this.config.rogerBeep?.type || 
-                               'classic';
-                               
-                await this.rogerBeep.play(beepType);
-            }
-
-        } catch (error) {
-            console.error('❌ Error en TTS, usando fallback espeak:', error.message);
-            await this.speakEspeak(text, options);
-            
-            // Roger beep incluso en fallback
-            if (options.rogerBeep !== false && this.config.rogerBeep?.enabled) {
-                await this.rogerBeep.play();
-            }
-        }
-    }
-
-    /**
-     * Obtener configuración de módulo específico
-     */
-    getModuleConfig(moduleName) {
-        if (!moduleName || !this.config.modules) {
-            return null;
-        }
-        return this.config.modules[moduleName];
-    }
-
-    /**
-     * Hablar sin roger beep
-     */
-    async speakNoBeep(text, options = {}) {
-        return await this.speak(text, { ...options, rogerBeep: false });
-    }
-
-    /**
-     * Google Cloud Text-to-Speech
-     */
-    async speakGoogle(text, options = {}) {
-        const request = {
-            input: { text: text },
-            voice: {
-                languageCode: options.languageCode || this.voiceConfig.languageCode,
-                name: options.voiceName || this.voiceConfig.name,
-                ssmlGender: options.gender || this.voiceConfig.ssmlGender
-            },
-            audioConfig: {
-                audioEncoding: 'LINEAR16',
-                sampleRateHertz: 24000,
-                speakingRate: options.speed || 1.0,
-                pitch: options.pitch || 0.0
-            }
-        };
-
-        try {
-            const [response] = await this.ttsClient.synthesizeSpeech(request);
-            
-            const soundsDir = path.join(__dirname, '../../sounds');
-            if (!fs.existsSync(soundsDir)) {
-                fs.mkdirSync(soundsDir, { recursive: true });
-            }
-
-            const tempFile = path.join(soundsDir, `google_tts_${Date.now()}.wav`);
-            fs.writeFileSync(tempFile, response.audioContent, 'binary');
-            
-            await this.playAudioFile(tempFile);
-            
-            setTimeout(() => {
-                if (fs.existsSync(tempFile)) {
-                    fs.unlinkSync(tempFile);
-                }
-            }, 3000);
-
-            console.log('✅ Google TTS completado');
-            return true;
-
-        } catch (error) {
-            console.error('❌ Error en Google TTS:', error.message);
-            throw error;
-        }
-    }
-
-    /**
-     * Espeak TTS (Fallback)
-     */
-    async speakEspeak(text, options = {}) {
-        const voice = options.voice || 'es';
-        const speed = options.speed ? Math.round(options.speed * 150) : '150';
-        
         return new Promise((resolve, reject) => {
+            const { spawn } = require('child_process');
+            
             const espeak = spawn('espeak', [
                 '-v', voice,
                 '-s', speed,
@@ -372,12 +199,22 @@ class AudioManager extends EventEmitter {
                 text
             ]);
             
-            espeak.on('close', (code) => {
+            espeak.on('close', async (code) => {
                 if (code === 0) {
-                    console.log('✅ Espeak TTS completado');
+                    console.log('✅ TTS completado');
+                    
+                    // REPRODUCIR ROGER BEEP después del TTS
+                    if (options.rogerBeep !== false) { // Por defecto habilitado
+                        try {
+                            await this.rogerBeep.play(options.rogerBeepType);
+                        } catch (error) {
+                            console.log('⚠️  Error en roger beep:', error.message);
+                        }
+                    }
+                    
                     resolve();
                 } else {
-                    console.error(`❌ Error espeak, código: ${code}`);
+                    console.error(`❌ Error TTS, código: ${code}`);
                     reject(new Error(`espeak failed with code ${code}`));
                 }
             });
@@ -390,50 +227,10 @@ class AudioManager extends EventEmitter {
     }
 
     /**
-     * Reproducir archivo de audio usando aplay
+     * Hablar SIN roger beep
      */
-    async playAudioFile(filePath) {
-        return new Promise((resolve, reject) => {
-            if (!fs.existsSync(filePath)) {
-                reject(new Error('Archivo de audio no encontrado'));
-                return;
-            }
-
-            const aplay = spawn('aplay', ['-q', filePath]);
-            
-            aplay.on('close', (code) => {
-                if (code === 0) {
-                    resolve();
-                } else {
-                    reject(new Error(`aplay falló con código ${code}`));
-                }
-            });
-
-            aplay.on('error', (err) => {
-                reject(err);
-            });
-        });
-    }
-
-    /**
-     * Obtener configuración completa
-     */
-    getFullConfig() {
-        return this.config;
-    }
-
-    /**
-     * Actualizar configuración
-     */
-    updateConfig(newConfig) {
-        this.config = { ...this.config, ...newConfig };
-        
-        // Actualizar roger beep si cambió la configuración
-        if (newConfig.rogerBeep) {
-            this.rogerBeep.updateConfig(newConfig.rogerBeep);
-        }
-        
-        console.log('✅ Configuración actualizada');
+    speakNoBeep(text, options = {}) {
+        return this.speak(text, { ...options, rogerBeep: false });
     }
 
     /**
@@ -463,56 +260,13 @@ class AudioManager extends EventEmitter {
         await this.rogerBeep.play(type);
     }
 
-    /**
-     * Cambiar voz de Google TTS
-     */
-    setGoogleVoice(languageCode, voiceName, gender = 'FEMALE') {
-        this.voiceConfig = {
-            languageCode,
-            name: voiceName,
-            ssmlGender: gender
-        };
-        console.log(`🎙️ Voz configurada: ${voiceName} (${languageCode})`);
-    }
-
-    /**
-     * Obtener estado del TTS
-     */
-    getTTSStatus() {
-        return {
-            enabled: this.ttsEnabled,
-            provider: this.ttsEnabled ? 'Google Cloud TTS' : 'Espeak',
-            voice: this.voiceConfig,
-            fallbackAvailable: true,
-            rogerBeep: this.rogerBeep.getConfig(),
-            callsign: this.config.callsign
-        };
-    }
-
-    getChannelStatus() {
-        return {
-            isActive: this.channelActivity.isActive,
-            level: this.channelActivity.level,
-            threshold: this.channelActivity.threshold,
-            lastActivity: this.channelActivity.lastActivityTime
-        };
-    }
-
-    setChannelThreshold(threshold) {
-        this.channelActivity.threshold = Math.max(0.001, Math.min(0.1, threshold));
-        console.log(`🎚️  Umbral de canal ajustado a: ${this.channelActivity.threshold}`);
-    }
-
-    isSafeToTransmit() {
-        return !this.channelActivity.isActive;
-    }
-
     playTone(frequency, duration, volume = 0.5) {
         console.log(`🎵 Reproduciendo tono: ${frequency}Hz por ${duration}ms`);
         
         try {
+            // Generar tono sintético
             const sampleCount = Math.floor(this.sampleRate * duration / 1000);
-            const buffer = Buffer.alloc(sampleCount * 2);
+            const buffer = Buffer.alloc(sampleCount * 2); // 16-bit
             
             for (let i = 0; i < sampleCount; i++) {
                 const sample = Math.sin(2 * Math.PI * frequency * i / this.sampleRate) * volume;
@@ -523,16 +277,18 @@ class AudioManager extends EventEmitter {
             this.playBuffer(buffer);
         } catch (error) {
             console.log(`⚠️  No se pudo reproducir tono: ${error.message}`);
+            // Continuar sin el tono
         }
     }
 
     playBuffer(buffer) {
         try {
+            // Intentar crear speaker con configuración más permisiva
             const speaker = new Speaker({
                 channels: this.channels,
                 bitDepth: this.bitDepth,
                 sampleRate: this.sampleRate,
-                device: 'default'
+                device: 'default' // Usar dispositivo por defecto
             });
             
             speaker.on('error', (err) => {
@@ -544,9 +300,13 @@ class AudioManager extends EventEmitter {
             
         } catch (error) {
             console.log(`⚠️  No se pudo reproducir audio: ${error.message}`);
+            // Continuar sin audio
         }
     }
 
+    /**
+     * Pausar grabación principal para permitir grabación temporal
+     */
     pauseRecording() {
         if (this.recordingStream && this.isRecording) {
             console.log('⏸️  Pausando grabación principal...');
@@ -557,6 +317,9 @@ class AudioManager extends EventEmitter {
         return false;
     }
 
+    /**
+     * Reanudar grabación principal
+     */
     resumeRecording() {
         if (!this.isRecording) {
             console.log('▶️  Reanudando grabación principal...');
@@ -566,6 +329,9 @@ class AudioManager extends EventEmitter {
         return false;
     }
 
+    /**
+     * Grabar audio temporal usando node-record-lpcm16
+     */
     async recordTemporary(duration, sampleRate = 16000) {
         return new Promise((resolve) => {
             const timestamp = Date.now();
@@ -574,30 +340,35 @@ class AudioManager extends EventEmitter {
             
             console.log(`🎙️  Grabación temporal por ${duration} segundos...`);
             
+            // Crear directorio si no existe
             const dir = path.dirname(filepath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
             }
             
             try {
+                // Usar node-record-lpcm16 en lugar de arecord
                 const recordingOptions = {
                     sampleRate: sampleRate,
                     channels: 1,
                     bitDepth: 16,
                     audioType: 'wav',
                     silence: '1.0',
-                    device: null
+                    device: null // usar dispositivo por defecto
                 };
 
                 const tempRecorder = recorder.record(recordingOptions);
                 const fileStream = fs.createWriteStream(filepath);
                 
+                // Conectar streams
                 tempRecorder.stream().pipe(fileStream);
                 
+                // Detener después del tiempo especificado
                 setTimeout(() => {
                     tempRecorder.stop();
                     fileStream.end();
                     
+                    // Verificar que el archivo se creó
                     setTimeout(() => {
                         if (fs.existsSync(filepath)) {
                             console.log('✅ Grabación temporal completada');

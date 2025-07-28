@@ -281,3 +281,304 @@ body {
     color: white;
     border-radius: 10px 10px 0 0;
 }
+
+/* Roger Beep Controls */
+.roger-beep-controls .btn {
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.roger-beep-controls .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.roger-beep-controls .btn i {
+    margin-right: 6px;
+}
+
+/* Status Card del Roger Beep */
+.roger-beep-status-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.roger-beep-status-card:hover {
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    transform: translateY(-1px);
+}
+
+/* Badges de tipo de Roger Beep */
+.roger-beep-type-classic {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
+    color: white !important;
+}
+
+.roger-beep-type-motorola {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
+    color: #212529 !important;
+}
+
+.roger-beep-type-kenwood {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
+    color: white !important;
+}
+
+.roger-beep-type-custom {
+    background: linear-gradient(135deg, #6c757d 0%, #545b62 100%) !important;
+    color: white !important;
+}
+
+/* Texto de información del Roger Beep */
+#roger-beep-volume, #roger-beep-duration {
+    font-weight: 600;
+    color: #495057;
+    font-family: 'Courier New', monospace;
+}
+
+/* Alert de información del Roger Beep */
+.alert-info.roger-beep-info {
+    border-left: 4px solid #17a2b8;
+    background: linear-gradient(90deg, rgba(23,162,184,0.1) 0%, rgba(255,255,255,0.1) 100%);
+    border-radius: 8px;
+}
+
+.alert-info.roger-beep-info i {
+    color: #17a2b8;
+    margin-right: 8px;
+}
+
+/* Modal de configuración avanzada */
+.modal-content {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.modal-header.bg-info {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
+    border-radius: 12px 12px 0 0;
+}
+
+.modal-header h5 {
+    font-weight: 600;
+}
+
+.modal-body {
+    padding: 30px;
+}
+
+.modal-footer {
+    border-top: 1px solid #e9ecef;
+    padding: 20px 30px;
+}
+
+/* Sliders personalizados */
+.form-range {
+    height: 6px;
+    background: linear-gradient(90deg, #e9ecef 0%, #17a2b8 100%);
+    border-radius: 3px;
+}
+
+.form-range::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    transition: all 0.2s ease;
+}
+
+.form-range::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(23,162,184,0.3);
+}
+
+.form-range::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+/* Inputs pequeños */
+.form-control-sm {
+    border-radius: 6px;
+    font-size: 0.85rem;
+    text-align: center;
+    font-weight: 600;
+}
+
+/* Checkbox personalizado */
+.form-check-input:checked {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+}
+
+.form-check-input:focus {
+    border-color: #17a2b8;
+    box-shadow: 0 0 0 0.25rem rgba(23, 162, 184, 0.25);
+}
+
+/* Animaciones especiales para Roger Beep */
+@keyframes rogerBeepPulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(23, 162, 184, 0.7);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 10px rgba(23, 162, 184, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(23, 162, 184, 0);
+    }
+}
+
+.roger-beep-active {
+    animation: rogerBeepPulse 1s ease-out;
+}
+
+/* Efecto de onda para test de roger beep */
+@keyframes rogerBeepWave {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1.4);
+        opacity: 0;
+    }
+}
+
+.roger-beep-test-effect::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    background: rgba(23, 162, 184, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: rogerBeepWave 0.8s ease-out;
+}
+
+/* Indicadores de estado mejorados */
+.badge-roger-enabled {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+    color: white !important;
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+}
+
+.badge-roger-disabled {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+    color: white !important;
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+}
+
+/* Responsive para Roger Beep */
+@media (max-width: 768px) {
+    .roger-beep-controls .btn {
+        font-size: 0.8rem;
+        padding: 8px 12px;
+        margin-bottom: 8px;
+    }
+    
+    .roger-beep-controls .col-md-3 {
+        margin-bottom: 10px;
+    }
+    
+    .modal-body {
+        padding: 20px;
+    }
+    
+    .modal-footer {
+        padding: 15px 20px;
+    }
+    
+    .form-range {
+        height: 8px;
+    }
+    
+    .form-range::-webkit-slider-thumb {
+        width: 20px;
+        height: 20px;
+    }
+}
+
+/* Tooltips para controles de Roger Beep */
+.roger-beep-tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.roger-beep-tooltip::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.roger-beep-tooltip:hover::before {
+    opacity: 1;
+    visibility: visible;
+    bottom: calc(100% + 5px);
+}
+
+/* Loading spinner para operaciones de Roger Beep */
+.roger-beep-loading {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #17a2b8;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Estado de test activo */
+.roger-beep-testing {
+    position: relative;
+    overflow: hidden;
+}
+
+.roger-beep-testing::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: rogerBeepTestSweep 1.5s ease-in-out;
+}
+
+@keyframes rogerBeepTestSweep {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
