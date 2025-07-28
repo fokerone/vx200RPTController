@@ -1,5 +1,5 @@
 {
-  "callsign": "LU5MCD",
+  "callsign": "LU",
   "audio": {
     "sampleRate": 48000,
     "channels": 1,
@@ -13,7 +13,7 @@
       "duration": 500,
       "volume": 0.7
     },
-    "message": "LU5MCD Repetidora Simplex"
+    "message": "Repetidora Simplex"
   },
   "dtmf": {
     "commands": {

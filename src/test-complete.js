@@ -21,7 +21,7 @@ baliza.configure({
         duration: 600,
         volume: 0.7
     },
-    message: "LU5MCD Sistema funcionando"
+    message: "LU Sistema funcionando"
 });
 
 // Comandos DTMF

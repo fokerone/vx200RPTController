@@ -199,7 +199,7 @@ class SMS {
             
             // Simular transcripción
             const simulatedMessages = [
-                "Hola, soy LU5MCD. Te envío saludos desde la repetidora.",
+                "Hola, soy LU. Te envío saludos desde la repetidora.",
                 "Mensaje de prueba desde el sistema de radio.",
                 "Confirmando recepción de tu señal.",
                 "Saludos cordiales desde Mendoza.",

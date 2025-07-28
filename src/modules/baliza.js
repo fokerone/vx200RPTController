@@ -13,7 +13,7 @@ class Baliza extends EventEmitter {
                 duration: 500,   // ms
                 volume: 0.7
             },
-            message: "LU5MCD Repetidora Simplex"
+            message: "Repetidora Simplex"
         };
         
         this.timer = null;

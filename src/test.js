@@ -35,5 +35,5 @@ process.on('SIGINT', () => {
 // Prueba opcional de TTS cada 30 segundos
 setInterval(() => {
     console.log('🔔 Enviando mensaje de prueba...');
-    audio.speak('LU5MCD, sistema funcionando correctamente');
+    audio.speak('LU, sistema funcionando correctamente');
 }, 30000);

@@ -72,7 +72,7 @@ class AudioManager extends EventEmitter {
             audioArray.push(sample);
         }
 
-        // NUEVA FUNCIONALIDAD: Detectar actividad del canal
+        // Detectar actividad del canal
         this.detectChannelActivity(audioArray);
 
         // Detectar DTMF
@@ -102,7 +102,7 @@ class AudioManager extends EventEmitter {
         }, 2000); // 2 segundos sin DTMF = fin de secuencia
     }
 
-    // NUEVO MÉTODO: Detectar actividad del canal
+    // Detectar actividad del canal
 detectChannelActivity(audioArray) {
     // Calcular nivel promedio de la señal
     const avgLevel = audioArray.reduce((sum, sample) => 
@@ -158,7 +158,7 @@ detectChannelActivity(audioArray) {
     });
 }
 
-// NUEVO MÉTODO: Obtener estado del canal
+// Obtener estado del canal
 getChannelStatus() {
     return {
         isActive: this.channelActivity.isActive,
@@ -168,13 +168,13 @@ getChannelStatus() {
     };
 }
 
-// NUEVO MÉTODO: Configurar sensibilidad
+//  Configurar sensibilidad
 setChannelThreshold(threshold) {
     this.channelActivity.threshold = Math.max(0.001, Math.min(0.1, threshold));
     console.log(`🎚️  Umbral de canal ajustado a: ${this.channelActivity.threshold}`);
 }
 
-// NUEVO MÉTODO: Verificar si es seguro transmitir
+// Verificar si es seguro transmitir
 isSafeToTransmit() {
     return !this.channelActivity.isActive;
 }

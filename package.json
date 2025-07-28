@@ -1,7 +1,7 @@
 {
   "name": "vx200-controller",
   "version": "1.0.0",
-  "description": "Controlador para repetidora VX200 LU5MCD con panel web",
+  "description": "Controlador para repetidora Simplex con panel web",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/start-with-web.js",

@@ -43,7 +43,7 @@ class WebServer {
         // Página principal
         this.app.get('/', (req, res) => {
             res.render('index', {
-                title: 'VX200 Controller - LU5MCD',
+                title: 'VX200 Controller - LU',
                 status: this.getSystemStatus()
             });
         });
