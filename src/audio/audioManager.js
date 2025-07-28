@@ -2,8 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process'); 
 const recorder = require('node-record-lpcm16');
-const Speaker = require('speaker');
-const DTMFDecoder = require('./dtmfDecoder');
 const EventEmitter = require('events');
 const say = require('say');
 
@@ -13,24 +11,28 @@ const RogerBeep = require('./rogerBeep');
 class AudioManager extends EventEmitter {
     constructor() {
         super();
+        
+        // Configuración de audio
         this.sampleRate = 48000;
         this.channels = 1;
         this.bitDepth = 16;
         
-        this.dtmfDecoder = new DTMFDecoder(this.sampleRate);
+        // Componentes principales
+        this.dtmfDecoder = new (require('./dtmfDecoder'))(this.sampleRate);
+        this.rogerBeep = new RogerBeep(this);
+        
+        // Estado de grabación
         this.isRecording = false;
         this.recordingStream = null;
         this.dtmfBuffer = '';
         this.dtmfTimeout = null;
 
-        // ===== GESTIÓN MEJORADA DE SPEAKER =====
-        this.currentSpeaker = null;
-        this.speakerQueue = [];
-        this.isPlayingAudio = false;
-
-        // Inicializar Roger Beep
-        this.rogerBeep = new RogerBeep(this);
-
+        // ===== GESTIÓN COMPLETAMENTE NUEVA DE AUDIO =====
+        this.audioQueue = [];
+        this.isProcessingAudio = false;
+        this.currentAudioProcess = null;
+        
+        // Estado del canal
         this.channelActivity = {
             isActive: false,
             level: 0,
@@ -40,8 +42,13 @@ class AudioManager extends EventEmitter {
             activityTimer: null
         };
         
-        console.log('🎤 AudioManager inicializado con Roger Beep y Speaker mejorado');
+        // Configuración de debugging
+        this.debug = process.env.NODE_ENV === 'development';
+        
+        console.log('🎤 AudioManager inicializado (versión mejorada)');
     }
+
+    // ===== MÉTODOS DE INICIALIZACIÓN =====
 
     start() {
         this.startRecording();
@@ -49,41 +56,69 @@ class AudioManager extends EventEmitter {
     }
 
     startRecording() {
-        const recordingOptions = {
-            sampleRate: this.sampleRate,
-            channels: this.channels,
-            bitDepth: this.bitDepth,
-            audioType: 'raw',
-            silence: '5.0',
-            device: 'hw:0,0'
-        };
+        try {
+            const recordingOptions = {
+                sampleRate: this.sampleRate,
+                channels: this.channels,
+                bitDepth: this.bitDepth,
+                audioType: 'raw',
+                silence: '5.0',
+                device: 'hw:0,0'
+            };
 
-        this.recordingStream = recorder.record(recordingOptions);
-        
-        this.recordingStream.stream()
-            .on('data', (audioData) => {
-                this.processAudioData(audioData);
-            })
-            .on('error', (err) => {
-                console.error('❌ Error de audio:', err);
-            });
+            this.recordingStream = recorder.record(recordingOptions);
+            
+            this.recordingStream.stream()
+                .on('data', (audioData) => {
+                    this.processAudioData(audioData);
+                })
+                .on('error', (err) => {
+                    console.error('❌ Error de grabación:', err);
+                    this.handleRecordingError(err);
+                });
 
-        this.isRecording = true;
+            this.isRecording = true;
+            
+        } catch (error) {
+            console.error('❌ Error iniciando grabación:', error);
+            this.isRecording = false;
+        }
     }
 
+    handleRecordingError(error) {
+        console.log('🔄 Intentando reiniciar grabación...');
+        this.isRecording = false;
+        
+        // Reintentar después de 2 segundos
+        setTimeout(() => {
+            if (!this.isRecording) {
+                this.startRecording();
+            }
+        }, 2000);
+    }
+
+    // ===== PROCESAMIENTO DE AUDIO =====
+
     processAudioData(audioData) {
-        const audioArray = [];
-        for (let i = 0; i < audioData.length; i += 2) {
-            const sample = audioData.readInt16LE(i) / 32768.0;
-            audioArray.push(sample);
+        try {
+            const audioArray = [];
+            for (let i = 0; i < audioData.length; i += 2) {
+                const sample = audioData.readInt16LE(i) / 32768.0;
+                audioArray.push(sample);
+            }
+
+            this.detectChannelActivity(audioArray);
+            this.dtmfDecoder.detectSequence(audioArray, (dtmf) => {
+                this.handleDTMF(dtmf);
+            });
+
+            this.emit('audio', audioArray);
+            
+        } catch (error) {
+            if (this.debug) {
+                console.error('❌ Error procesando audio:', error);
+            }
         }
-
-        this.detectChannelActivity(audioArray);
-        this.dtmfDecoder.detectSequence(audioArray, (dtmf) => {
-            this.handleDTMF(dtmf);
-        });
-
-        this.emit('audio', audioArray);
     }
 
     handleDTMF(dtmf) {
@@ -108,7 +143,6 @@ class AudioManager extends EventEmitter {
         );
         
         this.channelActivity.level = rmsLevel;
-        
         const now = Date.now();
         
         if (rmsLevel > this.channelActivity.threshold) {
@@ -147,6 +181,347 @@ class AudioManager extends EventEmitter {
         });
     }
 
+    // ===== MÉTODOS DE TEXTO A VOZ =====
+
+    async speak(text, options = {}) {
+        console.log(`🗣️ Hablando: "${text}"`);
+        
+        try {
+            // Reproducir TTS usando espeak
+            await this.speakWithEspeak(text, options);
+            
+            // Reproducir roger beep si está habilitado
+            if (options.rogerBeep !== false && this.rogerBeep.isEnabled()) {
+                await this.rogerBeep.play(options.rogerBeepType);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error en TTS:', error);
+            throw error;
+        }
+    }
+
+    async speakNoBeep(text, options = {}) {
+        return this.speak(text, { ...options, rogerBeep: false });
+    }
+
+    async speakWithEspeak(text, options = {}) {
+        return new Promise((resolve, reject) => {
+            const voice = options.voice || 'es';
+            const speed = options.speed || '150';
+            
+            const espeak = spawn('espeak', [
+                '-v', voice,
+                '-s', speed,
+                '-a', '100',
+                text
+            ]);
+
+            let stderr = '';
+
+            espeak.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+            
+            espeak.on('close', (code) => {
+                if (code === 0) {
+                    console.log('✅ TTS completado');
+                    resolve();
+                } else {
+                    console.error(`❌ Error espeak: ${stderr}`);
+                    reject(new Error(`espeak failed with code ${code}: ${stderr}`));
+                }
+            });
+            
+            espeak.on('error', (err) => {
+                console.error('❌ Error ejecutando espeak:', err);
+                reject(err);
+            });
+
+            // Timeout de seguridad
+            setTimeout(() => {
+                if (!espeak.killed) {
+                    espeak.kill('SIGTERM');
+                    reject(new Error('TTS timeout'));
+                }
+            }, 30000); // 30 segundos máximo
+        });
+    }
+
+    // ===== GESTIÓN MEJORADA DE AUDIO SIN SPEAKER =====
+
+    async playTone(frequency, duration, volume = 0.5) {
+        return new Promise((resolve) => {
+            this.audioQueue.push({
+                type: 'tone',
+                frequency,
+                duration,
+                volume,
+                resolve,
+                timestamp: Date.now()
+            });
+            
+            this.processAudioQueue();
+        });
+    }
+
+    async playBuffer(buffer) {
+        return new Promise((resolve) => {
+            this.audioQueue.push({
+                type: 'buffer',
+                buffer,
+                resolve,
+                timestamp: Date.now()
+            });
+            
+            this.processAudioQueue();
+        });
+    }
+
+    async processAudioQueue() {
+        if (this.isProcessingAudio || this.audioQueue.length === 0) {
+            return;
+        }
+
+        this.isProcessingAudio = true;
+        
+        while (this.audioQueue.length > 0) {
+            const audioItem = this.audioQueue.shift();
+            
+            try {
+                if (audioItem.type === 'tone') {
+                    await this.playToneWithAplay(audioItem.frequency, audioItem.duration, audioItem.volume);
+                } else if (audioItem.type === 'buffer') {
+                    await this.playBufferWithAplay(audioItem.buffer);
+                }
+                
+                audioItem.resolve();
+                
+            } catch (error) {
+                console.log(`⚠️  Error reproduciendo audio: ${error.message}`);
+                audioItem.resolve(); // Resolver para continuar
+            }
+
+            // Pequeña pausa entre reproducciones
+            await this.delay(50);
+        }
+
+        this.isProcessingAudio = false;
+    }
+
+    async playToneWithAplay(frequency, duration, volume = 0.5) {
+        return new Promise((resolve, reject) => {
+            try {
+                const tempDir = path.join(__dirname, '../../sounds');
+                if (!fs.existsSync(tempDir)) {
+                    fs.mkdirSync(tempDir, { recursive: true });
+                }
+
+                const tempFile = path.join(tempDir, `tone_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.wav`);
+                
+                // Generar tono WAV usando sox
+                const sox = spawn('sox', [
+                    '-n', tempFile,
+                    'synth', (duration / 1000).toString(),
+                    'sine', frequency.toString(),
+                    'vol', volume.toString()
+                ]);
+
+                sox.on('close', (code) => {
+                    if (code === 0) {
+                        // Reproducir con aplay
+                        const aplay = spawn('aplay', ['-q', tempFile]);
+                        
+                        aplay.on('close', (playCode) => {
+                            // Limpiar archivo temporal
+                            setTimeout(() => {
+                                if (fs.existsSync(tempFile)) {
+                                    fs.unlinkSync(tempFile);
+                                }
+                            }, 1000);
+                            
+                            if (playCode === 0) {
+                                resolve();
+                            } else {
+                                reject(new Error(`aplay failed with code ${playCode}`));
+                            }
+                        });
+
+                        aplay.on('error', (err) => {
+                            console.log(`⚠️  Error aplay: ${err.message}`);
+                            resolve(); // No fallar por error de audio
+                        });
+
+                        // Timeout para aplay
+                        setTimeout(() => {
+                            if (!aplay.killed) {
+                                aplay.kill();
+                                resolve();
+                            }
+                        }, duration + 2000);
+
+                    } else {
+                        // Fallback: reproducir usando un método alternativo
+                        console.log('⚠️  Sox no disponible, usando fallback');
+                        this.playToneAlternative(frequency, duration, volume).then(resolve).catch(() => resolve());
+                    }
+                });
+
+                sox.on('error', (err) => {
+                    console.log(`⚠️  Error sox: ${err.message}`);
+                    // Fallback
+                    this.playToneAlternative(frequency, duration, volume).then(resolve).catch(() => resolve());
+                });
+
+                // Timeout para sox
+                setTimeout(() => {
+                    if (!sox.killed) {
+                        sox.kill();
+                        resolve();
+                    }
+                }, 5000);
+
+            } catch (error) {
+                console.log(`⚠️  Error general playTone: ${error.message}`);
+                resolve(); // No fallar
+            }
+        });
+    }
+
+    async playToneAlternative(frequency, duration, volume = 0.5) {
+        return new Promise((resolve) => {
+            try {
+                // Usar beep del sistema como último recurso
+                const beep = spawn('beep', ['-f', frequency.toString(), '-l', duration.toString()]);
+                
+                beep.on('close', () => resolve());
+                beep.on('error', () => resolve());
+
+                setTimeout(() => {
+                    if (!beep.killed) {
+                        beep.kill();
+                    }
+                    resolve();
+                }, duration + 1000);
+
+            } catch (error) {
+                console.log(`⚠️  Beep alternativo falló: ${error.message}`);
+                resolve();
+            }
+        });
+    }
+
+    async playBufferWithAplay(buffer) {
+        return new Promise((resolve, reject) => {
+            try {
+                const tempDir = path.join(__dirname, '../../sounds');
+                if (!fs.existsSync(tempDir)) {
+                    fs.mkdirSync(tempDir, { recursive: true });
+                }
+
+                const tempFile = path.join(tempDir, `buffer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.raw`);
+                
+                // Escribir buffer a archivo temporal
+                fs.writeFileSync(tempFile, buffer);
+                
+                // Reproducir con aplay especificando formato
+                const aplay = spawn('aplay', [
+                    '-q',
+                    '-f', 'S16_LE',
+                    '-c', this.channels.toString(),
+                    '-r', this.sampleRate.toString(),
+                    tempFile
+                ]);
+
+                aplay.on('close', (code) => {
+                    // Limpiar archivo temporal
+                    setTimeout(() => {
+                        if (fs.existsSync(tempFile)) {
+                            fs.unlinkSync(tempFile);
+                        }
+                    }, 1000);
+                    
+                    if (code === 0) {
+                        resolve();
+                    } else {
+                        reject(new Error(`aplay failed with code ${code}`));
+                    }
+                });
+
+                aplay.on('error', (err) => {
+                    console.log(`⚠️  Error aplay buffer: ${err.message}`);
+                    resolve(); // No fallar
+                });
+
+                // Timeout de seguridad
+                setTimeout(() => {
+                    if (!aplay.killed) {
+                        aplay.kill();
+                        resolve();
+                    }
+                }, 10000);
+
+            } catch (error) {
+                console.log(`⚠️  Error playBuffer: ${error.message}`);
+                resolve();
+            }
+        });
+    }
+
+    // ===== MÉTODOS DE UTILIDAD =====
+
+    async delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    clearAudioQueue() {
+        console.log('🧹 Limpiando cola de audio...');
+        
+        // Resolver todas las promesas pendientes
+        this.audioQueue.forEach(item => {
+            if (item.resolve) {
+                item.resolve();
+            }
+        });
+        
+        this.audioQueue = [];
+        
+        // Terminar proceso de audio actual
+        if (this.currentAudioProcess && !this.currentAudioProcess.killed) {
+            this.currentAudioProcess.kill();
+            this.currentAudioProcess = null;
+        }
+        
+        this.isProcessingAudio = false;
+        console.log('✅ Cola de audio limpiada');
+    }
+
+    // ===== GESTIÓN DEL ROGER BEEP =====
+
+    configureRogerBeep(config) {
+        if (config.type) this.rogerBeep.setType(config.type);
+        if (config.volume !== undefined) this.rogerBeep.setVolume(config.volume);
+        if (config.duration !== undefined) this.rogerBeep.setDuration(config.duration);
+        if (config.delay !== undefined) this.rogerBeep.setDelay(config.delay);
+        if (config.enabled !== undefined) this.rogerBeep.setEnabled(config.enabled);
+        
+        console.log('🔧 Roger Beep configurado');
+    }
+
+    getRogerBeep() {
+        return this.rogerBeep;
+    }
+
+    async testRogerBeep(type = null) {
+        try {
+            await this.rogerBeep.play(type);
+        } catch (error) {
+            console.error('❌ Error en test roger beep:', error);
+        }
+    }
+
+    // ===== ESTADO DEL CANAL =====
+
     getChannelStatus() {
         return {
             isActive: this.channelActivity.isActive,
@@ -165,339 +540,16 @@ class AudioManager extends EventEmitter {
         return !this.channelActivity.isActive;
     }
 
-    /**
-     * Función speak principal - CON ROGER BEEP AUTOMÁTICO
-     */
-    speak(text, options = {}) {
-        const voice = options.voice || 'es';
-        const speed = options.speed || '150';
-        
-        console.log(`🗣️ Hablando: "${text}"`);
-        
-        return new Promise((resolve, reject) => {
-            const { spawn } = require('child_process');
-            
-            const espeak = spawn('espeak', [
-                '-v', voice,
-                '-s', speed,
-                '-a', '100',
-                text
-            ]);
-            
-            espeak.on('close', async (code) => {
-                if (code === 0) {
-                    console.log('✅ TTS completado');
-                    
-                    // REPRODUCIR ROGER BEEP después del TTS
-                    if (options.rogerBeep !== false) {
-                        try {
-                            await this.rogerBeep.play(options.rogerBeepType);
-                        } catch (error) {
-                            console.log('⚠️  Error en roger beep:', error.message);
-                        }
-                    }
-                    
-                    resolve();
-                } else {
-                    console.error(`❌ Error TTS, código: ${code}`);
-                    reject(new Error(`espeak failed with code ${code}`));
-                }
-            });
-            
-            espeak.on('error', (err) => {
-                console.error('❌ Error ejecutando espeak:', err);
-                reject(err);
-            });
-        });
-    }
-
-    /**
-     * Hablar SIN roger beep
-     */
-    speakNoBeep(text, options = {}) {
-        return this.speak(text, { ...options, rogerBeep: false });
-    }
-
-    /**
-     * Configurar Roger Beep
-     */
-    configureRogerBeep(config) {
-        if (config.type) this.rogerBeep.setType(config.type);
-        if (config.volume !== undefined) this.rogerBeep.setVolume(config.volume);
-        if (config.duration !== undefined) this.rogerBeep.setDuration(config.duration);
-        if (config.delay !== undefined) this.rogerBeep.setDelay(config.delay);
-        if (config.enabled !== undefined) this.rogerBeep.setEnabled(config.enabled);
-        
-        console.log('🔧 Roger Beep configurado');
-    }
-
-    getRogerBeep() {
-        return this.rogerBeep;
-    }
-
-    async testRogerBeep(type = null) {
-        await this.rogerBeep.play(type);
-    }
-
-    // ===== GESTIÓN MEJORADA DE TONOS =====
-
-    /**
-     * Reproducir tono con gestión mejorada de Speaker
-     */
-    playTone(frequency, duration, volume = 0.5) {
-        console.log(`🎵 Tono en cola: ${frequency}Hz por ${duration}ms`);
-        
-        return new Promise((resolve) => {
-            // Agregar a la cola
-            this.speakerQueue.push({
-                type: 'tone',
-                frequency,
-                duration,
-                volume,
-                resolve
-            });
-            
-            // Procesar cola si no está ocupada
-            this.processSpeakerQueue();
-        });
-    }
-
-    /**
-     * Reproducir buffer con gestión mejorada
-     */
-    playBuffer(buffer) {
-        console.log(`🎵 Buffer en cola: ${buffer.length} bytes`);
-        
-        return new Promise((resolve) => {
-            this.speakerQueue.push({
-                type: 'buffer',
-                buffer,
-                resolve
-            });
-            
-            this.processSpeakerQueue();
-        });
-    }
-
-    /**
-     * Procesar cola de reproducción de audio
-     */
-    async processSpeakerQueue() {
-        // Si ya está reproduciendo, esperar
-        if (this.isPlayingAudio) {
-            return;
-        }
-
-        // Si no hay nada en cola, salir
-        if (this.speakerQueue.length === 0) {
-            return;
-        }
-
-        this.isPlayingAudio = true;
-        const audioItem = this.speakerQueue.shift();
-
-        try {
-            if (audioItem.type === 'tone') {
-                await this.playToneInternal(audioItem.frequency, audioItem.duration, audioItem.volume);
-            } else if (audioItem.type === 'buffer') {
-                await this.playBufferInternal(audioItem.buffer);
-            }
-            
-            audioItem.resolve();
-            
-        } catch (error) {
-            console.log(`⚠️  Error reproduciendo audio: ${error.message}`);
-            audioItem.resolve(); // Resolver de todas formas para continuar
-        }
-
-        this.isPlayingAudio = false;
-
-        // Procesar siguiente item en cola
-        if (this.speakerQueue.length > 0) {
-            // Pequeña pausa entre reproducciones
-            setTimeout(() => {
-                this.processSpeakerQueue();
-            }, 50);
-        }
-    }
-
-    /**
-     * Reproducir tono interno (sin cola)
-     */
-    async playToneInternal(frequency, duration, volume = 0.5) {
-        return new Promise((resolve, reject) => {
-            try {
-                // Cerrar speaker anterior si existe
-                if (this.currentSpeaker) {
-                    try {
-                        this.currentSpeaker.end();
-                        this.currentSpeaker = null;
-                    } catch (err) {
-                        console.log('⚠️  Error cerrando speaker anterior:', err.message);
-                    }
-                }
-
-                // Generar tono
-                const sampleCount = Math.floor(this.sampleRate * duration / 1000);
-                const buffer = Buffer.alloc(sampleCount * 2);
-                
-                for (let i = 0; i < sampleCount; i++) {
-                    const sample = Math.sin(2 * Math.PI * frequency * i / this.sampleRate) * volume;
-                    const value = Math.round(sample * 32767);
-                    buffer.writeInt16LE(value, i * 2);
-                }
-
-                // Crear nuevo speaker
-                this.currentSpeaker = new Speaker({
-                    channels: this.channels,
-                    bitDepth: this.bitDepth,
-                    sampleRate: this.sampleRate,
-                    device: 'default'
-                });
-
-                // Configurar eventos
-                this.currentSpeaker.on('error', (err) => {
-                    console.log(`⚠️  Error speaker: ${err.message}`);
-                    this.currentSpeaker = null;
-                    resolve(); // No rechazar, continuar
-                });
-
-                this.currentSpeaker.on('close', () => {
-                    this.currentSpeaker = null;
-                    resolve();
-                });
-
-                // Timeout de seguridad
-                const timeout = setTimeout(() => {
-                    if (this.currentSpeaker) {
-                        try {
-                            this.currentSpeaker.end();
-                        } catch (err) {
-                            // Ignorar errores al cerrar
-                        }
-                        this.currentSpeaker = null;
-                    }
-                    resolve();
-                }, duration + 1000);
-
-                // Escribir y cerrar
-                this.currentSpeaker.write(buffer);
-                this.currentSpeaker.end();
-
-                // Limpiar timeout si se resuelve antes
-                this.currentSpeaker.on('close', () => {
-                    clearTimeout(timeout);
-                });
-
-            } catch (error) {
-                console.log(`⚠️  Error creando speaker: ${error.message}`);
-                this.currentSpeaker = null;
-                resolve(); // Continuar sin el audio
-            }
-        });
-    }
-
-    /**
-     * Reproducir buffer interno (sin cola)
-     */
-    async playBufferInternal(buffer) {
-        return new Promise((resolve, reject) => {
-            try {
-                // Cerrar speaker anterior si existe
-                if (this.currentSpeaker) {
-                    try {
-                        this.currentSpeaker.end();
-                        this.currentSpeaker = null;
-                    } catch (err) {
-                        console.log('⚠️  Error cerrando speaker anterior:', err.message);
-                    }
-                }
-
-                // Crear nuevo speaker
-                this.currentSpeaker = new Speaker({
-                    channels: this.channels,
-                    bitDepth: this.bitDepth,
-                    sampleRate: this.sampleRate,
-                    device: 'default'
-                });
-
-                // Configurar eventos
-                this.currentSpeaker.on('error', (err) => {
-                    console.log(`⚠️  Error speaker: ${err.message}`);
-                    this.currentSpeaker = null;
-                    resolve();
-                });
-
-                this.currentSpeaker.on('close', () => {
-                    this.currentSpeaker = null;
-                    resolve();
-                });
-
-                // Timeout de seguridad
-                const timeout = setTimeout(() => {
-                    if (this.currentSpeaker) {
-                        try {
-                            this.currentSpeaker.end();
-                        } catch (err) {
-                            // Ignorar errores
-                        }
-                        this.currentSpeaker = null;
-                    }
-                    resolve();
-                }, 5000);
-
-                // Escribir y cerrar
-                this.currentSpeaker.write(buffer);
-                this.currentSpeaker.end();
-
-                // Limpiar timeout
-                this.currentSpeaker.on('close', () => {
-                    clearTimeout(timeout);
-                });
-
-            } catch (error) {
-                console.log(`⚠️  Error creando speaker: ${error.message}`);
-                this.currentSpeaker = null;
-                resolve();
-            }
-        });
-    }
-
-    /**
-     * Limpiar cola de audio (para emergencias)
-     */
-    clearAudioQueue() {
-        console.log('🧹 Limpiando cola de audio...');
-        
-        // Resolver todas las promesas pendientes
-        this.speakerQueue.forEach(item => {
-            if (item.resolve) {
-                item.resolve();
-            }
-        });
-        
-        // Limpiar cola
-        this.speakerQueue = [];
-        
-        // Cerrar speaker actual
-        if (this.currentSpeaker) {
-            try {
-                this.currentSpeaker.end();
-            } catch (err) {
-                // Ignorar errores
-            }
-            this.currentSpeaker = null;
-        }
-        
-        this.isPlayingAudio = false;
-        
-        console.log('✅ Cola de audio limpiada');
-    }
+    // ===== GRABACIÓN =====
 
     pauseRecording() {
         if (this.recordingStream && this.isRecording) {
             console.log('⏸️  Pausando grabación principal...');
-            this.recordingStream.stop();
+            try {
+                this.recordingStream.stop();
+            } catch (error) {
+                console.log('⚠️  Error pausando grabación:', error.message);
+            }
             this.isRecording = false;
             return true;
         }
@@ -541,9 +593,13 @@ class AudioManager extends EventEmitter {
                 
                 tempRecorder.stream().pipe(fileStream);
                 
-                setTimeout(() => {
-                    tempRecorder.stop();
-                    fileStream.end();
+                const timeout = setTimeout(() => {
+                    try {
+                        tempRecorder.stop();
+                        fileStream.end();
+                    } catch (error) {
+                        console.log('⚠️  Error deteniendo grabación temporal:', error.message);
+                    }
                     
                     setTimeout(() => {
                         if (fs.existsSync(filepath)) {
@@ -564,19 +620,66 @@ class AudioManager extends EventEmitter {
         });
     }
 
+    // ===== CIERRE Y LIMPIEZA =====
+
     stop() {
         console.log('🛑 Deteniendo AudioManager...');
         
         // Detener grabación
         if (this.recordingStream) {
-            this.recordingStream.stop();
+            try {
+                this.recordingStream.stop();
+            } catch (error) {
+                console.log('⚠️  Error deteniendo grabación:', error.message);
+            }
             this.isRecording = false;
+        }
+        
+        // Limpiar timeouts
+        if (this.dtmfTimeout) {
+            clearTimeout(this.dtmfTimeout);
+            this.dtmfTimeout = null;
+        }
+        
+        if (this.channelActivity.activityTimer) {
+            clearTimeout(this.channelActivity.activityTimer);
+            this.channelActivity.activityTimer = null;
         }
         
         // Limpiar cola de audio
         this.clearAudioQueue();
         
-        console.log('🔇 Audio detenido correctamente');
+        console.log('✅ AudioManager detenido correctamente');
+    }
+
+    // ===== MÉTODOS DE DEBUGGING =====
+
+    getStatus() {
+        return {
+            isRecording: this.isRecording,
+            isProcessingAudio: this.isProcessingAudio,
+            audioQueueLength: this.audioQueue.length,
+            channelActive: this.channelActivity.isActive,
+            channelLevel: this.channelActivity.level,
+            rogerBeepEnabled: this.rogerBeep.isEnabled(),
+            rogerBeepType: this.rogerBeep.getConfig().type
+        };
+    }
+
+    async healthCheck() {
+        console.log('🔍 AudioManager Health Check:');
+        console.log(`  📹 Recording: ${this.isRecording ? '✅' : '❌'}`);
+        console.log(`  🎵 Audio Queue: ${this.audioQueue.length} items`);
+        console.log(`  📻 Channel: ${this.channelActivity.isActive ? 'BUSY' : 'FREE'}`);
+        console.log(`  🔊 Roger Beep: ${this.rogerBeep.isEnabled() ? 'ON' : 'OFF'} (${this.rogerBeep.getConfig().type})`);
+        
+        // Test básico
+        try {
+            await this.testRogerBeep();
+            console.log('  ✅ Roger Beep test: OK');
+        } catch (error) {
+            console.log('  ❌ Roger Beep test: FAILED');
+        }
     }
 }
 
