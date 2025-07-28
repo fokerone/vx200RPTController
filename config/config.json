@@ -5,6 +5,19 @@
     "channels": 1,
     "device": "hw:0,0"
   },
+  "rogerBeep": {
+    "enabled": true,
+    "type": "classic",
+    "volume": 0.7,
+    "duration": 250,
+    "delay": 100,
+    "frequencies": {
+      "classic": [1000, 800],
+      "motorola": [1200, 900],
+      "kenwood": [1500, 1000],
+      "custom": [1100, 850]
+    }
+  },
   "baliza": {
     "enabled": true,
     "interval": 15,
@@ -13,17 +26,46 @@
       "duration": 500,
       "volume": 0.7
     },
-    "message": "Repetidora Simplex"
+    "message": "Repetidora Simplex",
+    "rogerBeep": true,
+    "rogerBeepType": "classic"
   },
   "dtmf": {
     "commands": {
       "*1": "datetime",
-      "*2": "ai_chat", 
+      "*2": "ai_chat",
       "*3": "sms",
       "*9": "baliza"
     }
   },
+  "modules": {
+    "datetime": {
+      "enabled": true,
+      "rogerBeep": true,
+      "rogerBeepType": "classic"
+    },
+    "ai_chat": {
+      "enabled": true,
+      "rogerBeep": true,
+      "rogerBeepType": "classic"
+    },
+    "sms": {
+      "enabled": true,
+      "rogerBeep": true,
+      "rogerBeepType": "classic"
+    }
+  },
   "web": {
     "port": 3000
+  },
+  "tts": {
+    "provider": "espeak",
+    "fallback": true,
+    "google": {
+      "enabled": false,
+      "languageCode": "es-AR",
+      "voiceName": "es-AR-Standard-A",
+      "gender": "FEMALE"
+    }
   }
 }
