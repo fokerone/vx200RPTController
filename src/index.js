@@ -37,7 +37,7 @@ class VX200Controller {
             this.handleAudio(audioData);
         });
 
-         // AGREGAR: Escuchar actividad del canal
+         // Escuchar actividad del canal
     this.audio.on('channel_active', (data) => {
         console.log('📻 Canal ocupado');
         this.webServer.broadcastChannelActivity(true, data.level);
