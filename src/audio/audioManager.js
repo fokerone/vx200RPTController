@@ -6,6 +6,8 @@ const Speaker = require('speaker');
 const DTMFDecoder = require('./dtmfDecoder');
 const EventEmitter = require('events');
 const say = require('say');
+
+// Importar RogerBeep
 const RogerBeep = require('./rogerBeep');
 
 class AudioManager extends EventEmitter {
@@ -21,6 +23,11 @@ class AudioManager extends EventEmitter {
         this.dtmfBuffer = '';
         this.dtmfTimeout = null;
 
+        // ===== GESTIÓN MEJORADA DE SPEAKER =====
+        this.currentSpeaker = null;
+        this.speakerQueue = [];
+        this.isPlayingAudio = false;
+
         // Inicializar Roger Beep
         this.rogerBeep = new RogerBeep(this);
 
@@ -33,7 +40,7 @@ class AudioManager extends EventEmitter {
             activityTimer: null
         };
         
-        console.log('🎤 AudioManager inicializado con Roger Beep');
+        console.log('🎤 AudioManager inicializado con Roger Beep y Speaker mejorado');
     }
 
     start() {
@@ -48,7 +55,7 @@ class AudioManager extends EventEmitter {
             bitDepth: this.bitDepth,
             audioType: 'raw',
             silence: '5.0',
-            device: 'hw:0,0' // Tu dispositivo de audio
+            device: 'hw:0,0'
         };
 
         this.recordingStream = recorder.record(recordingOptions);
@@ -65,51 +72,37 @@ class AudioManager extends EventEmitter {
     }
 
     processAudioData(audioData) {
-        // Convertir buffer a array de números
         const audioArray = [];
         for (let i = 0; i < audioData.length; i += 2) {
-            // 16-bit little endian
             const sample = audioData.readInt16LE(i) / 32768.0;
             audioArray.push(sample);
         }
 
-        // Detectar actividad del canal
         this.detectChannelActivity(audioArray);
-
-        // Detectar DTMF
         this.dtmfDecoder.detectSequence(audioArray, (dtmf) => {
             this.handleDTMF(dtmf);
         });
 
-        // Emitir audio para otros módulos si es necesario
         this.emit('audio', audioArray);
     }
 
     handleDTMF(dtmf) {
         this.dtmfBuffer += dtmf;
         
-        // Reset del timeout
         if (this.dtmfTimeout) {
             clearTimeout(this.dtmfTimeout);
         }
         
-        // Timeout para detectar final de secuencia
         this.dtmfTimeout = setTimeout(() => {
             if (this.dtmfBuffer.length > 0) {
                 console.log(`📞 Secuencia DTMF completa: ${this.dtmfBuffer}`);
                 this.emit('dtmf', this.dtmfBuffer);
                 this.dtmfBuffer = '';
             }
-        }, 2000); // 2 segundos sin DTMF = fin de secuencia
+        }, 2000);
     }
 
-    // Detectar actividad del canal
     detectChannelActivity(audioArray) {
-        // Calcular nivel promedio de la señal
-        const avgLevel = audioArray.reduce((sum, sample) => 
-            sum + Math.abs(sample), 0) / audioArray.length;
-        
-        // Calcular nivel RMS para mejor detección
         const rmsLevel = Math.sqrt(
             audioArray.reduce((sum, sample) => sum + sample * sample, 0) / audioArray.length
         );
@@ -117,9 +110,7 @@ class AudioManager extends EventEmitter {
         this.channelActivity.level = rmsLevel;
         
         const now = Date.now();
-        const wasActive = this.channelActivity.isActive;
         
-        // Detectar si hay actividad
         if (rmsLevel > this.channelActivity.threshold) {
             this.channelActivity.lastActivityTime = now;
             
@@ -132,13 +123,11 @@ class AudioManager extends EventEmitter {
                 });
             }
             
-            // Cancelar timer de inactividad
             if (this.channelActivity.activityTimer) {
                 clearTimeout(this.channelActivity.activityTimer);
                 this.channelActivity.activityTimer = null;
             }
             
-            // Programar inactividad
             this.channelActivity.activityTimer = setTimeout(() => {
                 if (this.channelActivity.isActive) {
                     this.channelActivity.isActive = false;
@@ -151,7 +140,6 @@ class AudioManager extends EventEmitter {
             }, this.channelActivity.sustainTime);
         }
         
-        // Emitir nivel de señal periódicamente
         this.emit('signal_level', {
             level: rmsLevel,
             active: this.channelActivity.isActive,
@@ -159,7 +147,6 @@ class AudioManager extends EventEmitter {
         });
     }
 
-    // Obtener estado del canal
     getChannelStatus() {
         return {
             isActive: this.channelActivity.isActive,
@@ -169,13 +156,11 @@ class AudioManager extends EventEmitter {
         };
     }
 
-    //  Configurar sensibilidad
     setChannelThreshold(threshold) {
         this.channelActivity.threshold = Math.max(0.001, Math.min(0.1, threshold));
         console.log(`🎚️  Umbral de canal ajustado a: ${this.channelActivity.threshold}`);
     }
 
-    // Verificar si es seguro transmitir
     isSafeToTransmit() {
         return !this.channelActivity.isActive;
     }
@@ -204,7 +189,7 @@ class AudioManager extends EventEmitter {
                     console.log('✅ TTS completado');
                     
                     // REPRODUCIR ROGER BEEP después del TTS
-                    if (options.rogerBeep !== false) { // Por defecto habilitado
+                    if (options.rogerBeep !== false) {
                         try {
                             await this.rogerBeep.play(options.rogerBeepType);
                         } catch (error) {
@@ -246,67 +231,269 @@ class AudioManager extends EventEmitter {
         console.log('🔧 Roger Beep configurado');
     }
 
-    /**
-     * Obtener instancia del roger beep
-     */
     getRogerBeep() {
         return this.rogerBeep;
     }
 
-    /**
-     * Probar roger beep
-     */
     async testRogerBeep(type = null) {
         await this.rogerBeep.play(type);
     }
 
+    // ===== GESTIÓN MEJORADA DE TONOS =====
+
+    /**
+     * Reproducir tono con gestión mejorada de Speaker
+     */
     playTone(frequency, duration, volume = 0.5) {
-        console.log(`🎵 Reproduciendo tono: ${frequency}Hz por ${duration}ms`);
+        console.log(`🎵 Tono en cola: ${frequency}Hz por ${duration}ms`);
         
-        try {
-            // Generar tono sintético
-            const sampleCount = Math.floor(this.sampleRate * duration / 1000);
-            const buffer = Buffer.alloc(sampleCount * 2); // 16-bit
+        return new Promise((resolve) => {
+            // Agregar a la cola
+            this.speakerQueue.push({
+                type: 'tone',
+                frequency,
+                duration,
+                volume,
+                resolve
+            });
             
-            for (let i = 0; i < sampleCount; i++) {
-                const sample = Math.sin(2 * Math.PI * frequency * i / this.sampleRate) * volume;
-                const value = Math.round(sample * 32767);
-                buffer.writeInt16LE(value, i * 2);
-            }
-            
-            this.playBuffer(buffer);
-        } catch (error) {
-            console.log(`⚠️  No se pudo reproducir tono: ${error.message}`);
-            // Continuar sin el tono
-        }
+            // Procesar cola si no está ocupada
+            this.processSpeakerQueue();
+        });
     }
 
+    /**
+     * Reproducir buffer con gestión mejorada
+     */
     playBuffer(buffer) {
+        console.log(`🎵 Buffer en cola: ${buffer.length} bytes`);
+        
+        return new Promise((resolve) => {
+            this.speakerQueue.push({
+                type: 'buffer',
+                buffer,
+                resolve
+            });
+            
+            this.processSpeakerQueue();
+        });
+    }
+
+    /**
+     * Procesar cola de reproducción de audio
+     */
+    async processSpeakerQueue() {
+        // Si ya está reproduciendo, esperar
+        if (this.isPlayingAudio) {
+            return;
+        }
+
+        // Si no hay nada en cola, salir
+        if (this.speakerQueue.length === 0) {
+            return;
+        }
+
+        this.isPlayingAudio = true;
+        const audioItem = this.speakerQueue.shift();
+
         try {
-            // Intentar crear speaker con configuración más permisiva
-            const speaker = new Speaker({
-                channels: this.channels,
-                bitDepth: this.bitDepth,
-                sampleRate: this.sampleRate,
-                device: 'default' // Usar dispositivo por defecto
-            });
+            if (audioItem.type === 'tone') {
+                await this.playToneInternal(audioItem.frequency, audioItem.duration, audioItem.volume);
+            } else if (audioItem.type === 'buffer') {
+                await this.playBufferInternal(audioItem.buffer);
+            }
             
-            speaker.on('error', (err) => {
-                console.log(`⚠️  Error de audio: ${err.message}`);
-            });
-            
-            speaker.write(buffer);
-            speaker.end();
+            audioItem.resolve();
             
         } catch (error) {
-            console.log(`⚠️  No se pudo reproducir audio: ${error.message}`);
-            // Continuar sin audio
+            console.log(`⚠️  Error reproduciendo audio: ${error.message}`);
+            audioItem.resolve(); // Resolver de todas formas para continuar
+        }
+
+        this.isPlayingAudio = false;
+
+        // Procesar siguiente item en cola
+        if (this.speakerQueue.length > 0) {
+            // Pequeña pausa entre reproducciones
+            setTimeout(() => {
+                this.processSpeakerQueue();
+            }, 50);
         }
     }
 
     /**
-     * Pausar grabación principal para permitir grabación temporal
+     * Reproducir tono interno (sin cola)
      */
+    async playToneInternal(frequency, duration, volume = 0.5) {
+        return new Promise((resolve, reject) => {
+            try {
+                // Cerrar speaker anterior si existe
+                if (this.currentSpeaker) {
+                    try {
+                        this.currentSpeaker.end();
+                        this.currentSpeaker = null;
+                    } catch (err) {
+                        console.log('⚠️  Error cerrando speaker anterior:', err.message);
+                    }
+                }
+
+                // Generar tono
+                const sampleCount = Math.floor(this.sampleRate * duration / 1000);
+                const buffer = Buffer.alloc(sampleCount * 2);
+                
+                for (let i = 0; i < sampleCount; i++) {
+                    const sample = Math.sin(2 * Math.PI * frequency * i / this.sampleRate) * volume;
+                    const value = Math.round(sample * 32767);
+                    buffer.writeInt16LE(value, i * 2);
+                }
+
+                // Crear nuevo speaker
+                this.currentSpeaker = new Speaker({
+                    channels: this.channels,
+                    bitDepth: this.bitDepth,
+                    sampleRate: this.sampleRate,
+                    device: 'default'
+                });
+
+                // Configurar eventos
+                this.currentSpeaker.on('error', (err) => {
+                    console.log(`⚠️  Error speaker: ${err.message}`);
+                    this.currentSpeaker = null;
+                    resolve(); // No rechazar, continuar
+                });
+
+                this.currentSpeaker.on('close', () => {
+                    this.currentSpeaker = null;
+                    resolve();
+                });
+
+                // Timeout de seguridad
+                const timeout = setTimeout(() => {
+                    if (this.currentSpeaker) {
+                        try {
+                            this.currentSpeaker.end();
+                        } catch (err) {
+                            // Ignorar errores al cerrar
+                        }
+                        this.currentSpeaker = null;
+                    }
+                    resolve();
+                }, duration + 1000);
+
+                // Escribir y cerrar
+                this.currentSpeaker.write(buffer);
+                this.currentSpeaker.end();
+
+                // Limpiar timeout si se resuelve antes
+                this.currentSpeaker.on('close', () => {
+                    clearTimeout(timeout);
+                });
+
+            } catch (error) {
+                console.log(`⚠️  Error creando speaker: ${error.message}`);
+                this.currentSpeaker = null;
+                resolve(); // Continuar sin el audio
+            }
+        });
+    }
+
+    /**
+     * Reproducir buffer interno (sin cola)
+     */
+    async playBufferInternal(buffer) {
+        return new Promise((resolve, reject) => {
+            try {
+                // Cerrar speaker anterior si existe
+                if (this.currentSpeaker) {
+                    try {
+                        this.currentSpeaker.end();
+                        this.currentSpeaker = null;
+                    } catch (err) {
+                        console.log('⚠️  Error cerrando speaker anterior:', err.message);
+                    }
+                }
+
+                // Crear nuevo speaker
+                this.currentSpeaker = new Speaker({
+                    channels: this.channels,
+                    bitDepth: this.bitDepth,
+                    sampleRate: this.sampleRate,
+                    device: 'default'
+                });
+
+                // Configurar eventos
+                this.currentSpeaker.on('error', (err) => {
+                    console.log(`⚠️  Error speaker: ${err.message}`);
+                    this.currentSpeaker = null;
+                    resolve();
+                });
+
+                this.currentSpeaker.on('close', () => {
+                    this.currentSpeaker = null;
+                    resolve();
+                });
+
+                // Timeout de seguridad
+                const timeout = setTimeout(() => {
+                    if (this.currentSpeaker) {
+                        try {
+                            this.currentSpeaker.end();
+                        } catch (err) {
+                            // Ignorar errores
+                        }
+                        this.currentSpeaker = null;
+                    }
+                    resolve();
+                }, 5000);
+
+                // Escribir y cerrar
+                this.currentSpeaker.write(buffer);
+                this.currentSpeaker.end();
+
+                // Limpiar timeout
+                this.currentSpeaker.on('close', () => {
+                    clearTimeout(timeout);
+                });
+
+            } catch (error) {
+                console.log(`⚠️  Error creando speaker: ${error.message}`);
+                this.currentSpeaker = null;
+                resolve();
+            }
+        });
+    }
+
+    /**
+     * Limpiar cola de audio (para emergencias)
+     */
+    clearAudioQueue() {
+        console.log('🧹 Limpiando cola de audio...');
+        
+        // Resolver todas las promesas pendientes
+        this.speakerQueue.forEach(item => {
+            if (item.resolve) {
+                item.resolve();
+            }
+        });
+        
+        // Limpiar cola
+        this.speakerQueue = [];
+        
+        // Cerrar speaker actual
+        if (this.currentSpeaker) {
+            try {
+                this.currentSpeaker.end();
+            } catch (err) {
+                // Ignorar errores
+            }
+            this.currentSpeaker = null;
+        }
+        
+        this.isPlayingAudio = false;
+        
+        console.log('✅ Cola de audio limpiada');
+    }
+
     pauseRecording() {
         if (this.recordingStream && this.isRecording) {
             console.log('⏸️  Pausando grabación principal...');
@@ -317,9 +504,6 @@ class AudioManager extends EventEmitter {
         return false;
     }
 
-    /**
-     * Reanudar grabación principal
-     */
     resumeRecording() {
         if (!this.isRecording) {
             console.log('▶️  Reanudando grabación principal...');
@@ -329,9 +513,6 @@ class AudioManager extends EventEmitter {
         return false;
     }
 
-    /**
-     * Grabar audio temporal usando node-record-lpcm16
-     */
     async recordTemporary(duration, sampleRate = 16000) {
         return new Promise((resolve) => {
             const timestamp = Date.now();
@@ -340,35 +521,30 @@ class AudioManager extends EventEmitter {
             
             console.log(`🎙️  Grabación temporal por ${duration} segundos...`);
             
-            // Crear directorio si no existe
             const dir = path.dirname(filepath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
             }
             
             try {
-                // Usar node-record-lpcm16 en lugar de arecord
                 const recordingOptions = {
                     sampleRate: sampleRate,
                     channels: 1,
                     bitDepth: 16,
                     audioType: 'wav',
                     silence: '1.0',
-                    device: null // usar dispositivo por defecto
+                    device: null
                 };
 
                 const tempRecorder = recorder.record(recordingOptions);
                 const fileStream = fs.createWriteStream(filepath);
                 
-                // Conectar streams
                 tempRecorder.stream().pipe(fileStream);
                 
-                // Detener después del tiempo especificado
                 setTimeout(() => {
                     tempRecorder.stop();
                     fileStream.end();
                     
-                    // Verificar que el archivo se creó
                     setTimeout(() => {
                         if (fs.existsSync(filepath)) {
                             console.log('✅ Grabación temporal completada');
@@ -389,11 +565,18 @@ class AudioManager extends EventEmitter {
     }
 
     stop() {
+        console.log('🛑 Deteniendo AudioManager...');
+        
+        // Detener grabación
         if (this.recordingStream) {
             this.recordingStream.stop();
             this.isRecording = false;
         }
-        console.log('🔇 Audio detenido');
+        
+        // Limpiar cola de audio
+        this.clearAudioQueue();
+        
+        console.log('🔇 Audio detenido correctamente');
     }
 }
 
