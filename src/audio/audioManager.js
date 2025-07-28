@@ -191,13 +191,15 @@ class AudioManager extends EventEmitter {
             await this.speakWithEspeak(text, options);
             
             // Reproducir roger beep si está habilitado
-            if (options.rogerBeep !== false && this.rogerBeep.isEnabled()) {
+            if (options.rogerBeep !== false && this.rogerBeep && this.rogerBeep.isEnabled()) {
+                console.log('🔊 Reproduciendo roger beep después de TTS...');
                 await this.rogerBeep.play(options.rogerBeepType);
             }
             
         } catch (error) {
             console.error('❌ Error en TTS:', error);
-            throw error;
+            // No lanzar error, continuar el sistema
+            console.log('⚠️  Continuando sin TTS debido a error');
         }
     }
 
@@ -499,13 +501,22 @@ class AudioManager extends EventEmitter {
     // ===== GESTIÓN DEL ROGER BEEP =====
 
     configureRogerBeep(config) {
-        if (config.type) this.rogerBeep.setType(config.type);
-        if (config.volume !== undefined) this.rogerBeep.setVolume(config.volume);
-        if (config.duration !== undefined) this.rogerBeep.setDuration(config.duration);
-        if (config.delay !== undefined) this.rogerBeep.setDelay(config.delay);
-        if (config.enabled !== undefined) this.rogerBeep.setEnabled(config.enabled);
-        
-        console.log('🔧 Roger Beep configurado');
+        if (!this.rogerBeep) {
+            console.log('⚠️  Roger Beep no inicializado');
+            return;
+        }
+
+        try {
+            if (config.type) this.rogerBeep.setType(config.type);
+            if (config.volume !== undefined) this.rogerBeep.setVolume(config.volume);
+            if (config.duration !== undefined) this.rogerBeep.setDuration(config.duration);
+            if (config.delay !== undefined) this.rogerBeep.setDelay(config.delay);
+            if (config.enabled !== undefined) this.rogerBeep.setEnabled(config.enabled);
+            
+            console.log('🔧 Roger Beep configurado correctamente');
+        } catch (error) {
+            console.error('❌ Error configurando roger beep:', error);
+        }
     }
 
     getRogerBeep() {
@@ -513,8 +524,14 @@ class AudioManager extends EventEmitter {
     }
 
     async testRogerBeep(type = null) {
+        if (!this.rogerBeep) {
+            console.log('⚠️  Roger Beep no disponible para test');
+            return;
+        }
+
         try {
             await this.rogerBeep.play(type);
+            console.log('✅ Test roger beep completado');
         } catch (error) {
             console.error('❌ Error en test roger beep:', error);
         }
@@ -661,8 +678,8 @@ class AudioManager extends EventEmitter {
             audioQueueLength: this.audioQueue.length,
             channelActive: this.channelActivity.isActive,
             channelLevel: this.channelActivity.level,
-            rogerBeepEnabled: this.rogerBeep.isEnabled(),
-            rogerBeepType: this.rogerBeep.getConfig().type
+            rogerBeepEnabled: this.rogerBeep ? this.rogerBeep.isEnabled() : false,
+            rogerBeepType: this.rogerBeep ? this.rogerBeep.getConfig().type : 'none'
         };
     }
 
@@ -671,14 +688,19 @@ class AudioManager extends EventEmitter {
         console.log(`  📹 Recording: ${this.isRecording ? '✅' : '❌'}`);
         console.log(`  🎵 Audio Queue: ${this.audioQueue.length} items`);
         console.log(`  📻 Channel: ${this.channelActivity.isActive ? 'BUSY' : 'FREE'}`);
-        console.log(`  🔊 Roger Beep: ${this.rogerBeep.isEnabled() ? 'ON' : 'OFF'} (${this.rogerBeep.getConfig().type})`);
         
-        // Test básico
-        try {
-            await this.testRogerBeep();
-            console.log('  ✅ Roger Beep test: OK');
-        } catch (error) {
-            console.log('  ❌ Roger Beep test: FAILED');
+        if (this.rogerBeep) {
+            console.log(`  🔊 Roger Beep: ${this.rogerBeep.isEnabled() ? 'ON' : 'OFF'} (${this.rogerBeep.getConfig().type})`);
+            
+            // Test básico
+            try {
+                await this.testRogerBeep();
+                console.log('  ✅ Roger Beep test: OK');
+            } catch (error) {
+                console.log('  ❌ Roger Beep test: FAILED -', error.message);
+            }
+        } else {
+            console.log('  ❌ Roger Beep: NOT INITIALIZED');
         }
     }
 }
