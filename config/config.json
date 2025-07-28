@@ -1,0 +1,29 @@
+{
+  "callsign": "LU5MCD",
+  "audio": {
+    "sampleRate": 48000,
+    "channels": 1,
+    "device": "hw:0,0"
+  },
+  "baliza": {
+    "enabled": true,
+    "interval": 15,
+    "tone": {
+      "frequency": 1000,
+      "duration": 500,
+      "volume": 0.7
+    },
+    "message": "LU5MCD Repetidora Simplex"
+  },
+  "dtmf": {
+    "commands": {
+      "*1": "datetime",
+      "*2": "ai_chat", 
+      "*3": "sms",
+      "*9": "baliza"
+    }
+  },
+  "web": {
+    "port": 3000
+  }
+}
