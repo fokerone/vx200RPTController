@@ -9,18 +9,22 @@ const config = require('../config/config.json');
 class VX200Controller {
     constructor() {
         console.log('🚀 Iniciando VX200 Controller...');
+        
+        // Componentes principales
         this.audio = new AudioManager();
         this.modules = {};
         this.webServer = new WebServer(this);
         
+        // Estado del sistema
+        this.isRunning = false;
+        this.startTime = Date.now();
+        
         this.initializeModules();
         this.setupEventHandlers();
-        
-        // ===== CONFIGURAR ROGER BEEP DESDE CONFIG =====
-        if (config.rogerBeep) {
-            this.audio.configureRogerBeep(config.rogerBeep);
-            }
+        this.configureFromFile();
     }
+
+    // ===== INICIALIZACIÓN =====
 
     initializeModules() {
         this.modules.baliza = new Baliza(this.audio);
@@ -31,384 +35,361 @@ class VX200Controller {
         console.log('✅ Módulos inicializados');
     }
 
+    configureFromFile() {
+        // Configurar Roger Beep desde config.json
+        if (config.rogerBeep) {
+            this.audio.configureRogerBeep(config.rogerBeep);
+        }
+        
+        // Configurar baliza desde config.json
+        if (config.baliza) {
+            this.modules.baliza.configure(config.baliza);
+        }
+    }
+
     setupEventHandlers() {
-        // Escuchar DTMF
+        // Eventos de audio
         this.audio.on('dtmf', async (sequence) => {
             await this.handleDTMF(sequence);
         });
 
-        // Escuchar audio entrante
-        this.audio.on('audio', (audioData) => {
-            this.handleAudio(audioData);
-        });
-
-         // Escuchar actividad del canal
         this.audio.on('channel_active', (data) => {
-            console.log('📻 Canal ocupado');
             this.webServer.broadcastChannelActivity(true, data.level);
         });
 
         this.audio.on('channel_inactive', (data) => {
-            console.log('📻 Canal libre');
             this.webServer.broadcastChannelActivity(false, 0);
         });
 
         this.audio.on('signal_level', (data) => {
-            // Enviar nivel de señal al panel web (throttled)
             this.webServer.broadcastSignalLevel(data);
         });
 
-        // Configurar eventos para el panel web
+        // Eventos para panel web
         this.setupWebEvents();
     }
 
     setupWebEvents() {
-        // Cuando se detecta DTMF, enviarlo al panel web
+        // DTMF al panel web
         this.audio.on('dtmf', (sequence) => {
             this.webServer.broadcastDTMF(sequence);
         });
 
-        // Cuando baliza transmite
+        // Baliza transmitida
         this.modules.baliza.on('transmitted', () => {
             this.webServer.broadcastBalizaTransmitted();
         });
 
-        // Interceptar console.log para enviar logs importantes al panel web
-        const originalConsoleLog = console.log;
+        // Interceptar logs relevantes
+        this.interceptLogs();
+    }
+
+    interceptLogs() {
+        const originalLog = console.log;
+        const originalError = console.error;
+        
         console.log = (...args) => {
-            originalConsoleLog.apply(console, args);
+            originalLog.apply(console, args);
             
-            // Enviar ciertos logs al panel web
             const message = args.join(' ');
-            if (message.includes('DTMF') || message.includes('Baliza') || 
-                message.includes('SMS') || message.includes('IA') || 
-                message.includes('DateTime') || message.includes('Roger')) {
+            // Solo enviar logs importantes al panel web
+            if (message.includes('📞 DTMF:') || 
+                message.includes('🎯 Ejecutando') ||
+                message.includes('Roger Beep') ||
+                message.includes('Baliza') ||
+                message.includes('Canal')) {
                 this.webServer.broadcastLog('info', message);
             }
         };
 
-        // Interceptar console.error para logs de error
-        const originalConsoleError = console.error;
         console.error = (...args) => {
-            originalConsoleError.apply(console, args);
+            originalError.apply(console, args);
             const message = args.join(' ');
             this.webServer.broadcastLog('error', message);
         };
     }
 
+    // ===== MANEJO DE COMANDOS DTMF =====
+
     async handleDTMF(sequence) {
-        console.log(`📞 Comando recibido: ${sequence}`);
+        console.log(`📞 DTMF: ${sequence}`);
         
-        // Si SMS está activo, manejar su flujo especial
+        // Manejo especial para SMS activo
         if (this.modules.sms.sessionState !== 'idle') {
-            // Para captura de número: solo procesar si termina en * o #
-            if (this.modules.sms.sessionState === 'getting_number') {
-                if (sequence.endsWith('*') || sequence.endsWith('#')) {
-                    const processed = await this.modules.sms.processDTMF(sequence);
-                    if (processed) return;
-                } else {
-                    return;
-                }
-            }
-            
-            // Para confirmación: solo procesar 1 o 2
-            if (this.modules.sms.sessionState === 'confirming') {
-                if (sequence === '1' || sequence === '2') {
-                    const processed = await this.modules.sms.processDTMF(sequence);
-                    if (processed) return;
-                } else {
-                    return;
-                }
-            }
-            
-            // Para otros estados SMS, ignorar
+            await this.handleSMSFlow(sequence);
             return;
         }
         
-        
-        // Comandos normales cuando SMS está idle
+        // Comandos normales
         const commands = {
-            '*1': this.modules.datetime,  // Fecha y hora
-            '*2': this.modules.aiChat,    // IA Chat
-            '*3': this.modules.sms,       // SMS
-            '*9': this.modules.baliza     // Baliza manual
+            '*1': () => this.modules.datetime.execute(sequence),
+            '*2': () => this.modules.aiChat.execute(sequence),
+            '*3': () => this.modules.sms.execute(sequence),
+            '*9': () => this.modules.baliza.execute(sequence)
         };
 
         if (commands[sequence]) {
-            console.log(`🎯 Ejecutando comando: ${sequence}`);
-            await commands[sequence].execute(sequence);
+            console.log(`🎯 Ejecutando: ${sequence}`);
+            await this.safeExecute(commands[sequence]);
         } else {
-            console.log(`❓ Comando desconocido: ${sequence}`);
-            // Solo reproducir tono de error si SMS está idle
-            if (this.modules.sms.sessionState === 'idle') {
-                try {
-                    this.audio.playTone(400, 200, 0.5);
-                } catch (err) {
-                    console.log('⚠️  No se pudo reproducir tono de error');
+            await this.handleUnknownCommand(sequence);
+        }
+    }
+
+    async handleSMSFlow(sequence) {
+        const smsState = this.modules.sms.sessionState;
+        
+        // Captura de número: debe terminar en * o #
+        if (smsState === 'getting_number') {
+            if (sequence.endsWith('*') || sequence.endsWith('#')) {
+                await this.modules.sms.processDTMF(sequence);
+            }
+            return;
+        }
+        
+        // Confirmación: solo 1 o 2
+        if (smsState === 'confirming') {
+            if (sequence === '1' || sequence === '2') {
+                await this.modules.sms.processDTMF(sequence);
+            }
+            return;
+        }
+    }
+
+    async handleUnknownCommand(sequence) {
+        // Solo reproducir error si SMS está idle
+        if (this.modules.sms.sessionState === 'idle') {
+            try {
+                await this.audio.playTone(400, 200, 0.5);
+            } catch (error) {
+                // Ignorar errores de audio
+            }
+        }
+    }
+
+    // ===== TRANSMISIÓN SEGURA =====
+
+    async safeExecute(callback) {
+        try {
+            await this.safeTransmit(callback);
+        } catch (error) {
+            console.error('❌ Error ejecutando comando:', error.message);
+        }
+    }
+
+    async safeTransmit(callback) {
+        if (!this.audio.isSafeToTransmit()) {
+            this.webServer.broadcastLog('warning', 'Canal ocupado - Esperando...');
+            await this.waitForFreeChannel();
+        }
+        
+        await callback();
+    }
+
+    async waitForFreeChannel(timeout = 30000) {
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            
+            const checkInterval = setInterval(() => {
+                if (this.audio.isSafeToTransmit() || (Date.now() - startTime) > timeout) {
+                    clearInterval(checkInterval);
+                    resolve();
                 }
-            }
-        }
-    }
-
-    handleAudio(audioData) {
-        // Procesar audio entrante si es necesario
-        // Por ahora solo se usa para detección DTMF
-    }
-
-    transmitAudio(audioBuffer) {
-        console.log('📻 Transmitiendo audio...');
-        this.audio.play(audioBuffer);
-    }
-
-    async transmitText(text) {
-        await this.safeTransmit(async () => {
-            console.log(`🗣️ Transmitiendo texto: ${text}`);
-            await this.audio.speak(text);
+            }, 500);
         });
     }
 
-    start() {
-        // Iniciar componentes del sistema
-        this.audio.start();
-        this.webServer.start();
+    // ===== COMANDOS DESDE PANEL WEB =====
+
+    async executeWebCommand(command) {
+        console.log(`🌐 Comando web: ${command}`);
         
-        // Configurar baliza desde config.json
-        if (config.baliza) {
-            this.modules.baliza.configure(config.baliza);
-            if (config.baliza.enabled) {
-                this.modules.baliza.start();
+        try {
+            switch (command) {
+                case 'baliza_manual':
+                    await this.modules.baliza.execute('*9');
+                    break;
+                case 'datetime':
+                    await this.modules.datetime.execute('*1');
+                    break;
+                case 'ai_chat':
+                    await this.modules.aiChat.execute('*2');
+                    break;
+                case 'sms':
+                    await this.modules.sms.execute('*3');
+                    break;
+                default:
+                    throw new Error(`Comando desconocido: ${command}`);
             }
+        } catch (error) {
+            console.error('❌ Error comando web:', error.message);
+            throw error;
         }
-        
-        console.log('🎉 VX200 Controller iniciado correctamente');
-        console.log('='.repeat(60));
-        console.log(`🌐 Panel web disponible en: http://localhost:3000`);
-        console.log(`📡 Indicativo: ${config.callsign || 'VX200'}`);
-        console.log('📞 Comandos DTMF disponibles:');
-        console.log('   *1 = Fecha y hora actual');
-        console.log('   *2 = Consulta a IA (simulado)');
-        console.log('   *3 = Enviar SMS (número + mensaje)');
-        console.log('   *9 = Baliza manual');
-        console.log('📡 Baliza automática: ' + (config.baliza?.enabled ? 
-            `Cada ${config.baliza.interval} minutos` : 'Deshabilitada'));
-        console.log(`🔊 Roger Beep: ${config.rogerBeep?.enabled ? 'Habilitado' : 'Deshabilitado'} (${config.rogerBeep?.type || 'classic'})`);
-        console.log('='.repeat(60));
     }
 
-    stop() {
-        console.log('🛑 Deteniendo VX200 Controller...');
-        
-        // Detener audio
-        if (this.audio) {
-            this.audio.stop();
-        }
-        
-        // Detener servidor web
-        if (this.webServer) {
-            this.webServer.stop();
-        }
-        
-        // Detener baliza
-        if (this.modules.baliza) {
-            this.modules.baliza.stop();
-        }
-        
-        // Destruir módulos
-        Object.values(this.modules).forEach(module => {
-            if (module.destroy) {
-                module.destroy();
-            }
-        });
-        
-        console.log('✅ Sistema detenido correctamente');
-    }
+    // ===== ROGER BEEP (PANEL WEB ÚNICAMENTE) =====
 
-    // Métodos para uso desde el panel web
-    getSystemStatus() {
+    toggleRogerBeep() {
+        const wasEnabled = this.audio.getRogerBeepStatus().enabled;
+        const isEnabled = this.audio.toggleRogerBeep();
+        
+        console.log(`🔊 Roger Beep: ${isEnabled ? 'ON' : 'OFF'}`);
+        this.webServer.broadcastLog('info', `Roger Beep ${isEnabled ? 'activado' : 'desactivado'}`);
+        
         return {
-            timestamp: new Date().toISOString(),
-            audio: {
-                status: this.audio.isRecording ? 'active' : 'inactive',
-                sampleRate: this.audio.sampleRate
-            },
-            baliza: this.modules.baliza.getStatus(),
-            datetime: this.modules.datetime.getStatus(),
-            aiChat: this.modules.aiChat.getStatus(),
-            sms: this.modules.sms.getStatus(),
-            rogerBeep: this.audio.getRogerBeep().getConfig(), // NUEVO
-            dtmf: {
-                lastSequence: 'N/A',
-                activeSession: this.modules.sms.sessionState
-            }
+            success: true,
+            enabled: isEnabled,
+            message: `Roger Beep ${isEnabled ? 'activado' : 'desactivado'}`,
+            status: this.audio.getRogerBeepStatus()
         };
     }
 
-    // Ejecutar comando desde panel web
-    async executeWebCommand(command) {
-        console.log(`🌐 Comando desde panel web: ${command}`);
+    async testRogerBeep() {
+        console.log('🧪 Test Roger Beep');
         
-        switch (command) {
-            case 'baliza_manual':
-                await this.modules.baliza.execute('*9');
-                break;
-            case 'datetime':
-                await this.modules.datetime.execute('*1');
-                break;
-            case 'ai_chat':
-                await this.modules.aiChat.execute('*2');
-                break;
-            case 'sms':
-                await this.modules.sms.execute('*3');
-                break;
-                
-            // ===== COMANDOS ROGER BEEP DESDE WEB =====
-            case 'roger_beep_toggle':
-                const isEnabled = this.audio.getRogerBeep().getConfig().enabled;
-                this.audio.getRogerBeep().setEnabled(!isEnabled);
-                await this.audio.speakNoBeep(`Roger beep ${!isEnabled ? 'habilitado' : 'deshabilitado'}`);
-                break;
-            case 'roger_beep_classic':
-                this.audio.getRogerBeep().setType('classic');
-                await this.audio.speak('Roger beep clásico activado');
-                break;
-            case 'roger_beep_motorola':
-                this.audio.getRogerBeep().setType('motorola');
-                await this.audio.speak('Roger beep Motorola activado');
-                break;
-            case 'roger_beep_kenwood':
-                this.audio.getRogerBeep().setType('kenwood');
-                await this.audio.speak('Roger beep Kenwood activado');
-                break;
-            case 'roger_beep_custom':
-                this.audio.getRogerBeep().setType('custom');
-                await this.audio.speak('Roger beep personalizado activado');
-                break;
-            case 'roger_beep_test':
-                await this.audio.testRogerBeep();
-                break;
-                
-            default:
-                throw new Error(`Comando desconocido: ${command}`);
+        try {
+            const success = await this.audio.testRogerBeep();
+            return {
+                success: success,
+                message: success ? 'Test ejecutado correctamente' : 'Error en test'
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: 'Error ejecutando test'
+            };
         }
     }
 
-    // Configurar baliza desde panel web
+    // ===== CONFIGURACIÓN =====
+
     configureBalizaFromWeb(newConfig) {
-        console.log('🌐 Configurando baliza desde panel web:', newConfig);
+        console.log('⚙️ Configurando baliza desde web');
         this.modules.baliza.configure(newConfig);
         
-        // Actualizar config.json si es necesario
+        // Actualizar config en memoria
         if (config.baliza) {
             Object.assign(config.baliza, newConfig);
         }
     }
 
-    // ===== CONFIGURAR ROGER BEEP DESDE PANEL WEB =====
-    configureRogerBeepFromWeb(newConfig) {
-        console.log('🌐 Configurando roger beep desde panel web:', newConfig);
-        this.audio.configureRogerBeep(newConfig);
-        
-        // Actualizar config si es necesario
-        if (config.rogerBeep) {
-            Object.assign(config.rogerBeep, newConfig);
-        }
-        
-        this.webServer.broadcastLog('info', `Roger Beep configurado: ${newConfig.type || 'sin cambios'}`);
-    }
+    // ===== CONTROL DEL SISTEMA =====
 
-    // NUEVO: Verificar si es seguro transmitir
-    async safeTransmit(callback) {
-        if (!this.audio.isSafeToTransmit()) {
-            console.log('⚠️  Canal ocupado - Transmisión diferida');
-            this.webServer.broadcastLog('warning', 'Canal ocupado - Esperando...');
-            
-            // Esperar hasta que el canal esté libre
-            const waitForChannel = () => {
-                return new Promise((resolve) => {
-                    const checkInterval = setInterval(() => {
-                        if (this.audio.isSafeToTransmit()) {
-                            clearInterval(checkInterval);
-                            resolve();
-                        }
-                    }, 500);
-                    
-                    // Timeout después de 30 segundos
-                    setTimeout(() => {
-                        clearInterval(checkInterval);
-                        resolve();
-                    }, 30000);
-                });
-            };
-            
-            await waitForChannel();
-            
-            if (!this.audio.isSafeToTransmit()) {
-                console.log('⚠️  Timeout esperando canal libre');
-                this.webServer.broadcastLog('warning', 'Timeout - Transmitiendo de todas formas');
-            }
-        }
+    start() {
+        this.audio.start();
+        this.webServer.start();
         
-        console.log('✅ Canal libre - Transmitiendo');
-        await callback();
-    }
-
-    // Métodos de control del sistema
-    shutdown() {
-        console.log('🔴 Iniciando apagado del sistema...');
-        this.webServer.broadcastLog('warning', 'Sistema apagándose...');
-        
-        this.stop();
-        
-        setTimeout(() => {
-            console.log('👋 Sistema apagado. ¡Hasta luego!');
-            process.exit(0);
-        }, 2000);
-    }
-
-    restart() {
-        console.log('🔄 Iniciando reinicio del sistema...');
-        this.webServer.broadcastLog('warning', 'Sistema reiniciándose...');
-        
-        this.stop();
-        
-        setTimeout(() => {
-            console.log('🔄 Reiniciando...');
-            // En un entorno real, aquí se reiniciaría el proceso
-            // Por ahora solo simularemos
-            this.start();
-            this.webServer.broadcastLog('success', 'Sistema reiniciado correctamente');
-        }, 3000);
-    }
-
-    stopServices() {
-        console.log('⏸️  Deteniendo servicios...');
-        
-        if (this.audio.isRecording) {
-            this.audio.stop();
-        }
-        
-        if (this.modules.baliza.isRunning) {
-            this.modules.baliza.stop();
-        }
-        
-        this.webServer.broadcastLog('info', 'Servicios detenidos');
-    }
-
-    startServices() {
-        console.log('▶️  Iniciando servicios...');
-        
-        if (!this.audio.isRecording) {
-            this.audio.start();
-        }
-        
-        if (config.baliza?.enabled && !this.modules.baliza.isRunning) {
+        // Iniciar baliza si está habilitada
+        if (config.baliza?.enabled) {
             this.modules.baliza.start();
         }
         
-        this.webServer.broadcastLog('info', 'Servicios iniciados');
+        this.isRunning = true;
+        
+        this.printStartupInfo();
     }
 
-    // Obtener estado detallado del sistema
+    printStartupInfo() {
+        console.log('🎉 Sistema iniciado correctamente');
+        console.log('='.repeat(50));
+        console.log(`🌐 Panel web: http://localhost:3000`);
+        console.log(`📡 Indicativo: ${config.callsign || 'VX200'}`);
+        console.log('📞 Comandos DTMF:');
+        console.log('   *1 = Fecha y hora');
+        console.log('   *2 = IA Chat (simulado)');
+        console.log('   *3 = SMS');
+        console.log('   *9 = Baliza manual');
+        console.log(`📡 Baliza: ${config.baliza?.enabled ? 
+            `Cada ${config.baliza.interval} min` : 'Deshabilitada'}`);
+        console.log(`🔊 Roger Beep: ${config.rogerBeep?.enabled ? 'ON' : 'OFF'} (Kenwood)`);
+        console.log('='.repeat(50));
+    }
+
+    stop() {
+        console.log('🛑 Deteniendo sistema...');
+        
+        this.isRunning = false;
+        
+        // Detener componentes
+        if (this.audio) {
+            this.audio.stop();
+        }
+        
+        if (this.webServer) {
+            this.webServer.stop();
+        }
+        
+        if (this.modules.baliza?.isRunning) {
+            this.modules.baliza.stop();
+        }
+        
+        console.log('✅ Sistema detenido');
+    }
+
+    // ===== CONTROL DE SERVICIOS =====
+
+    toggleService(service) {
+        let result = { success: false, message: '', enabled: false };
+        
+        try {
+            switch (service) {
+                case 'audio':
+                    if (this.audio.isRecording) {
+                        this.audio.pauseRecording();
+                        result = { success: true, message: 'Audio desactivado', enabled: false };
+                    } else {
+                        this.audio.resumeRecording();
+                        result = { success: true, message: 'Audio activado', enabled: true };
+                    }
+                    break;
+                    
+                case 'baliza':
+                    if (this.modules.baliza.isRunning) {
+                        this.modules.baliza.stop();
+                        result = { success: true, message: 'Baliza detenida', enabled: false };
+                    } else {
+                        this.modules.baliza.start();
+                        result = { success: true, message: 'Baliza iniciada', enabled: true };
+                    }
+                    break;
+                    
+                default:
+                    result = { success: false, message: 'Servicio desconocido' };
+            }
+            
+            console.log(`🔄 ${service}: ${result.enabled ? 'ON' : 'OFF'}`);
+            this.webServer.broadcastLog('info', result.message);
+            
+        } catch (error) {
+            result = { success: false, message: `Error: ${error.message}` };
+            console.error(`❌ Error toggle ${service}:`, error.message);
+        }
+        
+        return result;
+    }
+
+    // ===== ESTADO DEL SISTEMA =====
+
+    getSystemStatus() {
+        const audioStatus = this.audio.getStatus();
+        
+        return {
+            timestamp: new Date().toISOString(),
+            uptime: Date.now() - this.startTime,
+            audio: audioStatus.audio,
+            channel: audioStatus.channel,
+            baliza: this.modules.baliza.getStatus(),
+            datetime: this.modules.datetime.getStatus(),
+            aiChat: this.modules.aiChat.getStatus(),
+            sms: this.modules.sms.getStatus(),
+            rogerBeep: audioStatus.rogerBeep,
+            dtmf: {
+                lastSequence: 'Esperando...',
+                activeSession: this.modules.sms.sessionState
+            }
+        };
+    }
+
     getDetailedStatus() {
         return {
             ...this.getSystemStatus(),
@@ -416,74 +397,150 @@ class VX200Controller {
                 uptime: process.uptime(),
                 memory: process.memoryUsage(),
                 pid: process.pid,
-                callsign: config.callsign || 'VX200'
+                callsign: config.callsign || 'VX200',
+                version: config.version || '2.0'
             },
             services: {
-                audio: this.audio.isRecording,
+                audio: this.audio.getStatus().audio.isRecording,
                 baliza: this.modules.baliza.isRunning,
-                webServer: true, // Si estamos respondiendo, está activo
-                rogerBeep: this.audio.getRogerBeep().getConfig().enabled
+                webServer: this.isRunning,
+                rogerBeep: this.audio.getRogerBeepStatus().enabled
             }
         };
     }
 
-    // ===== MÉTODOS ADICIONALES PARA ROGER BEEP =====
-    
-    async testAllRogerBeeps() {
-        console.log('🧪 Test completo de roger beeps...');
-        await this.audio.getRogerBeep().testAll();
-        this.webServer.broadcastLog('info', 'Test completo roger beeps ejecutado');
+    // ===== COMANDOS CRÍTICOS =====
+
+    async shutdown() {
+        console.log('🔴 Apagando sistema...');
+        this.webServer.broadcastLog('warning', 'Sistema apagándose...');
+        
+        // Anuncio de apagado
+        try {
+            await this.audio.speakNoRoger('Sistema apagándose');
+        } catch (error) {
+            // Ignorar errores de TTS
+        }
+        
+        this.stop();
+        
+        setTimeout(() => {
+            console.log('👋 Hasta luego!');
+            process.exit(0);
+        }, 2000);
     }
 
-    getRogerBeepStatus() {
-        return this.audio.getRogerBeep().getConfig();
+    async restart() {
+        console.log('🔄 Reiniciando sistema...');
+        this.webServer.broadcastLog('warning', 'Reiniciando...');
+        
+        // Anuncio de reinicio
+        try {
+            await this.audio.speakNoRoger('Sistema reiniciándose');
+        } catch (error) {
+            // Ignorar errores de TTS
+        }
+        
+        this.stop();
+        
+        setTimeout(() => {
+            console.log('🔄 Reiniciando...');
+            this.start();
+            this.webServer.broadcastLog('success', 'Sistema reiniciado');
+        }, 3000);
     }
 
-    async setRogerBeepVolume(volume) {
-        this.audio.getRogerBeep().setVolume(volume);
-        await this.audio.speak(`Volumen roger beep ajustado a ${Math.round(volume * 100)} por ciento`);
+    // ===== UTILIDADES =====
+
+    async transmitText(text) {
+        await this.safeTransmit(async () => {
+            console.log(`🗣️ TTS: ${text.substring(0, 50)}...`);
+            await this.audio.speak(text);
+        });
     }
 
-    async setRogerBeepDuration(duration) {
-        this.audio.getRogerBeep().setDuration(duration);
-        await this.audio.speak(`Duración roger beep ajustada a ${duration} milisegundos`);
+    async healthCheck() {
+        console.log('🔍 Health Check del sistema:');
+        
+        const status = this.getSystemStatus();
+        
+        console.log(`  📹 Audio: ${status.audio.status === 'active' ? '✅' : '❌'}`);
+        console.log(`  📻 Canal: ${status.channel.isActive ? 'OCUPADO' : 'LIBRE'}`);
+        console.log(`  📡 Baliza: ${status.baliza.running ? '✅' : '❌'}`);
+        console.log(`  🔊 Roger Beep: ${status.rogerBeep.enabled ? '✅' : '❌'}`);
+        console.log(`  🌐 Web Server: ${this.isRunning ? '✅' : '❌'}`);
+        
+        // Test de audio si es posible
+        if (status.audio.status === 'active') {
+            try {
+                await this.audio.healthCheck();
+            } catch (error) {
+                console.log('  ❌ Test de audio falló');
+            }
+        }
+        
+        return status;
     }
 }
 
-// Manejo de señales del sistema para cierre limpio
-process.on('SIGINT', () => {
-    console.log('\n🛑 Señal de interrupción recibida (Ctrl+C)...');
-    process.exit(0);
-});
+// ===== MANEJO DE SEÑALES DEL SISTEMA =====
 
-process.on('SIGTERM', () => {
-    console.log('\n🛑 Señal de terminación recibida...');
-    if (global.vx200Controller) {
-        global.vx200Controller.stop();
+let controller = null;
+
+function setupSignalHandlers() {
+    process.on('SIGINT', () => {
+        console.log('\n🛑 Ctrl+C detectado...');
+        if (controller) {
+            controller.stop();
+        }
+        process.exit(0);
+    });
+
+    process.on('SIGTERM', () => {
+        console.log('\n🛑 Señal de terminación...');
+        if (controller) {
+            controller.stop();
+        }
+        process.exit(0);
+    });
+
+    process.on('uncaughtException', (error) => {
+        console.error('❌ Error crítico:', error.message);
+        if (controller) {
+            controller.stop();
+        }
+        process.exit(1);
+    });
+
+    process.on('unhandledRejection', (reason) => {
+        console.error('❌ Promesa rechazada:', reason);
+        if (controller) {
+            controller.stop();
+        }
+        process.exit(1);
+    });
+}
+
+// ===== INICIO DEL SISTEMA =====
+
+function main() {
+    try {
+        setupSignalHandlers();
+        
+        controller = new VX200Controller();
+        global.vx200Controller = controller; // Para acceso global
+        
+        controller.start();
+        
+    } catch (error) {
+        console.error('❌ Error crítico al iniciar:', error);
+        process.exit(1);
     }
-    process.exit(0);
-});
+}
 
-// Manejo de errores no capturados
-process.on('uncaughtException', (error) => {
-    console.error('❌ Error no capturado:', error);
-    if (global.vx200Controller) {
-        global.vx200Controller.stop();
-    }
-    process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Promesa rechazada no manejada:', reason);
-    if (global.vx200Controller) {
-        global.vx200Controller.stop();
-    }
-    process.exit(1);
-});
-
-// Iniciar el controlador
-const controller = new VX200Controller();
-global.vx200Controller = controller; // Para acceso global en señales
-controller.start();
+// Iniciar solo si es el archivo principal
+if (require.main === module) {
+    main();
+}
 
 module.exports = VX200Controller;
