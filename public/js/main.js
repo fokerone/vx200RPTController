@@ -1,17 +1,18 @@
-// VX200 Controller - Frontend JavaScript
-class VX200Panel {
+// VX200 Controller - Terminal Interface JavaScript
+class VX200TerminalPanel {
     constructor() {
         this.socket = null;
         this.isConnected = false;
         this.lastDTMF = '';
         this.logEntries = [];
         this.maxLogEntries = 100;
+        this.systemStatus = {};
         
         this.init();
     }
 
     init() {
-        console.log('🌐 Inicializando panel VX200...');
+        console.log('🖥️ Inicializando Terminal VX200...');
         
         // Conectar WebSocket
         this.connectSocket();
@@ -22,27 +23,32 @@ class VX200Panel {
         // Inicializar componentes
         this.initializeComponents();
         
-        console.log('✅ Panel VX200 inicializado');
+        // Efectos visuales
+        this.initializeVisualEffects();
+        
+        console.log('✅ Terminal VX200 inicializado');
     }
 
     connectSocket() {
         this.socket = io();
         
         this.socket.on('connect', () => {
-            console.log('🔌 Conectado al servidor');
+            console.log('🔌 Terminal conectado al servidor');
             this.isConnected = true;
             this.updateConnectionStatus(true);
-            this.addLog('success', 'Conectado al servidor VX200');
+            this.addLog('success', 'CONNECTED TO VX200 CONTROLLER');
+            this.refreshSystemStatus();
         });
 
         this.socket.on('disconnect', () => {
-            console.log('🔌 Desconectado del servidor');
+            console.log('🔌 Terminal desconectado del servidor');
             this.isConnected = false;
             this.updateConnectionStatus(false);
-            this.addLog('error', 'Desconectado del servidor');
+            this.addLog('error', 'DISCONNECTED FROM SERVER');
         });
 
         this.socket.on('system_status', (status) => {
+            this.systemStatus = status;
             this.updateSystemStatus(status);
         });
 
@@ -55,58 +61,176 @@ class VX200Panel {
         });
 
         this.socket.on('log_entry', (data) => {
-            this.addLog(data.level, data.message, data.timestamp);
+            this.addLog(data.level, data.message.toUpperCase(), data.timestamp);
         });
 
         this.socket.on('command_result', (result) => {
             this.showNotification(
                 result.success ? 'success' : 'error',
-                result.message
+                result.message.toUpperCase()
             );
         });
 
         this.socket.on('channel_activity', (data) => {
-         this.handleChannelActivity(data);
+            this.handleChannelActivity(data);
         });
 
         this.socket.on('signal_level', (data) => {
-         this.updateSignalLevel(data);
+            this.updateSignalLevel(data);
         });
 
         this.socket.on('roger_beep_config_changed', (data) => {
-        this.handleRogerBeepConfigChanged(data);
+            this.handleRogerBeepConfigChanged(data);
         });
 
         this.socket.on('roger_beep_test', (data) => {
-        this.handleRogerBeepTest(data);
+            this.handleRogerBeepTest(data);
+        });
+
+        this.socket.on('service_toggled', (data) => {
+            this.handleServiceToggled(data);
         });
     }
 
     setupEventListeners() {
         // Formulario de configuración de baliza
-        document.getElementById('baliza-config-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.updateBalizaConfig();
-        });
+        const balizaForm = document.getElementById('baliza-config-form');
+        if (balizaForm) {
+            balizaForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.updateBalizaConfig();
+            });
+        }
 
         // Refresh automático del estado
         setInterval(() => {
             if (this.isConnected) {
                 this.refreshSystemStatus();
             }
-        }, 5000); // Cada 5 segundos
+        }, 5000);
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey) {
+                switch(e.key) {
+                    case '1':
+                        e.preventDefault();
+                        this.executeCommand('datetime');
+                        break;
+                    case '2':
+                        e.preventDefault();
+                        this.executeCommand('ai_chat');
+                        break;
+                    case '3':
+                        e.preventDefault();
+                        this.executeCommand('sms');
+                        break;
+                    case '9':
+                        e.preventDefault();
+                        this.executeCommand('baliza_manual');
+                        break;
+                }
+            }
+        });
     }
 
     initializeComponents() {
-        // Inicializar tooltips de Bootstrap
-        let tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-        let tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl);
-        });
+        // Agregar logs iniciales con efecto terminal
+        this.addLog('info', 'VX200 TERMINAL INTERFACE INITIALIZED');
+        this.addLog('info', 'ESTABLISHING CONNECTION...');
+        
+        // Inicializar estado de botones
+        setTimeout(() => {
+            this.refreshSystemStatus();
+        }, 1000);
+    }
 
-        // Agregar logs iniciales
-        this.addLog('info', 'Panel web inicializado');
-        this.addLog('info', 'Conectando al controlador VX200...');
+    initializeVisualEffects() {
+        // Efecto de parpadeo en el cursor del DTMF
+        const dtmfDisplay = document.getElementById('dtmf-display');
+        if (dtmfDisplay && !dtmfDisplay.textContent.includes('_')) {
+            setInterval(() => {
+                if (dtmfDisplay.textContent === 'WAITING FOR DTMF...') {
+                    dtmfDisplay.textContent = 'WAITING FOR DTMF..._';
+                } else if (dtmfDisplay.textContent === 'WAITING FOR DTMF..._') {
+                    dtmfDisplay.textContent = 'WAITING FOR DTMF...';
+                }
+            }, 1000);
+        }
+
+        // Efecto de scan lines
+        this.createScanLines();
+        
+        // Audio effect para clicks
+        this.setupAudioFeedback();
+    }
+
+    createScanLines() {
+        const scanLine = document.createElement('div');
+        scanLine.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ffff, transparent);
+            z-index: 9999;
+            pointer-events: none;
+            animation: scanLine 3s linear infinite;
+        `;
+        
+        // Agregar keyframes para la animación
+        if (!document.querySelector('#scanline-style')) {
+            const style = document.createElement('style');
+            style.id = 'scanline-style';
+            style.textContent = `
+                @keyframes scanLine {
+                    0% { top: 0; opacity: 1; }
+                    100% { top: 100vh; opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        document.body.appendChild(scanLine);
+        
+        // Remover después de la animación
+        setTimeout(() => {
+            if (scanLine.parentNode) {
+                scanLine.parentNode.removeChild(scanLine);
+            }
+        }, 3000);
+        
+        // Repetir cada 10 segundos
+        setTimeout(() => this.createScanLines(), 10000);
+    }
+
+    setupAudioFeedback() {
+        // Crear contexto de audio para efectos de sonido
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.log('Audio context not available');
+        }
+    }
+
+    playClickSound() {
+        if (!this.audioContext) return;
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.1);
     }
 
     // Actualizar estado de conexión
@@ -115,11 +239,13 @@ class VX200Panel {
         const text = document.getElementById('status-text');
 
         if (connected) {
-            indicator.className = 'bi bi-circle-fill text-success indicator-online';
-            text.textContent = 'Conectado';
+            indicator.className = 'status-dot online';
+            text.textContent = 'CONNECTED';
+            text.style.color = '#00ff00';
         } else {
-            indicator.className = 'bi bi-circle-fill text-danger indicator-offline';
-            text.textContent = 'Desconectado';
+            indicator.className = 'status-dot offline';
+            text.textContent = 'DISCONNECTED';
+            text.style.color = '#ff0000';
         }
     }
 
@@ -127,37 +253,43 @@ class VX200Panel {
     updateSystemStatus(status) {
         console.log('📊 Actualizando estado del sistema:', status);
 
+        // Sistema general
+        this.updateStatusModule('system', 'ONLINE', 'online');
+
         // Audio status
-        document.getElementById('audio-status').textContent = status.audio.status === 'active' ? 'Activo' : 'Inactivo';
-        document.getElementById('audio-status').className = `badge ${status.audio.status === 'active' ? 'bg-success' : 'bg-danger'}`;
+        const audioActive = status.audio?.status === 'active';
+        this.updateStatusModule('audio', audioActive ? 'ACTIVE' : 'INACTIVE', audioActive ? 'online' : 'offline');
+
+        // Canal status
+        const channelFree = !status.channel?.busy;
+        this.updateStatusModule('channel', channelFree ? 'FREE' : 'BUSY', channelFree ? 'online' : 'offline');
 
         // Baliza status
-        const balizaRunning = status.baliza.running;
-        document.getElementById('baliza-status').textContent = balizaRunning ? 'Ejecutándose' : 'Detenida';
-        document.getElementById('baliza-status').className = `badge ${balizaRunning ? 'bg-info' : 'bg-secondary'}`;
+        const balizaRunning = status.baliza?.running;
+        this.updateStatusModule('beacon', balizaRunning ? 'RUNNING' : 'STOPPED', balizaRunning ? 'running' : 'stopped');
+
+        // DTMF status
+        const lastDTMF = status.dtmf?.lastSequence || 'WAITING';
+        this.updateStatusModule('dtmf', lastDTMF, 'waiting');
 
         // SMS status
-        const smsState = status.sms.sessionState;
-        let smsText = 'Inactivo';
-        let smsClass = 'bg-secondary';
-        
-        if (smsState !== 'idle') {
-            smsText = smsState.replace('_', ' ').toUpperCase();
-            smsClass = 'bg-warning';
-        }
-        
-        document.getElementById('sms-status').textContent = smsText;
-        document.getElementById('sms-status').className = `badge ${smsClass}`;
+        const smsState = status.sms?.sessionState || 'idle';
+        this.updateStatusModule('sms', smsState.toUpperCase(), 'idle');
 
-        // DTMF last
-        const lastDTMF = status.dtmf.lastSequence || 'Esperando';
-        document.getElementById('dtmf-last').textContent = lastDTMF;
-
-          this.updateServiceButtons(status);
+        // Actualizar botones de servicio
+        this.updateServiceButtons(status);
         
-        // ROGER BEEP status
+        // Roger Beep status
         if (status.rogerBeep) {
-        this.updateRogerBeepStatus(status.rogerBeep);
+            this.updateRogerBeepStatus(status.rogerBeep);
+        }
+    }
+
+    updateStatusModule(module, statusText, statusClass) {
+        const statusElement = document.getElementById(`${module === 'beacon' ? 'baliza' : module}-status`);
+        if (statusElement) {
+            statusElement.textContent = statusText;
+            statusElement.className = `badge-${statusClass}`;
         }
     }
 
@@ -167,104 +299,142 @@ class VX200Panel {
         
         this.lastDTMF = data.sequence;
         
-        // Actualizar display
+        // Actualizar display con efecto
         const display = document.getElementById('dtmf-display');
-        display.textContent = `DTMF: ${data.sequence}`;
-        display.classList.add('active');
-        
-        // Quitar clase active después de 2 segundos
-        setTimeout(() => {
-            display.classList.remove('active');
-            display.textContent = 'Esperando DTMF...';
-        }, 2000);
+        if (display) {
+            display.textContent = `DTMF: ${data.sequence}`;
+            display.classList.add('active');
+            display.classList.add('glow-animation');
+            
+            // Efecto de parpadeo
+            let blinkCount = 0;
+            const blinkInterval = setInterval(() => {
+                display.style.opacity = display.style.opacity === '0.5' ? '1' : '0.5';
+                blinkCount++;
+                if (blinkCount >= 6) {
+                    clearInterval(blinkInterval);
+                    display.style.opacity = '1';
+                }
+            }, 200);
+            
+            // Quitar efectos después de 3 segundos
+            setTimeout(() => {
+                display.classList.remove('active', 'glow-animation');
+                display.textContent = 'WAITING FOR DTMF...';
+            }, 3000);
+        }
 
-        // Agregar a log
-        this.addLog('info', `DTMF detectado: ${data.sequence}`);
+        // Agregar a log con timestamp
+        this.addLog('info', `DTMF SEQUENCE DETECTED: ${data.sequence}`);
 
         // Actualizar badge
         document.getElementById('dtmf-last').textContent = data.sequence;
+        
+        // Sonido de confirmación
+        this.playClickSound();
     }
 
     // Manejar baliza transmitida
     handleBalizaTransmitted(data) {
         console.log('📡 Baliza transmitida');
         
-        this.addLog('success', 'Baliza transmitida automáticamente');
+        this.addLog('success', 'BEACON TRANSMITTED SUCCESSFULLY');
         
-        // Efecto visual
-        const balizaStatus = document.getElementById('baliza-status');
-        balizaStatus.classList.add('pulse');
-        setTimeout(() => {
-            balizaStatus.classList.remove('pulse');
-        }, 1000);
-    }
-
-    // NUEVOS MÉTODOS: Manejar actividad del canal
-handleChannelActivity(data) {
-    const { isActive, level, timestamp } = data;
-    
-    console.log(`📻 Canal ${isActive ? 'OCUPADO' : 'LIBRE'} - Nivel: ${(level * 100).toFixed(1)}%`);
-    
-    // Actualizar indicadores
-    const channelIcon = document.getElementById('channel-icon');
-    const channelStatus = document.getElementById('channel-status');
-    
-    if (isActive) {
-        channelIcon.className = 'bi bi-radio text-danger';
-        channelStatus.textContent = 'OCUPADO';
-        channelStatus.className = 'badge bg-danger';
-        
-        // Agregar efecto pulsante
-        channelIcon.classList.add('pulse');
-        
-        this.addLog('warning', `Canal ocupado - Nivel: ${(level * 100).toFixed(1)}%`);
-    } else {
-        channelIcon.className = 'bi bi-radio text-success';
-        channelStatus.textContent = 'Libre';
-        channelStatus.className = 'badge bg-success';
-        
-        // Quitar efecto pulsante
-        channelIcon.classList.remove('pulse');
-        
-        this.addLog('info', 'Canal libre');
-    }
-}
-
-updateSignalLevel(data) {
-    const { level, active } = data;
-    const percentage = Math.min(100, level * 100 * 10); // Amplificar para visualización
-    
-    // Actualizar barra de progreso
-    const progressBar = document.getElementById('signal-level-bar');
-    const levelText = document.getElementById('signal-level-text');
-    
-    if (progressBar && levelText) {
-        progressBar.style.width = `${percentage}%`;
-        levelText.textContent = `${percentage.toFixed(0)}%`;
-        
-        // Cambiar color según nivel
-        if (percentage > 50) {
-            progressBar.className = 'progress-bar bg-danger';
-        } else if (percentage > 20) {
-            progressBar.className = 'progress-bar bg-warning';
-        } else {
-            progressBar.className = 'progress-bar bg-success';
+        // Efecto visual en el icono
+        const balizaIcon = document.getElementById('beacon-icon');
+        if (balizaIcon) {
+            balizaIcon.classList.add('glow-animation');
+            setTimeout(() => {
+                balizaIcon.classList.remove('glow-animation');
+            }, 2000);
         }
     }
-}
 
-    // Agregar entrada al log
+    // Manejar actividad del canal
+    handleChannelActivity(data) {
+        const { isActive, level, timestamp } = data;
+        
+        console.log(`📻 Canal ${isActive ? 'OCUPADO' : 'LIBRE'} - Nivel: ${(level * 100).toFixed(1)}%`);
+        
+        // Actualizar indicadores
+        const channelIcon = document.getElementById('channel-icon');
+        const channelStatus = document.getElementById('channel-status');
+        
+        if (isActive) {
+            if (channelIcon) {
+                channelIcon.className = 'bi bi-radio';
+                channelIcon.style.color = '#ff0000';
+                channelIcon.classList.add('pulse');
+            }
+            if (channelStatus) {
+                channelStatus.textContent = 'BUSY';
+                channelStatus.className = 'badge-offline';
+            }
+            
+            this.addLog('warning', `CHANNEL BUSY - SIGNAL: ${(level * 100).toFixed(1)}%`);
+        } else {
+            if (channelIcon) {
+                channelIcon.className = 'bi bi-radio';
+                channelIcon.style.color = '#00ff00';
+                channelIcon.classList.remove('pulse');
+            }
+            if (channelStatus) {
+                channelStatus.textContent = 'FREE';
+                channelStatus.className = 'badge-online';
+            }
+            
+            this.addLog('info', 'CHANNEL IS NOW FREE');
+        }
+    }
+
+    updateSignalLevel(data) {
+        const { level, active } = data;
+        const percentage = Math.min(100, level * 100 * 10);
+        
+        // Actualizar barra de progreso
+        const progressBar = document.getElementById('signal-level-bar');
+        const levelText = document.getElementById('signal-level-text');
+        
+        if (progressBar && levelText) {
+            progressBar.style.width = `${percentage}%`;
+            levelText.textContent = `${percentage.toFixed(0)}%`;
+            
+            // Cambiar color según nivel
+            if (percentage > 70) {
+                progressBar.style.background = '#ff0000';
+                progressBar.style.boxShadow = '0 0 10px #ff0000';
+            } else if (percentage > 30) {
+                progressBar.style.background = '#ffff00';
+                progressBar.style.boxShadow = '0 0 10px #ffff00';
+            } else {
+                progressBar.style.background = '#00ff00';
+                progressBar.style.boxShadow = '0 0 10px #00ff00';
+            }
+        }
+    }
+
+    // Agregar entrada al log con formato terminal
     addLog(level, message, timestamp = null) {
         const logContainer = document.getElementById('log-container');
+        if (!logContainer) return;
+        
         const time = timestamp ? new Date(timestamp) : new Date();
-        const timeStr = time.toLocaleTimeString();
+        const timeStr = time.toLocaleTimeString('en-US', { hour12: false });
 
         const logEntry = document.createElement('div');
-        logEntry.className = `log-entry fade-in`;
+        logEntry.className = 'log-entry';
+        
+        const levelColors = {
+            info: '#00ffff',
+            success: '#00ff00',
+            warning: '#ffff00',
+            error: '#ff0000'
+        };
+        
         logEntry.innerHTML = `
             <span class="log-timestamp">[${timeStr}]</span>
-            <span class="log-level-${level}">[${level.toUpperCase()}]</span>
-            ${message}
+            <span class="log-level-${level}" style="color: ${levelColors[level]}">[${level.toUpperCase()}]</span>
+            <span style="margin-left: 8px;">${message}</span>
         `;
 
         logContainer.appendChild(logEntry);
@@ -273,11 +443,16 @@ updateSignalLevel(data) {
         this.logEntries.push({ level, message, timestamp: time });
         if (this.logEntries.length > this.maxLogEntries) {
             this.logEntries.shift();
-            logContainer.removeChild(logContainer.firstChild);
+            if (logContainer.firstChild) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
         }
 
-        // Scroll al final
-        logContainer.scrollTop = logContainer.scrollHeight;
+        // Scroll al final con animación
+        logContainer.scrollTo({
+            top: logContainer.scrollHeight,
+            behavior: 'smooth'
+        });
     }
 
     // Ejecutar comando manual
@@ -285,27 +460,282 @@ updateSignalLevel(data) {
         console.log(`🎯 Ejecutando comando: ${command}`);
         
         if (!this.isConnected) {
-            this.showNotification('error', 'No hay conexión con el servidor');
+            this.showNotification('error', 'NO CONNECTION TO SERVER');
             return;
         }
 
+        // Efecto visual en botones
+        const buttons = document.querySelectorAll(`[onclick*="${command}"]`);
+        buttons.forEach(btn => {
+            btn.classList.add('loading');
+            setTimeout(() => btn.classList.remove('loading'), 1000);
+        });
+
         this.socket.emit('execute_command', { command });
-        this.addLog('info', `Comando ejecutado: ${command}`);
+        this.addLog('info', `EXECUTING COMMAND: ${command.toUpperCase()}`);
+        
+        // Sonido de confirmación
+        this.playClickSound();
+    }
+
+    // Toggle de servicios con actualización de estado
+    toggleService(service) {
+        console.log(`🔄 Toggle service: ${service}`);
+        
+        if (!this.isConnected) {
+            this.showNotification('error', 'NO CONNECTION TO SERVER');
+            return;
+        }
+
+        // Actualizar botón inmediatamente para feedback visual
+        const btn = document.getElementById(`${service}-toggle-btn`);
+        if (btn) {
+            btn.classList.add('loading');
+        }
+
+        this.socket.emit('execute_command', { command: `${service}_toggle` });
+        this.addLog('info', `TOGGLING SERVICE: ${service.toUpperCase()}`);
+        
+        this.playClickSound();
+    }
+
+    // Manejar resultado de toggle de servicio
+    handleServiceToggled(data) {
+        const { service, enabled, success } = data;
+        
+        if (success) {
+            this.addLog('success', `SERVICE ${service.toUpperCase()} ${enabled ? 'ENABLED' : 'DISABLED'}`);
+            
+            // Actualizar botón
+            const btn = document.getElementById(`${service}-toggle-btn`);
+            if (btn) {
+                btn.classList.remove('loading');
+                this.updateServiceButton(service, enabled);
+            }
+            
+            // Refresh status
+            setTimeout(() => this.refreshSystemStatus(), 500);
+        } else {
+            this.addLog('error', `FAILED TO TOGGLE ${service.toUpperCase()}`);
+        }
+    }
+
+    // Actualizar botón de servicio individual
+    updateServiceButton(service, enabled) {
+        const btn = document.getElementById(`${service}-toggle-btn`);
+        if (!btn) return;
+
+        const serviceConfig = {
+            audio: {
+                icon: enabled ? 'volume-up' : 'volume-mute',
+                text: 'AUDIO'
+            },
+            baliza: {
+                icon: enabled ? 'broadcast' : 'broadcast-pin',
+                text: 'BEACON'
+            }
+        };
+
+        const config = serviceConfig[service];
+        if (config) {
+            btn.className = `terminal-btn service-btn ${enabled ? 'active' : 'inactive'}`;
+            btn.innerHTML = `
+                <i class="bi bi-${config.icon}"></i>
+                <span>${config.text}</span>
+                <div class="service-status">${enabled ? 'ON' : 'OFF'}</div>
+            `;
+        }
+    }
+
+    // Actualizar todos los botones de servicio
+    updateServiceButtons(status) {
+        // Audio
+        if (status.audio) {
+            this.updateServiceButton('audio', status.audio.status === 'active');
+        }
+
+        // Baliza
+        if (status.baliza) {
+            this.updateServiceButton('baliza', status.baliza.running);
+        }
+    }
+
+    // Confirmar acciones críticas
+    confirmAction(action) {
+        const messages = {
+            shutdown: 'CONFIRM SYSTEM SHUTDOWN?',
+            restart: 'CONFIRM SYSTEM RESTART?'
+        };
+
+        const icons = {
+            shutdown: 'power',
+            restart: 'arrow-clockwise'
+        };
+
+        // Crear modal de confirmación personalizado
+        this.showTerminalConfirm(messages[action], (confirmed) => {
+            if (confirmed) {
+                console.log(`🚨 Acción confirmada: ${action}`);
+                
+                if (!this.isConnected) {
+                    this.showNotification('error', 'NO CONNECTION TO SERVER');
+                    return;
+                }
+
+                this.socket.emit('execute_command', { command: `system_${action}` });
+                this.addLog('warning', `EXECUTING SYSTEM ${action.toUpperCase()}`);
+                
+                // Deshabilitar botón
+                const btn = document.getElementById(`${action}-btn`);
+                if (btn) {
+                    btn.disabled = true;
+                    btn.classList.add('loading');
+                    btn.innerHTML = `<i class="bi bi-${icons[action]}"></i> <span>${action.toUpperCase()}...</span>`;
+                }
+                
+                this.playClickSound();
+            }
+        });
+    }
+
+    // Modal de confirmación estilo terminal
+    showTerminalConfirm(message, callback) {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            background: var(--terminal-bg);
+            border: 2px solid var(--terminal-error);
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            color: var(--terminal-text);
+            font-family: 'JetBrains Mono', monospace;
+            box-shadow: 0 0 20px var(--terminal-error);
+            animation: fadeIn 0.3s ease-out;
+        `;
+
+        modal.innerHTML = `
+            <div style="margin-bottom: 20px; color: var(--terminal-error); font-size: 1.2rem; font-weight: bold;">
+                <i class="bi bi-exclamation-triangle" style="font-size: 2rem; display: block; margin-bottom: 10px;"></i>
+                ${message}
+            </div>
+            <div style="display: flex; gap: 15px; justify-content: center;">
+                <button id="confirm-yes" class="terminal-btn-sm" style="background: rgba(255, 0, 0, 0.2); border-color: var(--terminal-error); color: var(--terminal-error);">
+                    <i class="bi bi-check"></i> YES
+                </button>
+                <button id="confirm-no" class="terminal-btn-sm" style="background: rgba(0, 255, 0, 0.2); border-color: var(--terminal-success); color: var(--terminal-success);">
+                    <i class="bi bi-x"></i> NO
+                </button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Event listeners
+        modal.querySelector('#confirm-yes').onclick = () => {
+            document.body.removeChild(overlay);
+            callback(true);
+        };
+
+        modal.querySelector('#confirm-no').onclick = () => {
+            document.body.removeChild(overlay);
+            callback(false);
+        };
+
+        // Cerrar con Escape
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                document.body.removeChild(overlay);
+                callback(false);
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+
+    // Roger Beep methods
+    updateRogerBeepStatus(rogerBeepConfig) {
+        if (!rogerBeepConfig) return;
+
+        // Actualizar tipo
+        const typeElement = document.getElementById('roger-beep-type');
+        if (typeElement) {
+            typeElement.textContent = (rogerBeepConfig.type || 'CLASSIC').toUpperCase();
+        }
+
+        // Actualizar estado
+        const statusElement = document.getElementById('roger-beep-status');
+        if (statusElement) {
+            statusElement.textContent = rogerBeepConfig.enabled ? 'ENABLED' : 'DISABLED';
+            statusElement.className = rogerBeepConfig.enabled ? 'badge-online' : 'badge-offline';
+        }
+
+        // Actualizar volumen
+        const volumeElement = document.getElementById('roger-beep-volume');
+        if (volumeElement) {
+            volumeElement.textContent = `${Math.round((rogerBeepConfig.volume || 0.7) * 100)}%`;
+        }
+
+        // Actualizar duración
+        const durationElement = document.getElementById('roger-beep-duration');
+        if (durationElement) {
+            durationElement.textContent = `${rogerBeepConfig.duration || 250}MS`;
+        }
+
+        // Actualizar botón toggle
+        const toggleBtn = document.getElementById('roger-beep-toggle-btn');
+        if (toggleBtn) {
+            const isEnabled = rogerBeepConfig.enabled;
+            toggleBtn.className = `terminal-btn-sm ${isEnabled ? 'active' : 'inactive'}`;
+            toggleBtn.innerHTML = `<i class="bi bi-power"></i> ${isEnabled ? 'ON' : 'OFF'}`;
+        }
+    }
+
+    handleRogerBeepConfigChanged(data) {
+        console.log('🔊 Configuración roger beep actualizada:', data.config);
+        this.updateRogerBeepStatus(data.config);
+        this.addLog('info', `ROGER BEEP: ${data.config.type.toUpperCase()} (${data.config.enabled ? 'ON' : 'OFF'})`);
+    }
+
+    handleRogerBeepTest(data) {
+        console.log('🧪 Test roger beep:', data.type);
+        this.addLog('info', `ROGER BEEP TEST: ${(data.type || 'CURRENT').toUpperCase()}`);
+        
+        // Efecto visual
+        const testButtons = document.querySelectorAll('.test-btn');
+        testButtons.forEach(btn => {
+            btn.classList.add('glow-animation');
+            setTimeout(() => btn.classList.remove('glow-animation'), 1000);
+        });
     }
 
     // Actualizar configuración de baliza
     updateBalizaConfig() {
-        const interval = document.getElementById('baliza-interval').value;
-        const frequency = document.getElementById('baliza-frequency').value;
-        const duration = document.getElementById('baliza-duration').value;
-        const message = document.getElementById('baliza-message').value;
+        const interval = document.getElementById('baliza-interval')?.value;
+        const frequency = document.getElementById('baliza-frequency')?.value;
+        const duration = document.getElementById('baliza-duration')?.value;
+        const message = document.getElementById('baliza-message')?.value;
 
         const config = {
-            interval: parseInt(interval),
-            frequency: parseInt(frequency),
-            duration: parseInt(duration),
+            interval: parseInt(interval) || 15,
+            frequency: parseInt(frequency) || 1000,
+            duration: parseInt(duration) || 500,
             volume: 0.7,
-            message: message
+            message: message || 'LU Repetidora Simplex'
         };
 
         console.log('⚙️ Actualizando configuración baliza:', config);
@@ -319,17 +749,19 @@ updateSignalLevel(data) {
         })
         .then(response => response.json())
         .then(data => {
-            this.showNotification('success', 'Configuración de baliza actualizada');
-            this.addLog('info', 'Configuración de baliza actualizada');
+            this.showNotification('success', 'BEACON CONFIG UPDATED');
+            this.addLog('info', 'BEACON CONFIGURATION UPDATED');
         })
         .catch(error => {
             console.error('Error:', error);
-            this.showNotification('error', 'Error actualizando configuración');
+            this.showNotification('error', 'CONFIG UPDATE FAILED');
         });
     }
 
     // Refrescar estado del sistema
     refreshSystemStatus() {
+        if (!this.isConnected) return;
+        
         fetch('/api/status')
             .then(response => response.json())
             .then(status => {
@@ -337,319 +769,99 @@ updateSignalLevel(data) {
             })
             .catch(error => {
                 console.error('Error refrescando estado:', error);
+                this.addLog('error', 'FAILED TO REFRESH SYSTEM STATUS');
             });
     }
 
-    // Mostrar notificación toast
+    // Mostrar notificación toast estilo terminal
     showNotification(type, message) {
-        // Crear toast dinámicamente
-        const toastContainer = document.createElement('div');
-        toastContainer.style.position = 'fixed';
-        toastContainer.style.top = '20px';
-        toastContainer.style.right = '20px';
-        toastContainer.style.zIndex = '9999';
+        const toast = document.getElementById('notification-toast');
+        if (!toast) return;
 
-        const iconMap = {
-            success: 'check-circle-fill',
-            error: 'exclamation-triangle-fill',
-            warning: 'exclamation-circle-fill',
-            info: 'info-circle-fill'
+        const toastBody = toast.querySelector('.toast-body');
+        const toastHeader = toast.querySelector('.toast-header strong');
+        const toastIcon = toast.querySelector('.toast-header i');
+
+        const typeConfig = {
+            success: { icon: 'check-circle-fill', color: '#00ff00', title: 'SUCCESS' },
+            error: { icon: 'x-circle-fill', color: '#ff0000', title: 'ERROR' },
+            warning: { icon: 'exclamation-triangle-fill', color: '#ffff00', title: 'WARNING' },
+            info: { icon: 'info-circle-fill', color: '#00ffff', title: 'INFO' }
         };
 
-        const colorMap = {
-            success: 'success',
-            error: 'danger',
-            warning: 'warning',
-            info: 'info'
-        };
+        const config = typeConfig[type] || typeConfig.info;
+        
+        toastIcon.className = `bi bi-${config.icon} me-2`;
+        toastIcon.style.color = config.color;
+        toastHeader.textContent = config.title;
+        toastBody.textContent = message;
+        
+        toast.style.borderColor = config.color;
+        toast.style.boxShadow = `0 0 10px ${config.color}`;
 
-        toastContainer.innerHTML = `
-            <div class="toast show" role="alert">
-                <div class="toast-header bg-${colorMap[type]} text-white">
-                    <i class="bi bi-${iconMap[type]} me-2"></i>
-                    <strong class="me-auto">VX200 Controller</strong>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
-                </div>
-                <div class="toast-body">
-                    ${message}
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(toastContainer);
-
-        // Auto-remover después de 5 segundos
-        setTimeout(() => {
-            toastContainer.remove();
-        }, 5000);
-
-        // Manejar click del botón cerrar
-        toastContainer.querySelector('.btn-close').addEventListener('click', () => {
-            toastContainer.remove();
-        });
+        // Mostrar toast
+        const bsToast = new bootstrap.Toast(toast);
+        bsToast.show();
     }
 
-// Toggle de servicios
-toggleService(service) {
-    console.log(`🔄 Toggle service: ${service}`);
-    
-    if (!this.isConnected) {
-        this.showNotification('error', 'No hay conexión con el servidor');
-        return;
-    }
-
-    this.socket.emit('execute_command', { command: `${service}_toggle` });
-    this.addLog('info', `Cambiando estado de ${service}`);
-}
-
-// Confirmar acciones críticas
-confirmAction(action) {
-    const messages = {
-        shutdown: '¿Está seguro que desea apagar el sistema?',
-        restart: '¿Está seguro que desea reiniciar el sistema?'
-    };
-
-    const icons = {
-        shutdown: 'power',
-        restart: 'arrow-clockwise'
-    };
-
-    if (confirm(messages[action])) {
-        console.log(`🚨 Acción confirmada: ${action}`);
-        
-        if (!this.isConnected) {
-            this.showNotification('error', 'No hay conexión con el servidor');
-            return;
-        }
-
-        this.socket.emit('execute_command', { command: `system_${action}` });
-        this.addLog('warning', `Ejecutando ${action} del sistema`);
-        
-        // Mostrar notificación inmediata
-        this.showNotification('warning', `${action} del sistema iniciado...`);
-        
-        // Deshabilitar botones temporalmente
-        const btn = document.getElementById(`${action}-btn`);
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = `<i class="bi bi-${icons[action]}"></i> ${action === 'shutdown' ? 'Apagando...' : 'Reiniciando...'}`;
+    // Limpiar log
+    clearLog() {
+        const logContainer = document.getElementById('log-container');
+        if (logContainer) {
+            logContainer.innerHTML = '';
+            this.logEntries = [];
+            this.addLog('info', 'LOG CLEARED');
         }
     }
-}
-
-// Actualizar estado de botones según el sistema
-updateServiceButtons(status) {
-    // Botón de audio
-    const audioBtn = document.getElementById('audio-toggle-btn');
-    if (audioBtn) {
-        const isActive = status.audio.status === 'active';
-        audioBtn.className = `btn ${isActive ? 'btn-success' : 'btn-outline-success'} w-100 mb-2`;
-        audioBtn.innerHTML = `<i class="bi bi-volume-${isActive ? 'up' : 'mute'}"></i> Audio ${isActive ? 'ON' : 'OFF'}`;
-    }
-
-    // Botón de baliza
-    const balizaBtn = document.getElementById('baliza-toggle-btn');
-    if (balizaBtn) {
-        const isRunning = status.baliza.running;
-        balizaBtn.className = `btn ${isRunning ? 'btn-info' : 'btn-outline-info'} w-100 mb-2`;
-        balizaBtn.innerHTML = `<i class="bi bi-broadcast${isRunning ? '' : '-pin'}"></i> Baliza ${isRunning ? 'ON' : 'OFF'}`;
-    }
-}
-
-/**
- * Actualizar estado del roger beep en el panel
- */
-updateRogerBeepStatus(rogerBeepConfig) {
-    if (!rogerBeepConfig) return;
-
-    // Actualizar tipo
-    const typeElement = document.getElementById('roger-beep-type');
-    if (typeElement) {
-        typeElement.textContent = rogerBeepConfig.type || 'Classic';
-        typeElement.className = `badge ${this.getRogerBeepTypeColor(rogerBeepConfig.type)}`;
-    }
-
-    // Actualizar estado
-    const statusElement = document.getElementById('roger-beep-status');
-    if (statusElement) {
-        statusElement.textContent = rogerBeepConfig.enabled ? 'Habilitado' : 'Deshabilitado';
-        statusElement.className = `badge ${rogerBeepConfig.enabled ? 'bg-success' : 'bg-danger'}`;
-    }
-
-    // Actualizar volumen
-    const volumeElement = document.getElementById('roger-beep-volume');
-    if (volumeElement) {
-        volumeElement.textContent = `${Math.round((rogerBeepConfig.volume || 0.7) * 100)}%`;
-    }
-
-    // Actualizar duración
-    const durationElement = document.getElementById('roger-beep-duration');
-    if (durationElement) {
-        durationElement.textContent = `${rogerBeepConfig.duration || 250}ms`;
-    }
-
-    // Actualizar botón toggle
-    const toggleBtn = document.getElementById('roger-beep-toggle-btn');
-    if (toggleBtn) {
-        const isEnabled = rogerBeepConfig.enabled;
-        toggleBtn.className = `btn ${isEnabled ? 'btn-primary' : 'btn-outline-primary'} w-100 mb-2`;
-        toggleBtn.innerHTML = `<i class="bi bi-power"></i> ${isEnabled ? 'ON' : 'OFF'}`;
-    }
-}
-
-/**
- * Obtener color del badge según el tipo de roger beep
- */
-getRogerBeepTypeColor(type) {
-    const colors = {
-        'classic': 'bg-primary',
-        'motorola': 'bg-warning',
-        'kenwood': 'bg-info',
-        'custom': 'bg-secondary'
-    };
-    return colors[type] || 'bg-primary';
-}
-
-/**
- * Manejar cambio de configuración de roger beep
- */
-handleRogerBeepConfigChanged(data) {
-    console.log('🔊 Configuración roger beep actualizada:', data.config);
-    this.updateRogerBeepStatus(data.config);
-    this.addLog('info', `Roger beep configurado: ${data.config.type} (${data.config.enabled ? 'ON' : 'OFF'})`);
-}
-
-/**
- * Manejar test de roger beep
- */
-handleRogerBeepTest(data) {
-    console.log('🧪 Test roger beep:', data.type);
-    this.addLog('info', `Test roger beep ${data.type || 'actual'} ejecutado`);
-    
-    // Efecto visual en el botón de test
-    const testBtn = document.querySelector('button[onclick="executeCommand(\'roger_beep_test\')"]');
-    if (testBtn) {
-        testBtn.classList.add('pulse');
-        setTimeout(() => {
-            testBtn.classList.remove('pulse');
-        }, 1000);
-    }
-}
-
-/**
- * Configurar roger beep desde panel web
- */
-async configureRogerBeep(config) {
-    try {
-        const response = await fetch('/api/roger-beep/config', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(config)
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-            this.showNotification('success', 'Roger Beep configurado correctamente');
-            this.addLog('info', 'Configuración roger beep actualizada desde panel web');
-            
-            // Refrescar estado
-            this.refreshSystemStatus();
-        } else {
-            this.showNotification('error', result.message);
-        }
-    } catch (error) {
-        console.error('Error configurando roger beep:', error);
-        this.showNotification('error', 'Error configurando roger beep');
-    }
-}
-
-/**
- * Test manual de roger beep
- */
-async testRogerBeep(type = null) {
-    try {
-        const response = await fetch('/api/roger-beep/test', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ type })
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-            this.showNotification('info', result.message);
-            this.addLog('info', `Test roger beep ${type || 'actual'} desde panel web`);
-        } else {
-            this.showNotification('error', result.message);
-        }
-    } catch (error) {
-        console.error('Error en test roger beep:', error);
-        this.showNotification('error', 'Error ejecutando test');
-    }
-}
-
-/**
- * Obtener estado actual del roger beep
- */
-async getRogerBeepStatus() {
-    try {
-        const response = await fetch('/api/roger-beep/status');
-        const result = await response.json();
-        
-        if (result.success) {
-            this.updateRogerBeepStatus(result.data);
-            return result.data;
-        } else {
-            console.error('Error obteniendo estado roger beep:', result.message);
-        }
-    } catch (error) {
-        console.error('Error en getRogerBeepStatus:', error);
-    }
-    return null;
-}
-
 }
 
 // Funciones globales para los botones
 function executeCommand(command) {
-    window.vx200Panel.executeCommand(command);
+    if (window.vx200Terminal) {
+        window.vx200Terminal.executeCommand(command);
+    }
+}
+
+function toggleService(service) {
+    if (window.vx200Terminal) {
+        window.vx200Terminal.toggleService(service);
+    }
+}
+
+function confirmAction(action) {
+    if (window.vx200Terminal) {
+        window.vx200Terminal.confirmAction(action);
+    }
+}
+
+function clearLog() {
+    if (window.vx200Terminal) {
+        window.vx200Terminal.clearLog();
+    }
 }
 
 // Inicializar cuando se carga la página
 document.addEventListener('DOMContentLoaded', function() {
-    window.vx200Panel = new VX200Panel();
+    console.log('🚀 Iniciando VX200 Terminal Interface...');
+    window.vx200Terminal = new VX200TerminalPanel();
+    
+    // Efecto de boot terminal
+    setTimeout(() => {
+        const bootMessages = [
+            'SYSTEM BOOT COMPLETE',
+            'INITIALIZING VX200 CONTROLLER',
+            'LOADING MODULES...',
+            'DTMF DECODER: READY',
+            'AUDIO MANAGER: READY',
+            'BEACON SYSTEM: READY',
+            'ROGER BEEP: READY',
+            'TERMINAL READY FOR INPUT'
+        ];
+        
+        bootMessages.forEach((msg, index) => {
+            setTimeout(() => {
+                window.vx200Terminal.addLog('info', msg);
+            }, index * 200);
+        });
+    }, 1000);
 });
-
-function toggleService(service) {
-    window.vx200Panel.toggleService(service);
-}
-
-function confirmAction(action) {
-    window.vx200Panel.confirmAction(action);
-}
-
-
-function configureRogerBeep(config) {
-    if (window.vx200Panel) {
-        window.vx200Panel.configureRogerBeep(config);
-    }
-}
-
-function testRogerBeep(type) {
-    if (window.vx200Panel) {
-        window.vx200Panel.testRogerBeep(type);
-    }
-}
-
-
-function getRogerBeepStatus() {
-    if (window.vx200Panel) {
-        return window.vx200Panel.getRogerBeepStatus();
-    }
-    return null;
-}
