@@ -4,29 +4,151 @@ const DateTime = require('./modules/datetime');
 const AIChat = require('./modules/aiChat');
 const SMS = require('./modules/sms');
 const WebServer = require('./web/server');
-const config = require('../config/config.json');
+const { MODULE_STATES, DELAYS, ERROR_MESSAGES, WEB_SERVER } = require('./constants');
+const { delay, createLogger, sanitizeTextForTTS } = require('./utils');
+const fs = require('fs');
+const path = require('path');
 
 class VX200Controller {
     constructor() {
-        console.log('🚀 Iniciando VX200 Controller...');
+        this.logger = createLogger('[Controller]');
+        this.state = MODULE_STATES.IDLE;
+        
+        this.logger.info('Iniciando VX200 Controller...');
+        
+        // Configuración del sistema
+        this.config = this.loadConfiguration();
         
         // Componentes principales
-        this.audio = new AudioManager();
+        this.audio = null;
         this.modules = {};
-        this.webServer = new WebServer(this);
+        this.webServer = null;
         
         // Estado del sistema
         this.isRunning = false;
         this.startTime = Date.now();
+        this.initializationErrors = [];
         
-        this.initializeModules();
-        this.setupEventHandlers();
-        this.configureFromFile();
+        // Contadores y métricas
+        this.stats = {
+            dtmfCount: 0,
+            commandsExecuted: 0,
+            errors: 0,
+            uptime: 0
+        };
+        
+        // La inicialización se hace de forma asíncrona en el método start()
+        this.logger.debug('Constructor completado, inicialización pendiente...');
+    }
+    
+    /**
+     * Cargar configuración del sistema
+     */
+    loadConfiguration() {
+        try {
+            const configPath = path.join(__dirname, '../config/config.json');
+            
+            if (fs.existsSync(configPath)) {
+                const configData = fs.readFileSync(configPath, 'utf8');
+                const config = JSON.parse(configData);
+                this.logger.info('Configuración cargada desde config.json');
+                return config;
+            } else {
+                this.logger.warn('config.json no encontrado, usando configuración por defecto');
+                return this.getDefaultConfig();
+            }
+        } catch (error) {
+            this.logger.error('Error cargando configuración:', error.message);
+            return this.getDefaultConfig();
+        }
+    }
+    
+    /**
+     * Configuración por defecto
+     */
+    getDefaultConfig() {
+        return {
+            callsign: 'LU5MCD',
+            version: '2.0',
+            rogerBeep: {
+                enabled: true,
+                type: 'kenwood',
+                volume: 0.7,
+                duration: 250
+            },
+            baliza: {
+                enabled: true,
+                interval: 15,
+                message: 'LU5MCD Repetidora Simplex',
+                tone: {
+                    frequency: 1000,
+                    duration: 500,
+                    volume: 0.7
+                }
+            }
+        };
+    }
+    
+    /**
+     * Inicializar todos los componentes del sistema
+     */
+    async initializeSystem() {
+        try {
+            this.state = MODULE_STATES.ACTIVE;
+            
+            this.logger.debug('Inicializando AudioManager...');
+            await this.initializeAudio();
+            
+            this.logger.debug('Inicializando Módulos...');
+            await this.initializeModules();
+            
+            this.logger.debug('Inicializando WebServer...');
+            await this.initializeWebServer();
+            
+            this.logger.debug('Configurando event handlers...');
+            this.setupEventHandlers();
+            
+            this.logger.debug('Configurando desde archivo...');
+            this.configureFromFile();
+            
+            if (this.initializationErrors.length > 0) {
+                this.logger.warn(`Sistema inicializado con ${this.initializationErrors.length} errores: ${this.initializationErrors.join(', ')}`);
+                this.state = MODULE_STATES.ERROR;
+            } else {
+                this.logger.info('Sistema inicializado correctamente');
+            }
+            
+        } catch (error) {
+            this.logger.error('Error crítico durante inicialización:', error.message);
+            this.logger.error('Stack trace:', error.stack);
+            this.state = MODULE_STATES.ERROR;
+        }
     }
 
-    // ===== INICIALIZACIÓN =====
+    // ===== INICIALIZACIÓN DE COMPONENTES =====
+    
+    /**
+     * Inicializar AudioManager
+     */
+    async initializeAudio() {
+        try {
+            this.audio = new AudioManager();
+            
+            if (this.audio.start()) {
+                this.logger.info('AudioManager inicializado correctamente');
+            } else {
+                throw new Error('AudioManager no pudo iniciarse');
+            }
+        } catch (error) {
+            this.logger.error('Error inicializando AudioManager:', error.message);
+            this.initializationErrors.push('AudioManager');
+        }
+    }
 
-    initializeModules() {
+    /**
+     * Inicializar módulos del sistema
+     */
+    async initializeModules() {
         this.modules.baliza = new Baliza(this.audio);
         this.modules.datetime = new DateTime(this.audio);
         this.modules.aiChat = new AIChat(this.audio);
@@ -35,15 +157,31 @@ class VX200Controller {
         console.log('✅ Módulos inicializados');
     }
 
+    /**
+     * Inicializar WebServer
+     */
+    async initializeWebServer() {
+        try {
+            this.logger.debug('Intentando inicializar WebServer...');
+            this.webServer = new WebServer(this);
+            this.logger.info('WebServer inicializado correctamente');
+        } catch (error) {
+            this.logger.error('Error inicializando WebServer:', error.message);
+            this.logger.error('Stack trace:', error.stack);
+            this.initializationErrors.push('WebServer');
+            this.webServer = null;
+        }
+    }
+
     configureFromFile() {
         // Configurar Roger Beep desde config.json
-        if (config.rogerBeep) {
-            this.audio.configureRogerBeep(config.rogerBeep);
+        if (this.config.rogerBeep) {
+            this.audio.configureRogerBeep(this.config.rogerBeep);
         }
         
         // Configurar baliza desde config.json
-        if (config.baliza) {
-            this.modules.baliza.configure(config.baliza);
+        if (this.config.baliza) {
+            this.modules.baliza.configure(this.config.baliza);
         }
     }
 
@@ -268,40 +406,82 @@ class VX200Controller {
         this.modules.baliza.configure(newConfig);
         
         // Actualizar config en memoria
-        if (config.baliza) {
-            Object.assign(config.baliza, newConfig);
+        if (this.config.baliza) {
+            Object.assign(this.config.baliza, newConfig);
         }
     }
 
     // ===== CONTROL DEL SISTEMA =====
 
-    start() {
-        this.audio.start();
-        this.webServer.start();
-        
-        // Iniciar baliza si está habilitada
-        if (config.baliza?.enabled) {
-            this.modules.baliza.start();
+    async start() {
+        if (this.isRunning) {
+            this.logger.warn('Sistema ya está ejecutándose');
+            return;
         }
         
-        this.isRunning = true;
-        
-        this.printStartupInfo();
+        try {
+            this.logger.info('Iniciando sistema...');
+            
+            // Primero inicializar todos los componentes
+            await this.initializeSystem();
+            
+            // Iniciar AudioManager si no está ya iniciado
+            if (this.audio && !this.audio.isRecording) {
+                const audioStarted = this.audio.start();
+                if (!audioStarted) {
+                    throw new Error('No se pudo iniciar AudioManager');
+                }
+            }
+            
+            // Iniciar WebServer
+            if (this.webServer) {
+                try {
+                    await this.webServer.start();
+                    this.logger.info('WebServer iniciado exitosamente');
+                } catch (error) {
+                    this.logger.error('Error iniciando WebServer:', error.message);
+                    throw error;
+                }
+            } else {
+                this.logger.error('WebServer no está inicializado');
+                throw new Error('WebServer no está inicializado');
+            }
+            
+            // Iniciar baliza si está habilitada
+            if (this.config.baliza?.enabled && this.modules.baliza) {
+                const balizaStarted = this.modules.baliza.start();
+                if (balizaStarted) {
+                    this.logger.info('Baliza automática iniciada');
+                } else {
+                    this.logger.warn('No se pudo iniciar baliza automática');
+                }
+            }
+            
+            this.isRunning = true;
+            this.state = MODULE_STATES.ACTIVE;
+            
+            this.printStartupInfo();
+            
+        } catch (error) {
+            this.logger.error('Error iniciando sistema:', error.message);
+            this.state = MODULE_STATES.ERROR;
+            throw error;
+        }
     }
 
     printStartupInfo() {
         console.log('🎉 Sistema iniciado correctamente');
         console.log('='.repeat(50));
         console.log(`🌐 Panel web: http://localhost:3000`);
-        console.log(`📡 Indicativo: ${config.callsign || 'VX200'}`);
+        console.log(`📡 Indicativo: ${this.config.callsign || 'VX200'}`);
         console.log('📞 Comandos DTMF:');
         console.log('   *1 = Fecha y hora');
         console.log('   *2 = IA Chat (simulado)');
         console.log('   *3 = SMS');
         console.log('   *9 = Baliza manual');
-        console.log(`📡 Baliza: ${config.baliza?.enabled ? 
-            `Cada ${config.baliza.interval} min` : 'Deshabilitada'}`);
-        console.log(`🔊 Roger Beep: ${config.rogerBeep?.enabled ? 'ON' : 'OFF'} (Kenwood)`);
+        console.log(`📡 Baliza: ${this.config.baliza?.enabled ? 
+            `Cada ${this.config.baliza.interval} min` : 'Deshabilitada'}`);
+        console.log(`🔊 Roger Beep: ${this.config.rogerBeep?.enabled ? 'ON' : 'OFF'} (Kenwood)`);
         console.log('='.repeat(50));
     }
 
@@ -397,8 +577,8 @@ class VX200Controller {
                 uptime: process.uptime(),
                 memory: process.memoryUsage(),
                 pid: process.pid,
-                callsign: config.callsign || 'VX200',
-                version: config.version || '2.0'
+                callsign: this.config.callsign || 'VX200',
+                version: this.config.version || '2.0'
             },
             services: {
                 audio: this.audio.getStatus().audio.isRecording,
@@ -523,14 +703,14 @@ function setupSignalHandlers() {
 
 // ===== INICIO DEL SISTEMA =====
 
-function main() {
+async function main() {
     try {
         setupSignalHandlers();
         
         controller = new VX200Controller();
         global.vx200Controller = controller; // Para acceso global
         
-        controller.start();
+        await controller.start();
         
     } catch (error) {
         console.error('❌ Error crítico al iniciar:', error);

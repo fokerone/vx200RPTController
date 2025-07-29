@@ -1,28 +1,57 @@
 const fs = require('fs');
 const path = require('path');
+const { ROGER_BEEP, MODULE_STATES, DELAYS } = require('../constants');
+const { delay, createLogger, validateVolume } = require('../utils');
 
 class RogerBeep {
     constructor(audioManager) {
         this.audioManager = audioManager;
-        this.enabled = true; // Por defecto activo
+        this.logger = createLogger('[RogerBeep]');
+        this.state = MODULE_STATES.IDLE;
+        this.enabled = true;
         
-        // Configuración simplificada - solo tipo Kenwood
+        // Configuración usando constantes del sistema
         this.config = {
             type: 'kenwood',
-            volume: 0.7,
-            duration: 250,
-            delay: 100,
-            frequencies: [1500, 1200, 1000] // Tres tonos descendentes tipo Kenwood
+            volume: ROGER_BEEP.DEFAULT_VOLUME,
+            duration: ROGER_BEEP.DEFAULT_DURATION,
+            delay: ROGER_BEEP.DEFAULT_DELAY,
+            frequencies: [...ROGER_BEEP.KENWOOD_FREQUENCIES] // Copia del array
         };
         
-        console.log('🔊 Roger Beep inicializado (Tipo: Kenwood, Estado: ACTIVO)');
+        this.isPlaying = false;
+        this.validateConfiguration();
+        
+        this.logger.info(`Roger Beep inicializado (Tipo: Kenwood, Estado: ${this.enabled ? 'ACTIVO' : 'INACTIVO'})`);
+    }
+
+    /**
+     * Validar configuración del módulo
+     */
+    validateConfiguration() {
+        if (!this.audioManager) {
+            this.logger.error('AudioManager no disponible');
+            this.state = MODULE_STATES.ERROR;
+            return false;
+        }
+
+        // Validar volumen
+        this.config.volume = validateVolume(this.config.volume);
+        
+        // Validar duración
+        if (this.config.duration < ROGER_BEEP.MIN_DURATION || this.config.duration > ROGER_BEEP.MAX_DURATION) {
+            this.logger.warn(`Duración fuera de rango, usando valor por defecto: ${ROGER_BEEP.DEFAULT_DURATION}ms`);
+            this.config.duration = ROGER_BEEP.DEFAULT_DURATION;
+        }
+
+        return true;
     }
 
     /**
      * Verificar si el roger beep está habilitado
      */
     isEnabled() {
-        return this.enabled;
+        return this.enabled && this.state !== MODULE_STATES.ERROR;
     }
 
     /**
@@ -30,22 +59,35 @@ class RogerBeep {
      * Se ejecuta automáticamente al final de cada transmisión
      */
     async play() {
-        if (!this.enabled) {
+        if (!this.isEnabled()) {
+            this.logger.debug('Roger Beep deshabilitado, omitiendo');
             return;
         }
 
-        console.log('📻 Ejecutando Roger Beep (Kenwood)');
+        if (this.isPlaying) {
+            this.logger.warn('Roger Beep ya reproduciéndose, omitiendo');
+            return;
+        }
+
+        this.isPlaying = true;
+        this.state = MODULE_STATES.ACTIVE;
+        this.logger.info('Ejecutando Roger Beep (Kenwood)');
 
         try {
             // Delay antes del beep
             if (this.config.delay > 0) {
-                await this.delay(this.config.delay);
+                await delay(this.config.delay);
             }
 
             await this.playKenwoodBeep();
+            this.logger.debug('Roger Beep completado exitosamente');
 
         } catch (error) {
-            console.log(`⚠️  Error Roger Beep: ${error.message}`);
+            this.logger.error('Error ejecutando Roger Beep:', error.message);
+            this.state = MODULE_STATES.ERROR;
+        } finally {
+            this.isPlaying = false;
+            this.state = MODULE_STATES.IDLE;
         }
     }
 
@@ -54,54 +96,51 @@ class RogerBeep {
      */
     async playKenwoodBeep() {
         const [freq1, freq2, freq3] = this.config.frequencies;
-        const duration = this.config.duration / 3;
+        const toneDuration = Math.floor(this.config.duration / 3);
+        const pauseDuration = DELAYS.SHORT / 10; // 10ms entre tonos
         
         try {
-            // Primer tono (agudo)
-            await this.playTone(freq1, duration, this.config.volume);
-            await this.delay(10);
+            // Primer tono (agudo) - 100% volumen
+            await this.playTone(freq1, toneDuration, this.config.volume);
+            await delay(pauseDuration);
             
-            // Segundo tono (medio)
-            await this.playTone(freq2, duration, this.config.volume * 0.9);
-            await this.delay(10);
+            // Segundo tono (medio) - 90% volumen
+            await this.playTone(freq2, toneDuration, this.config.volume * 0.9);
+            await delay(pauseDuration);
             
-            // Tercer tono (grave)
-            await this.playTone(freq3, duration, this.config.volume * 0.8);
+            // Tercer tono (grave) - 80% volumen para efecto descendente
+            await this.playTone(freq3, toneDuration, this.config.volume * 0.8);
             
         } catch (error) {
-            console.log('⚠️  Error en Kenwood beep:', error.message);
+            this.logger.error('Error en secuencia Kenwood:', error.message);
+            throw error; // Re-lanzar para manejo en play()
         }
     }
 
     /**
      * Reproducir tono simple
      */
-    async playTone(frequency, duration, volume = 0.5) {
-        try {
-            if (!this.audioManager || typeof this.audioManager.playTone !== 'function') {
-                console.log('⚠️  AudioManager no disponible para reproducir tono');
-                return;
-            }
-
-            await this.audioManager.playTone(frequency, duration, volume);
-        } catch (error) {
-            console.log('⚠️  Error playTone en RogerBeep:', error.message);
+    async playTone(frequency, duration, volume = ROGER_BEEP.DEFAULT_VOLUME) {
+        if (!this.audioManager || typeof this.audioManager.playTone !== 'function') {
+            throw new Error('AudioManager no disponible para reproducir tono');
         }
-    }
 
-    /**
-     * Delay/pausa
-     */
-    async delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        const validatedVolume = validateVolume(volume);
+        this.logger.debug(`Reproduciendo tono: ${frequency}Hz, ${duration}ms, vol: ${Math.round(validatedVolume * 100)}%`);
+        
+        await this.audioManager.playTone(frequency, duration, validatedVolume);
     }
 
     /**
      * Habilitar/deshabilitar roger beep desde configuración
      */
     setEnabled(enabled) {
+        const previousState = this.enabled;
         this.enabled = Boolean(enabled);
-        console.log(`${this.enabled ? '✅' : '❌'} Roger Beep ${this.enabled ? 'HABILITADO' : 'DESHABILITADO'} desde configuración`);
+        
+        if (previousState !== this.enabled) {
+            this.logger.info(`Roger Beep ${this.enabled ? 'HABILITADO' : 'DESHABILITADO'} desde configuración`);
+        }
     }
 
     /**
@@ -113,11 +152,15 @@ class RogerBeep {
     }
 
     /**
-     * Configurar volumen (solo desde configuración)
+     * Configurar volumen (validado)
      */
     setVolume(volume) {
-        this.config.volume = Math.max(0.1, Math.min(1.0, volume));
-        console.log(`🔊 Volumen Roger Beep: ${Math.round(this.config.volume * 100)}%`);
+        const previousVolume = this.config.volume;
+        this.config.volume = validateVolume(volume);
+        
+        if (previousVolume !== this.config.volume) {
+            this.logger.info(`Volumen Roger Beep actualizado: ${Math.round(this.config.volume * 100)}%`);
+        }
     }
 
     /**
@@ -126,11 +169,13 @@ class RogerBeep {
     getConfig() {
         return {
             enabled: this.enabled,
+            state: this.state,
             type: this.config.type,
             volume: this.config.volume,
             duration: this.config.duration,
             delay: this.config.delay,
-            frequencies: this.config.frequencies
+            frequencies: [...this.config.frequencies], // Copia del array
+            isPlaying: this.isPlaying
         };
     }
 
@@ -138,20 +183,24 @@ class RogerBeep {
      * Probar roger beep (solo desde panel web)
      */
     async test() {
-        console.log('🧪 Test Roger Beep Kenwood...');
+        this.logger.info('Iniciando test Roger Beep Kenwood...');
         const wasEnabled = this.enabled;
+        const originalState = this.state;
         
         // Forzar habilitado para el test
         this.enabled = true;
         
         try {
             await this.play();
-            console.log('✅ Test Roger Beep completado');
+            this.logger.info('Test Roger Beep completado exitosamente');
+            return { success: true, message: 'Test ejecutado correctamente' };
         } catch (error) {
-            console.log('❌ Error en test Roger Beep:', error.message);
+            this.logger.error('Error en test Roger Beep:', error.message);
+            return { success: false, message: `Error en test: ${error.message}` };
         } finally {
             // Restaurar estado original
             this.enabled = wasEnabled;
+            this.state = originalState;
         }
     }
 
@@ -187,39 +236,56 @@ class RogerBeep {
      * Esta función debe ser llamada desde el audioManager al finalizar cualquier transmisión
      */
     async executeAfterTransmission() {
-        if (!this.enabled) {
+        if (!this.isEnabled()) {
+            this.logger.debug('Roger Beep deshabilitado para post-transmisión');
             return;
         }
 
-        console.log('🎯 Ejecutando Roger Beep post-transmisión');
-        
-        // Pequeña pausa antes del roger beep
-        await this.delay(50);
+        this.logger.info('Ejecutando Roger Beep post-transmisión');
         
         try {
+            // Pequeña pausa antes del roger beep
+            await delay(DELAYS.SHORT / 2); // 50ms
             await this.play();
         } catch (error) {
-            console.log('⚠️  Error ejecutando Roger Beep post-transmisión:', error.message);
+            this.logger.error('Error ejecutando Roger Beep post-transmisión:', error.message);
         }
     }
 
     /**
-     * Cargar configuración desde archivo o base de datos
+     * Cargar configuración desde archivo
      */
     loadConfig(config) {
-        if (typeof config.enabled === 'boolean') {
+        if (!config || typeof config !== 'object') {
+            this.logger.warn('Configuración inválida recibida');
+            return;
+        }
+
+        let changes = [];
+
+        if (typeof config.enabled === 'boolean' && config.enabled !== this.enabled) {
             this.setEnabled(config.enabled);
+            changes.push(`enabled: ${config.enabled}`);
         }
         
-        if (typeof config.volume === 'number') {
+        if (typeof config.volume === 'number' && config.volume !== this.config.volume) {
             this.setVolume(config.volume);
+            changes.push(`volume: ${Math.round(config.volume * 100)}%`);
+        }
+
+        if (typeof config.duration === 'number' && config.duration !== this.config.duration) {
+            this.config.duration = Math.max(ROGER_BEEP.MIN_DURATION, 
+                                          Math.min(ROGER_BEEP.MAX_DURATION, config.duration));
+            changes.push(`duration: ${this.config.duration}ms`);
         }
         
-        console.log('📁 Configuración Roger Beep cargada desde archivo');
+        if (changes.length > 0) {
+            this.logger.info(`Configuración cargada: ${changes.join(', ')}`);
+        }
     }
 
     /**
-     * Validar configuración
+     * Validar configuración completa
      */
     validateConfig() {
         const issues = [];
@@ -228,12 +294,16 @@ class RogerBeep {
             issues.push('AudioManager no está disponible');
         }
 
-        if (this.config.volume < 0.1 || this.config.volume > 1.0) {
-            issues.push(`Volumen fuera de rango: ${this.config.volume}`);
+        if (this.config.volume < ROGER_BEEP.MIN_VOLUME || this.config.volume > ROGER_BEEP.MAX_VOLUME) {
+            issues.push(`Volumen fuera de rango: ${this.config.volume} (${ROGER_BEEP.MIN_VOLUME}-${ROGER_BEEP.MAX_VOLUME})`);
         }
 
-        if (this.config.duration < 50 || this.config.duration > 1000) {
-            issues.push(`Duración fuera de rango: ${this.config.duration}ms`);
+        if (this.config.duration < ROGER_BEEP.MIN_DURATION || this.config.duration > ROGER_BEEP.MAX_DURATION) {
+            issues.push(`Duración fuera de rango: ${this.config.duration}ms (${ROGER_BEEP.MIN_DURATION}-${ROGER_BEEP.MAX_DURATION})`);
+        }
+
+        if (!Array.isArray(this.config.frequencies) || this.config.frequencies.length !== 3) {
+            issues.push('Frecuencias Kenwood inválidas (se requieren 3 frecuencias)');
         }
 
         return {
@@ -248,13 +318,26 @@ class RogerBeep {
     reset() {
         this.config = {
             type: 'kenwood',
-            volume: 0.7,
-            duration: 250,
-            delay: 100,
-            frequencies: [1500, 1200, 1000]
+            volume: ROGER_BEEP.DEFAULT_VOLUME,
+            duration: ROGER_BEEP.DEFAULT_DURATION,
+            delay: ROGER_BEEP.DEFAULT_DELAY,
+            frequencies: [...ROGER_BEEP.KENWOOD_FREQUENCIES]
         };
         this.enabled = true;
-        console.log('🔄 Roger Beep reseteado a configuración Kenwood por defecto');
+        this.state = MODULE_STATES.IDLE;
+        this.isPlaying = false;
+        
+        this.logger.info('Roger Beep reseteado a configuración Kenwood por defecto');
+    }
+    
+    /**
+     * Destructor - limpiar recursos
+     */
+    destroy() {
+        this.state = MODULE_STATES.DISABLED;
+        this.enabled = false;
+        this.isPlaying = false;
+        this.logger.info('Roger Beep destruido');
     }
 }
 

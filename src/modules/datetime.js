@@ -1,8 +1,13 @@
 const moment = require('moment');
+const { delay, createLogger, sanitizeTextForTTS } = require('../utils');
+const { MODULE_STATES } = require('../constants');
 
 class DateTime {
     constructor(audioManager) {
         this.audioManager = audioManager;
+        this.logger = createLogger('[DateTime]');
+        this.state = MODULE_STATES.IDLE;
+        
         this.config = {
             enabled: true,
             format: {
@@ -15,24 +20,33 @@ class DateTime {
         // Configurar moment en español
         moment.locale('es');
         
-        console.log('🕐 Módulo DateTime inicializado');
+        this.logger.info('Módulo DateTime inicializado');
     }
 
     /**
      * Ejecutar cuando se recibe comando DTMF
      */
     async execute(command) {
-        console.log(`📞 DateTime ejecutado por comando: ${command}`);
+        this.logger.info(`Ejecutado por comando: ${command}`);
         
         if (!this.config.enabled) {
-            console.log('⚠️  Módulo DateTime deshabilitado');
+            this.logger.warn('Módulo deshabilitado');
+            return;
+        }
+
+        if (this.state !== MODULE_STATES.IDLE) {
+            this.logger.warn('Módulo ocupado');
             return;
         }
 
         try {
+            this.state = MODULE_STATES.ACTIVE;
             await this.speakDateTime();
         } catch (error) {
-            console.error('❌ Error en DateTime:', error);
+            this.logger.error('Error ejecutando DateTime:', error.message);
+            this.state = MODULE_STATES.ERROR;
+        } finally {
+            this.state = MODULE_STATES.IDLE;
         }
     }
 
@@ -47,11 +61,11 @@ class DateTime {
         const hora = now.format(this.config.format.time);
         
         // Tono de confirmación
-        this.audioManager.playTone(1200, 200, 0.6);
-        await this.delay(300);
+        await this.audioManager.playTone(1200, 200, 0.6);
+        await delay(300);
 
-        // Mensaje completo
-        const mensaje = `Fecha y hora actual. ${fecha}. ${hora}`;
+        // Mensaje completo - sanitizar para TTS
+        const mensaje = sanitizeTextForTTS(`Fecha y hora actual. ${fecha}. ${hora}`);
         await this.audioManager.speak(mensaje, { voice: 'es' });
     }
 
@@ -72,7 +86,7 @@ class DateTime {
      */
     configure(newConfig) {
         this.config = { ...this.config, ...newConfig };
-        console.log('⚙️  DateTime configurado');
+        this.logger.info('Configuración actualizada');
     }
 
     /**
@@ -81,6 +95,7 @@ class DateTime {
     getStatus() {
         return {
             enabled: this.config.enabled,
+            state: this.state,
             locale: this.config.locale,
             format: this.config.format,
             currentDateTime: this.getDateTimeText()
@@ -88,17 +103,11 @@ class DateTime {
     }
 
     /**
-     * Delay helper
-     */
-    delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
      * Destructor
      */
     destroy() {
-        console.log('🗑️  Módulo DateTime destruido');
+        this.state = MODULE_STATES.DISABLED;
+        this.logger.info('Módulo DateTime destruido');
     }
 }
 

@@ -1,49 +1,56 @@
 const fs = require('fs');
 const path = require('path');
+const { SMS_STATES, VALIDATION, ERROR_MESSAGES } = require('../constants');
+const { delay, createLogger, validatePhoneNumber, generateSessionId, sanitizeTextForTTS } = require('../utils');
 
 class SMS {
     constructor(audioManager) {
         this.audioManager = audioManager;
+        this.logger = createLogger('[SMS]');
+        
         this.config = {
             enabled: true,
-            provider: 'twilio', // 'twilio', 'aws', 'local'
-            recordingDuration: 15, // segundos para grabar mensaje
-            maxMessageLength: 160,
-            // Configuración Twilio (ejemplo)
-            accountSid: process.env.TWILIO_ACCOUNT_SID,
-            authToken: process.env.TWILIO_AUTH_TOKEN,
-            fromNumber: process.env.TWILIO_FROM_NUMBER
+            provider: 'twilio',
+            recordingDuration: VALIDATION.MAX_RECORDING_DURATION,
+            maxMessageLength: VALIDATION.MAX_SMS_LENGTH,
+            // Configuración segura desde variables de entorno
+            accountSid: process.env.TWILIO_ACCOUNT_SID || null,
+            authToken: process.env.TWILIO_AUTH_TOKEN || null,
+            fromNumber: process.env.TWILIO_FROM_NUMBER || null
         };
         
         this.currentSession = null;
-        this.sessionState = 'idle'; // 'idle', 'getting_number', 'recording_message', 'confirming'
+        this.sessionState = SMS_STATES.IDLE;
         this.lastProcessedSequence = '';
         this.processing = false;
+        this.sessionId = null;
         
-        console.log('📱 Módulo SMS inicializado');
+        this.logger.info('Módulo SMS inicializado');
     }
 
     /**
      * Ejecutar cuando se recibe comando DTMF *3
      */
     async execute(command) {
-        console.log(`📞 SMS ejecutado por comando: ${command}`);
+        this.logger.info(`Ejecutado por comando: ${command}`);
         
         if (!this.config.enabled) {
-            await this.audioManager.speak('Módulo de mensajería deshabilitado');
+            this.logger.warn('Módulo deshabilitado');
+            await this.audioManager.speak(sanitizeTextForTTS('Módulo de mensajería deshabilitado'));
             return;
         }
 
-        if (this.sessionState !== 'idle') {
-            await this.audioManager.speak('Sesión de mensajería ya activa');
+        if (this.sessionState !== SMS_STATES.IDLE) {
+            this.logger.warn(`Sesión ya activa en estado: ${this.sessionState}`);
+            await this.audioManager.speak(sanitizeTextForTTS('Sesión de mensajería ya activa'));
             return;
         }
 
         try {
             await this.startSMSSession();
         } catch (error) {
-            console.error('❌ Error en SMS:', error);
-            await this.audioManager.speak('Error en el sistema de mensajería');
+            this.logger.error('Error ejecutando SMS:', error.message);
+            await this.audioManager.speak(sanitizeTextForTTS(ERROR_MESSAGES.TRANSMISSION_ERROR));
             this.resetSession();
         }
     }
@@ -52,24 +59,28 @@ class SMS {
      * Iniciar sesión de SMS
      */
     async startSMSSession() {
+        this.sessionId = generateSessionId();
         this.currentSession = {
+            id: this.sessionId,
             phoneNumber: '',
             message: '',
             audioFile: null,
-            timestamp: new Date()
+            timestamp: new Date(),
+            attempts: 0
         };
         
-        console.log('📱 Iniciando sesión SMS');
+        this.logger.info(`Iniciando sesión SMS [${this.sessionId}]`);
         
         // Instrucciones iniciales
-        await this.audioManager.speak(
-            'Sistema de mensajería activado.terminando con asterisco.'
+        const instructions = sanitizeTextForTTS(
+            'Sistema de mensajería activado. Ingrese el número de teléfono terminando con asterisco.'
         );
+        await this.audioManager.speak(instructions);
         
-        this.sessionState = 'getting_number';
-        this.lastProcessedSequence = ''; // Reset
+        this.sessionState = SMS_STATES.GETTING_NUMBER;
+        this.lastProcessedSequence = '';
         
-        console.log('📞 Esperando número de teléfono...');
+        this.logger.info('Esperando número de teléfono...');
     }
 
     /**
@@ -78,26 +89,26 @@ class SMS {
     async processDTMF(sequence) {
         // Evitar procesar la misma secuencia dos veces
         if (sequence === this.lastProcessedSequence) {
-            console.log('⚠️  Secuencia ya procesada, ignorando');
+            this.logger.debug('Secuencia ya procesada, ignorando');
             return true;
         }
         
-        console.log(`📞 Nueva secuencia SMS: ${sequence} (estado: ${this.sessionState})`);
+        this.logger.info(`Nueva secuencia: ${sequence} (estado: ${this.sessionState})`);
         this.lastProcessedSequence = sequence;
         
         switch (this.sessionState) {
-            case 'getting_number':
+            case SMS_STATES.GETTING_NUMBER:
                 return await this.processNumberSequence(sequence);
             
-            case 'confirming':
+            case SMS_STATES.CONFIRMING:
                 return await this.processConfirmationSequence(sequence);
                 
-            case 'recording_message':
-                // Durante grabación, ignorar DTMF
-                console.log('🎙️  Grabando mensaje, DTMF ignorado');
+            case SMS_STATES.RECORDING_MESSAGE:
+                this.logger.debug('Grabando mensaje, DTMF ignorado');
                 return true;
             
             default:
+                this.logger.warn(`Estado inválido para procesar DTMF: ${this.sessionState}`);
                 return false;
         }
     }
@@ -107,7 +118,7 @@ class SMS {
      */
     async processNumberSequence(sequence) {
         if (this.processing) {
-            console.log('⚠️  Ya procesando, ignorando');
+            this.logger.debug('Ya procesando, ignorando');
             return true;
         }
         
@@ -115,48 +126,46 @@ class SMS {
         
         try {
             if (sequence.endsWith('*')) {
-                // Secuencia completa del número
-                const number = sequence.slice(0, -1); // Quitar el asterisco
+                const number = sequence.slice(0, -1);
+                this.logger.info(`Evaluando número: "${number}" (longitud: ${number.length})`);
                 
-                console.log(`📱 Evaluando número: "${number}" (longitud: ${number.length})`);
+                const validation = validatePhoneNumber(number);
                 
-                if (number.length >= 8 && /^[0-9]+$/.test(number)) {
-                    this.currentSession.phoneNumber = number;
-                    console.log(`✅ Número aceptado: ${this.currentSession.phoneNumber}`);
+                if (validation.valid) {
+                    this.currentSession.phoneNumber = validation.number;
+                    this.logger.info(`Número aceptado: ${this.currentSession.phoneNumber}`);
                     
-                    await this.audioManager.speak(
+                    const confirmMessage = sanitizeTextForTTS(
                         `Número ${this.currentSession.phoneNumber} confirmado. Grabe su mensaje después del tono.`
                     );
+                    await this.audioManager.speak(confirmMessage);
                     
-                    await this.delay(1000);
+                    await delay(1000);
                     await this.recordMessage();
                     
                 } else {
-                    console.log(`❌ Número inválido: muy corto o contiene caracteres no numéricos`);
-                    await this.audioManager.speak('Número inválido. Debe tener al menos 8 dígitos. Reintente.');
+                    this.logger.warn(`Número inválido: ${validation.message}`);
+                    await this.audioManager.speak(sanitizeTextForTTS(ERROR_MESSAGES.INVALID_PHONE_NUMBER));
                     this.processing = false;
                 }
                 
             } else if (sequence === '#') {
-                // Cancelar operación
-                console.log('🚫 Operación cancelada por #');
-                await this.audioManager.speak('Operación cancelada');
+                this.logger.info('Operación cancelada por usuario (#)');
+                await this.audioManager.speak(sanitizeTextForTTS('Operación cancelada'));
                 this.resetSession();
                 
             } else if (/^[0-9]+$/.test(sequence)) {
-                // Secuencia solo numérica, esperando más dígitos o asterisco
-                console.log(`📞 Número parcial: ${sequence} - Esperando asterisco para finalizar`);
+                this.logger.debug(`Número parcial: ${sequence} - Esperando asterisco`);
                 this.processing = false;
                 
             } else {
-                // Secuencia inválida
-                console.log(`❌ Secuencia inválida para número: ${sequence}`);
-                await this.audioManager.speak('Secuencia inválida. Use solo números y asterisco.');
+                this.logger.warn(`Secuencia inválida: ${sequence}`);
+                await this.audioManager.speak(sanitizeTextForTTS('Secuencia inválida. Use solo números y asterisco.'));
                 this.processing = false;
             }
             
         } catch (error) {
-            console.error('❌ Error procesando número:', error);
+            this.logger.error('Error procesando número:', error.message);
             this.processing = false;
         }
         
@@ -188,35 +197,35 @@ class SMS {
      * Grabar mensaje de voz
      */
     async recordMessage() {
-        this.sessionState = 'recording_message';
-        this.processing = false; // Permitir DTMF durante grabación si es necesario
+        this.sessionState = SMS_STATES.RECORDING_MESSAGE;
+        this.processing = false;
         
-        console.log(`🎙️  Simulando grabación de mensaje por ${this.config.recordingDuration} segundos...`);
+        this.logger.info(`Simulando grabación por ${this.config.recordingDuration} segundos...`);
         
         try {
-            // Simular tiempo de grabación
-            await this.delay(3000); // 3 segundos para prueba
+            // Simular tiempo de grabación (reducido para testing)
+            await delay(3000);
             
-            // Simular transcripción
+            // Simular transcripción con mensajes variados
             const simulatedMessages = [
-                "Hola, soy LU. Te envío saludos desde la repetidora.",
+                "Hola, soy LU5MCD. Te envío saludos desde la repetidora.",
                 "Mensaje de prueba desde el sistema de radio.",
                 "Confirmando recepción de tu señal.",
                 "Saludos cordiales desde Mendoza.",
                 "Mensaje automático del sistema de radio amateur."
             ];
             
-            this.currentSession.message = simulatedMessages[
-                Math.floor(Math.random() * simulatedMessages.length)
-            ];
+            this.currentSession.message = sanitizeTextForTTS(
+                simulatedMessages[Math.floor(Math.random() * simulatedMessages.length)]
+            );
             
-            console.log(`📝 Mensaje simulado: ${this.currentSession.message}`);
+            this.logger.info(`Mensaje grabado: ${this.currentSession.message}`);
             
             await this.confirmMessage();
             
         } catch (error) {
-            console.error('❌ Error en grabación:', error);
-            await this.audioManager.speak('Error grabando mensaje');
+            this.logger.error('Error en grabación:', error.message);
+            await this.audioManager.speak(sanitizeTextForTTS(ERROR_MESSAGES.RECORDING_ERROR));
             this.resetSession();
         }
     }
@@ -225,15 +234,17 @@ class SMS {
      * Confirmar mensaje antes de enviar
      */
     async confirmMessage() {
-        this.sessionState = 'confirming';
-        this.lastProcessedSequence = ''; // Reset para nueva confirmación
+        this.sessionState = SMS_STATES.CONFIRMING;
+        this.lastProcessedSequence = '';
         
-        const mensaje = `Mensaje grabado: ${this.currentSession.message}. Destino: ${this.currentSession.phoneNumber}. Presione 1 para enviar, 2 para cancelar.`;
+        const mensaje = sanitizeTextForTTS(
+            `Mensaje grabado: ${this.currentSession.message}. Destino: ${this.currentSession.phoneNumber}. Presione 1 para enviar, 2 para cancelar.`
+        );
         
-        console.log('📱 Solicitando confirmación...');
+        this.logger.info('Solicitando confirmación...');
         await this.audioManager.speak(mensaje);
         
-        console.log('⏳ Esperando confirmación (1=enviar, 2=cancelar)...');
+        this.logger.info('Esperando confirmación (1=enviar, 2=cancelar)...');
     }
 
     /**
@@ -293,21 +304,16 @@ class SMS {
      * Reset completo de la sesión
      */
     resetSession() {
-        console.log('🔄 Reseteando sesión SMS...');
+        const sessionId = this.sessionId || 'unknown';
+        this.logger.info(`Reseteando sesión SMS [${sessionId}]`);
         
         this.currentSession = null;
-        this.sessionState = 'idle';
+        this.sessionState = SMS_STATES.IDLE;
         this.lastProcessedSequence = '';
         this.processing = false;
+        this.sessionId = null;
         
-        console.log('✅ Sesión SMS reiniciada');
-    }
-
-    /**
-     * Delay helper
-     */
-    delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        this.logger.info('Sesión SMS reiniciada');
     }
 
     /**
@@ -315,7 +321,7 @@ class SMS {
      */
     destroy() {
         this.resetSession();
-        console.log('🗑️  Módulo SMS destruido');
+        this.logger.info('Módulo SMS destruido');
     }
 }
 

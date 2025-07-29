@@ -48,28 +48,36 @@ function showHelp() {
 }
 
 // Inicializar controlador
-try {
-    const controller = new VX200Controller();
-    
-    // Mostrar ayuda después del inicio
-    setTimeout(() => {
-        if (controller.isRunning) {
-            showHelp();
-        }
-    }, 2000);
-    
-    // Manejo limpio de cierre
-    process.on('SIGINT', () => {
-        console.log('\n');
-        console.log('🛑 Deteniendo VX200 Controller...');
-        console.log('👋 ¡Hasta luego!');
-        controller.stop();
-        process.exit(0);
-    });
-    
-} catch (error) {
-    console.error('❌ Error fatal iniciando VX200 Controller:', error.message);
-    console.error('💡 Revisa la configuración en config/config.json');
-    process.exit(1);
+async function main() {
+    try {
+        const controller = new VX200Controller();
+        
+        // Iniciar el sistema
+        await controller.start();
+        
+        // Mostrar ayuda después del inicio
+        setTimeout(() => {
+            if (controller.isRunning) {
+                showHelp();
+            }
+        }, 2000);
+        
+        // Manejo limpio de cierre
+        process.on('SIGINT', () => {
+            console.log('\n');
+            console.log('🛑 Deteniendo VX200 Controller...');
+            console.log('👋 ¡Hasta luego!');
+            controller.stop();
+            process.exit(0);
+        });
+        
+    } catch (error) {
+        console.error('❌ Error fatal iniciando VX200 Controller:', error.message);
+        console.error('💡 Revisa la configuración en config/config.json');
+        process.exit(1);
+    }
 }
+
+// Ejecutar función principal
+main();
 
