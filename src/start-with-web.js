@@ -9,9 +9,9 @@ console.log('│' + ' '.repeat(18) + 'VX200 CONTROLLER' + ' '.repeat(18) + '│'
 console.log('│' + ' '.repeat(15) + 'Sistema de Repetidora' + ' '.repeat(15) + '│');
 console.log('├' + '─'.repeat(58) + '┤');
 console.log('│ 🌐 Panel Web: http://localhost:3000                    │');
-console.log('│ 📡 Indicativo: ' + (config.callsign || 'VX200').padEnd(35) + '│');
-console.log('│ 🔊 Roger Beep: ' + (config.rogerBeep?.enabled ? 'Habilitado' : 'Deshabilitado').padEnd(34) + '│');
-console.log('│ 📻 Baliza: ' + (config.baliza?.enabled ? `Cada ${config.baliza.interval} min` : 'Deshabilitada').padEnd(39) + '│');
+console.log('│  Indicativo: ' + (config.callsign || 'VX200').padEnd(35) + '│');
+console.log('│  Roger Beep: ' + (config.rogerBeep?.enabled ? 'Habilitado' : 'Deshabilitado').padEnd(34) + '│');
+console.log('│  Baliza: ' + (config.baliza?.enabled ? `Cada ${config.baliza.interval} min` : 'Deshabilitada').padEnd(39) + '│');
 console.log('└' + '─'.repeat(58) + '┘');
 console.log('');
 console.log('🚀 Iniciando sistema...');

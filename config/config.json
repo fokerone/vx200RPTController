@@ -1,34 +1,138 @@
 {
-  "callsign": "LU",
+  "system": {
+    "name": "VX200 Controller",
+    "version": "2.0",
+    "callsign": "LU5MCD",
+    "description": "Sistema de Control para Repetidora Simplex"
+  },
   "audio": {
     "sampleRate": 48000,
     "channels": 1,
-    "device": "hw:0,0"
+    "bitDepth": 16,
+    "device": "hw:0,0",
+    "channelThreshold": 0.02,
+    "sustainTime": 1000
   },
   "rogerBeep": {
     "enabled": true,
-    "volume": 0.7
+    "type": "kenwood",
+    "volume": 0.7,
+    "duration": 250,
+    "delay": 100,
+    "description": "Solo tipo Kenwood - Control desde panel web únicamente"
   },
   "baliza": {
     "enabled": true,
-    "interval": 15,
+    "interval": 900000,
     "tone": {
       "frequency": 1000,
       "duration": 500,
       "volume": 0.7
     },
-    "message": "Repetidora Simplex",
-    "rogerBeep": true
+    "message": "LU5MCD Repetidora Simplex",
+    "autoStart": true,
+    "waitForFreeChannel": true
   },
   "dtmf": {
+    "timeout": 2000,
+    "threshold": 0.3,
     "commands": {
-      "*1": "datetime",
-      "*2": "ai_chat",
-      "*3": "sms",
-      "*9": "baliza"
+      "*1": {
+        "module": "datetime",
+        "description": "Anuncia fecha y hora actual"
+      },
+      "*2": {
+        "module": "aiChat",
+        "description": "Sistema de consultas IA (simulado)"
+      },
+      "*3": {
+        "module": "sms",
+        "description": "Sistema de mensajería SMS"
+      },
+      "*9": {
+        "module": "baliza",
+        "description": "Transmisión manual de baliza"
+      }
+    },
+    "note": "Roger Beep no usa comandos DTMF - Solo control desde panel web"
+  },
+  "modules": {
+    "datetime": {
+      "enabled": true,
+      "voice": "es",
+      "format": "completo"
+    },
+    "aiChat": {
+      "enabled": false,
+      "provider": "openai",
+      "model": "gpt-3.5-turbo",
+      "maxTokens": 150,
+      "note": "Requiere API key en variables de entorno"
+    },
+    "sms": {
+      "enabled": false,
+      "provider": "twilio",
+      "timeout": 30000,
+      "note": "Requiere configuración Twilio en variables de entorno"
     }
   },
+  "tts": {
+    "engine": "espeak",
+    "voice": "es",
+    "speed": 150,
+    "amplitude": 100,
+    "wordGap": 0
+  },
   "web": {
-    "port": 3000
+    "port": 3000,
+    "host": "0.0.0.0",
+    "title": "VX200 Controller - Terminal",
+    "enableLogs": true,
+    "logLevel": "info",
+    "theme": "terminal"
+  },
+  "channel": {
+    "activityThreshold": 0.02,
+    "sustainTime": 1000,
+    "transmissionDelay": 500,
+    "maxWaitTime": 30000
+  },
+  "logging": {
+    "level": "info",
+    "enableWebLogs": true,
+    "maxLogEntries": 100,
+    "logToFile": false,
+    "filterKeywords": ["DTMF", "Baliza", "Roger", "Canal", "Error"]
+  },
+  "features": {
+    "autoRogerBeep": true,
+    "channelMonitoring": true,
+    "smartTransmission": true,
+    "webControl": true,
+    "terminalUI": true
+  },
+  "environment": {
+    "development": {
+      "debug": true,
+      "verboseLogs": true,
+      "mockAudio": false
+    },
+    "production": {
+      "debug": false,
+      "verboseLogs": false,
+      "mockAudio": false
+    }
+  },
+  "hardware": {
+    "audioInterface": "ALSA",
+    "preferredDevice": "hw:0,0",
+    "fallbackDevice": "default",
+    "testOnStartup": true
+  },
+  "security": {
+    "enableCORS": true,
+    "allowedOrigins": ["http://localhost:3000"],
+    "enableRateLimit": false,
+    "maxRequestsPerMinute": 60
   }
 }
