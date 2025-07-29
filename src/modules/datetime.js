@@ -46,20 +46,13 @@ class DateTime {
         const fecha = now.format(this.config.format.date);
         const hora = now.format(this.config.format.time);
         
-        console.log(`📅 Fecha: ${fecha}`);
-        console.log(`🕐 Hora: ${hora}`);
-
         // Tono de confirmación
         this.audioManager.playTone(1200, 200, 0.6);
         await this.delay(300);
 
         // Mensaje completo
         const mensaje = `Fecha y hora actual. ${fecha}. ${hora}`;
-        
-        console.log(`🗣️  Anunciando: ${mensaje}`);
         await this.audioManager.speak(mensaje, { voice: 'es' });
-
-        console.log('✅ DateTime completado');
     }
 
     /**

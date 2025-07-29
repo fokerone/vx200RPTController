@@ -99,8 +99,6 @@ class Baliza extends EventEmitter {
         try {
             // Secuencia de baliza
             await this.playBalizaSequence();
-            
-            console.log('✅ Baliza transmitida exitosamente');
             this.emit('transmitted', timestamp);
 
         } catch (error) {
@@ -119,20 +117,10 @@ class Baliza extends EventEmitter {
         const { frequency, duration, volume } = this.config.tone;
 
         // Tono de identificación característico
-        console.log(`🎵 Reproduciendo tono: ${frequency}Hz por ${duration}ms`);
         this.audioManager.playTone(frequency, duration, volume);
 
         // Esperar que termine el tono
         await this.delay(duration + 100);
-
-        // Mensaje de voz (opcional)
-        if (this.config.message) {
-            const hora = moment().format('HH:mm');
-            const mensaje = `${this.config.message}. Hora local: ${hora}`;
-            
-            console.log(`🗣️  Mensaje: ${mensaje}`);
-            await this.audioManager.speak(mensaje, { voice: 'es' });
-        }
     }
 
     /**

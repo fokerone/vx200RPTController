@@ -3,9 +3,6 @@ const path = require('path');
 const { spawn } = require('child_process'); 
 const recorder = require('node-record-lpcm16');
 const EventEmitter = require('events');
-const say = require('say');
-
-// Importar RogerBeep
 const RogerBeep = require('./rogerBeep');
 
 class AudioManager extends EventEmitter {
@@ -26,8 +23,8 @@ class AudioManager extends EventEmitter {
         this.recordingStream = null;
         this.dtmfBuffer = '';
         this.dtmfTimeout = null;
-
-        // ===== GESTIÓN COMPLETAMENTE NUEVA DE AUDIO =====
+        
+        // Cola de audio
         this.audioQueue = [];
         this.isProcessingAudio = false;
         this.currentAudioProcess = null;
@@ -42,17 +39,25 @@ class AudioManager extends EventEmitter {
             activityTimer: null
         };
         
-        // Configuración de debugging
+        // Configuración
         this.debug = process.env.NODE_ENV === 'development';
+        this.soundsDir = path.join(__dirname, '../../sounds');
+        this.ensureSoundsDirectory();
         
-        console.log('🎤 AudioManager inicializado (versión mejorada)');
+        console.log('🎤 AudioManager inicializado');
     }
 
-    // ===== MÉTODOS DE INICIALIZACIÓN =====
+    // ===== INICIALIZACIÓN =====
+
+    ensureSoundsDirectory() {
+        if (!fs.existsSync(this.soundsDir)) {
+            fs.mkdirSync(this.soundsDir, { recursive: true });
+        }
+    }
 
     start() {
         this.startRecording();
-        console.log('🔊 Audio iniciado - Escuchando DTMF...');
+        console.log('🔊 Sistema de audio iniciado');
     }
 
     startRecording() {
@@ -73,25 +78,25 @@ class AudioManager extends EventEmitter {
                     this.processAudioData(audioData);
                 })
                 .on('error', (err) => {
-                    console.error('❌ Error de grabación:', err);
-                    this.handleRecordingError(err);
+                    console.error('❌ Error de grabación:', err.message);
+                    this.handleRecordingError();
                 });
 
             this.isRecording = true;
             
         } catch (error) {
-            console.error('❌ Error iniciando grabación:', error);
+            console.error('❌ Error iniciando grabación:', error.message);
             this.isRecording = false;
         }
     }
 
-    handleRecordingError(error) {
-        console.log('🔄 Intentando reiniciar grabación...');
+    handleRecordingError() {
         this.isRecording = false;
         
         // Reintentar después de 2 segundos
         setTimeout(() => {
             if (!this.isRecording) {
+                console.log('🔄 Reintentando grabación...');
                 this.startRecording();
             }
         }, 2000);
@@ -116,7 +121,7 @@ class AudioManager extends EventEmitter {
             
         } catch (error) {
             if (this.debug) {
-                console.error('❌ Error procesando audio:', error);
+                console.error('❌ Error procesando audio:', error.message);
             }
         }
     }
@@ -130,7 +135,7 @@ class AudioManager extends EventEmitter {
         
         this.dtmfTimeout = setTimeout(() => {
             if (this.dtmfBuffer.length > 0) {
-                console.log(`📞 Secuencia DTMF completa: ${this.dtmfBuffer}`);
+                console.log(`📞 DTMF: ${this.dtmfBuffer}`);
                 this.emit('dtmf', this.dtmfBuffer);
                 this.dtmfBuffer = '';
             }
@@ -150,7 +155,6 @@ class AudioManager extends EventEmitter {
             
             if (!this.channelActivity.isActive) {
                 this.channelActivity.isActive = true;
-                console.log('📻 Canal ACTIVO - Detectada transmisión');
                 this.emit('channel_active', {
                     level: rmsLevel,
                     timestamp: now
@@ -165,7 +169,6 @@ class AudioManager extends EventEmitter {
             this.channelActivity.activityTimer = setTimeout(() => {
                 if (this.channelActivity.isActive) {
                     this.channelActivity.isActive = false;
-                    console.log('📻 Canal LIBRE - Fin de transmisión');
                     this.emit('channel_inactive', {
                         duration: now - this.channelActivity.lastActivityTime,
                         timestamp: now
@@ -181,30 +184,26 @@ class AudioManager extends EventEmitter {
         });
     }
 
-    // ===== MÉTODOS DE TEXTO A VOZ =====
+    // ===== TEXTO A VOZ =====
 
     async speak(text, options = {}) {
-        console.log(`🗣️ Hablando: "${text}"`);
-        
         try {
-            // Reproducir TTS usando espeak
             await this.speakWithEspeak(text, options);
             
-            // Reproducir roger beep si está habilitado
-            if (options.rogerBeep !== false && this.rogerBeep && this.rogerBeep.isEnabled()) {
-                console.log('🔊 Reproduciendo roger beep después de TTS...');
-                await this.rogerBeep.play(options.rogerBeepType);
-            }
+            // Roger Beep automático al finalizar transmisión
+            await this.rogerBeep.executeAfterTransmission();
             
         } catch (error) {
-            console.error('❌ Error en TTS:', error);
-            // No lanzar error, continuar el sistema
-            console.log('⚠️  Continuando sin TTS debido a error');
+            console.error('❌ Error en TTS:', error.message);
         }
     }
 
-    async speakNoBeep(text, options = {}) {
-        return this.speak(text, { ...options, rogerBeep: false });
+    async speakNoRoger(text, options = {}) {
+        try {
+            await this.speakWithEspeak(text, options);
+        } catch (error) {
+            console.error('❌ Error en TTS sin Roger:', error.message);
+        }
     }
 
     async speakWithEspeak(text, options = {}) {
@@ -227,30 +226,27 @@ class AudioManager extends EventEmitter {
             
             espeak.on('close', (code) => {
                 if (code === 0) {
-                    console.log('✅ TTS completado');
                     resolve();
                 } else {
-                    console.error(`❌ Error espeak: ${stderr}`);
-                    reject(new Error(`espeak failed with code ${code}: ${stderr}`));
+                    reject(new Error(`espeak failed: ${stderr}`));
                 }
             });
             
             espeak.on('error', (err) => {
-                console.error('❌ Error ejecutando espeak:', err);
                 reject(err);
             });
 
-            // Timeout de seguridad
+            // Timeout de seguridad (30 segundos)
             setTimeout(() => {
                 if (!espeak.killed) {
                     espeak.kill('SIGTERM');
                     reject(new Error('TTS timeout'));
                 }
-            }, 30000); // 30 segundos máximo
+            }, 30000);
         });
     }
 
-    // ===== GESTIÓN MEJORADA DE AUDIO SIN SPEAKER =====
+    // ===== REPRODUCCIÓN DE AUDIO =====
 
     async playTone(frequency, duration, volume = 0.5) {
         return new Promise((resolve) => {
@@ -292,7 +288,7 @@ class AudioManager extends EventEmitter {
             
             try {
                 if (audioItem.type === 'tone') {
-                    await this.playToneWithAplay(audioItem.frequency, audioItem.duration, audioItem.volume);
+                    await this.generateAndPlayTone(audioItem.frequency, audioItem.duration, audioItem.volume);
                 } else if (audioItem.type === 'buffer') {
                     await this.playBufferWithAplay(audioItem.buffer);
                 }
@@ -300,100 +296,84 @@ class AudioManager extends EventEmitter {
                 audioItem.resolve();
                 
             } catch (error) {
-                console.log(`⚠️  Error reproduciendo audio: ${error.message}`);
-                audioItem.resolve(); // Resolver para continuar
+                if (this.debug) {
+                    console.log(`⚠️  Error reproduciendo audio: ${error.message}`);
+                }
+                audioItem.resolve(); 
             }
 
-            // Pequeña pausa entre reproducciones
-            await this.delay(50);
+            await this.delay(25); // Pequeña pausa entre elementos
         }
 
         this.isProcessingAudio = false;
     }
 
-    async playToneWithAplay(frequency, duration, volume = 0.5) {
+    async generateAndPlayTone(frequency, duration, volume = 0.5) {
         return new Promise((resolve, reject) => {
-            try {
-                const tempDir = path.join(__dirname, '../../sounds');
-                if (!fs.existsSync(tempDir)) {
-                    fs.mkdirSync(tempDir, { recursive: true });
-                }
+            const tempFile = path.join(this.soundsDir, `tone_${Date.now()}.wav`);
+            
+            // Generar tono WAV usando sox
+            const sox = spawn('sox', [
+                '-n', tempFile,
+                'synth', (duration / 1000).toString(),
+                'sine', frequency.toString(),
+                'vol', volume.toString()
+            ]);
 
-                const tempFile = path.join(tempDir, `tone_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.wav`);
-                
-                // Generar tono WAV usando sox
-                const sox = spawn('sox', [
-                    '-n', tempFile,
-                    'synth', (duration / 1000).toString(),
-                    'sine', frequency.toString(),
-                    'vol', volume.toString()
-                ]);
-
-                sox.on('close', (code) => {
-                    if (code === 0) {
-                        // Reproducir con aplay
-                        const aplay = spawn('aplay', ['-q', tempFile]);
+            sox.on('close', (code) => {
+                if (code === 0) {
+                    // Reproducir con aplay
+                    const aplay = spawn('aplay', ['-q', tempFile]);
+                    
+                    aplay.on('close', (playCode) => {
+                        // Limpiar archivo temporal
+                        this.cleanupTempFile(tempFile);
                         
-                        aplay.on('close', (playCode) => {
-                            // Limpiar archivo temporal
-                            setTimeout(() => {
-                                if (fs.existsSync(tempFile)) {
-                                    fs.unlinkSync(tempFile);
-                                }
-                            }, 1000);
-                            
-                            if (playCode === 0) {
-                                resolve();
-                            } else {
-                                reject(new Error(`aplay failed with code ${playCode}`));
-                            }
-                        });
+                        if (playCode === 0) {
+                            resolve();
+                        } else {
+                            reject(new Error(`aplay failed with code ${playCode}`));
+                        }
+                    });
 
-                        aplay.on('error', (err) => {
-                            console.log(`⚠️  Error aplay: ${err.message}`);
-                            resolve(); // No fallar por error de audio
-                        });
+                    aplay.on('error', (err) => {
+                        this.cleanupTempFile(tempFile);
+                        resolve(); // No fallar completamente
+                    });
 
-                        // Timeout para aplay
-                        setTimeout(() => {
-                            if (!aplay.killed) {
-                                aplay.kill();
-                                resolve();
-                            }
-                        }, duration + 2000);
+                    // Timeout para aplay
+                    setTimeout(() => {
+                        if (!aplay.killed) {
+                            aplay.kill();
+                            this.cleanupTempFile(tempFile);
+                            resolve();
+                        }
+                    }, duration + 2000);
 
-                    } else {
-                        // Fallback: reproducir usando un método alternativo
-                        console.log('⚠️  Sox no disponible, usando fallback');
-                        this.playToneAlternative(frequency, duration, volume).then(resolve).catch(() => resolve());
-                    }
-                });
+                } else {
+                    // Fallback: usar beep del sistema
+                    this.playToneWithBeep(frequency, duration).then(resolve).catch(() => resolve());
+                }
+            });
 
-                sox.on('error', (err) => {
-                    console.log(`⚠️  Error sox: ${err.message}`);
-                    // Fallback
-                    this.playToneAlternative(frequency, duration, volume).then(resolve).catch(() => resolve());
-                });
+            sox.on('error', (err) => {
+                // Fallback: usar beep del sistema
+                this.playToneWithBeep(frequency, duration).then(resolve).catch(() => resolve());
+            });
 
-                // Timeout para sox
-                setTimeout(() => {
-                    if (!sox.killed) {
-                        sox.kill();
-                        resolve();
-                    }
-                }, 5000);
-
-            } catch (error) {
-                console.log(`⚠️  Error general playTone: ${error.message}`);
-                resolve(); // No fallar
-            }
+            // Timeout para sox
+            setTimeout(() => {
+                if (!sox.killed) {
+                    sox.kill();
+                    resolve();
+                }
+            }, 5000);
         });
     }
 
-    async playToneAlternative(frequency, duration, volume = 0.5) {
+    async playToneWithBeep(frequency, duration) {
         return new Promise((resolve) => {
             try {
-                // Usar beep del sistema como último recurso
                 const beep = spawn('beep', ['-f', frequency.toString(), '-l', duration.toString()]);
                 
                 beep.on('close', () => resolve());
@@ -407,26 +387,20 @@ class AudioManager extends EventEmitter {
                 }, duration + 1000);
 
             } catch (error) {
-                console.log(`⚠️  Beep alternativo falló: ${error.message}`);
-                resolve();
+                resolve(); // Fallar silenciosamente
             }
         });
     }
 
     async playBufferWithAplay(buffer) {
         return new Promise((resolve, reject) => {
+            const tempFile = path.join(this.soundsDir, `buffer_${Date.now()}.raw`);
+            
             try {
-                const tempDir = path.join(__dirname, '../../sounds');
-                if (!fs.existsSync(tempDir)) {
-                    fs.mkdirSync(tempDir, { recursive: true });
-                }
-
-                const tempFile = path.join(tempDir, `buffer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.raw`);
-                
                 // Escribir buffer a archivo temporal
                 fs.writeFileSync(tempFile, buffer);
                 
-                // Reproducir con aplay especificando formato
+                // Reproducir con aplay
                 const aplay = spawn('aplay', [
                     '-q',
                     '-f', 'S16_LE',
@@ -436,12 +410,7 @@ class AudioManager extends EventEmitter {
                 ]);
 
                 aplay.on('close', (code) => {
-                    // Limpiar archivo temporal
-                    setTimeout(() => {
-                        if (fs.existsSync(tempFile)) {
-                            fs.unlinkSync(tempFile);
-                        }
-                    }, 1000);
+                    this.cleanupTempFile(tempFile);
                     
                     if (code === 0) {
                         resolve();
@@ -451,93 +420,91 @@ class AudioManager extends EventEmitter {
                 });
 
                 aplay.on('error', (err) => {
-                    console.log(`⚠️  Error aplay buffer: ${err.message}`);
-                    resolve(); // No fallar
+                    this.cleanupTempFile(tempFile);
+                    resolve(); // No fallar completamente
                 });
 
                 // Timeout de seguridad
                 setTimeout(() => {
                     if (!aplay.killed) {
                         aplay.kill();
+                        this.cleanupTempFile(tempFile);
                         resolve();
                     }
                 }, 10000);
 
             } catch (error) {
-                console.log(`⚠️  Error playBuffer: ${error.message}`);
+                this.cleanupTempFile(tempFile);
                 resolve();
             }
         });
     }
 
-    // ===== MÉTODOS DE UTILIDAD =====
-
-    async delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    clearAudioQueue() {
-        console.log('🧹 Limpiando cola de audio...');
-        
-        // Resolver todas las promesas pendientes
-        this.audioQueue.forEach(item => {
-            if (item.resolve) {
-                item.resolve();
+    cleanupTempFile(filepath) {
+        setTimeout(() => {
+            try {
+                if (fs.existsSync(filepath)) {
+                    fs.unlinkSync(filepath);
+                }
+            } catch (error) {
+                // Ignorar errores de limpieza
             }
-        });
-        
-        this.audioQueue = [];
-        
-        // Terminar proceso de audio actual
-        if (this.currentAudioProcess && !this.currentAudioProcess.killed) {
-            this.currentAudioProcess.kill();
-            this.currentAudioProcess = null;
-        }
-        
-        this.isProcessingAudio = false;
-        console.log('✅ Cola de audio limpiada');
+        }, 1000);
     }
 
-    // ===== GESTIÓN DEL ROGER BEEP =====
-
-    configureRogerBeep(config) {
-        if (!this.rogerBeep) {
-            console.log('⚠️  Roger Beep no inicializado');
-            return;
-        }
-
-        try {
-            if (config.type) this.rogerBeep.setType(config.type);
-            if (config.volume !== undefined) this.rogerBeep.setVolume(config.volume);
-            if (config.duration !== undefined) this.rogerBeep.setDuration(config.duration);
-            if (config.delay !== undefined) this.rogerBeep.setDelay(config.delay);
-            if (config.enabled !== undefined) this.rogerBeep.setEnabled(config.enabled);
-            
-            console.log('🔧 Roger Beep configurado correctamente');
-        } catch (error) {
-            console.error('❌ Error configurando roger beep:', error);
-        }
-    }
+    // ===== ROGER BEEP =====
 
     getRogerBeep() {
         return this.rogerBeep;
     }
 
-    async testRogerBeep(type = null) {
+    configureRogerBeep(config) {
         if (!this.rogerBeep) {
-            console.log('⚠️  Roger Beep no disponible para test');
-            return;
+            console.log('⚠️  Roger Beep no disponible');
+            return false;
         }
 
         try {
-            await this.rogerBeep.play(type);
-            console.log('✅ Test roger beep completado');
+            this.rogerBeep.loadConfig(config);
+            return true;
         } catch (error) {
-            console.error('❌ Error en test roger beep:', error);
+            console.error('❌ Error configurando Roger Beep:', error.message);
+            return false;
         }
     }
 
-    // ===== ESTADO DEL CANAL =====
+    async testRogerBeep() {
+        if (!this.rogerBeep) {
+            console.log('⚠️  Roger Beep no disponible');
+            return false;
+        }
+
+        try {
+            await this.rogerBeep.test();
+            return true;
+        } catch (error) {
+            console.error('❌ Error en test Roger Beep:', error.message);
+            return false;
+        }
+    }
+
+    toggleRogerBeep() {
+        if (!this.rogerBeep) {
+            return false;
+        }
+
+        return this.rogerBeep.toggle();
+    }
+
+    getRogerBeepStatus() {
+        if (!this.rogerBeep) {
+            return { enabled: false, type: 'none', volume: 0, duration: 0 };
+        }
+
+        return this.rogerBeep.getStatus();
+    }
+
+    // ===== GESTIÓN DEL CANAL =====
 
     getChannelStatus() {
         return {
@@ -550,50 +517,22 @@ class AudioManager extends EventEmitter {
 
     setChannelThreshold(threshold) {
         this.channelActivity.threshold = Math.max(0.001, Math.min(0.1, threshold));
-        console.log(`🎚️  Umbral de canal ajustado a: ${this.channelActivity.threshold}`);
+        console.log(`🎚️  Umbral de canal: ${this.channelActivity.threshold}`);
     }
 
     isSafeToTransmit() {
         return !this.channelActivity.isActive;
     }
 
-    // ===== GRABACIÓN =====
-
-    pauseRecording() {
-        if (this.recordingStream && this.isRecording) {
-            console.log('⏸️  Pausando grabación principal...');
-            try {
-                this.recordingStream.stop();
-            } catch (error) {
-                console.log('⚠️  Error pausando grabación:', error.message);
-            }
-            this.isRecording = false;
-            return true;
-        }
-        return false;
-    }
-
-    resumeRecording() {
-        if (!this.isRecording) {
-            console.log('▶️  Reanudando grabación principal...');
-            this.startRecording();
-            return true;
-        }
-        return false;
-    }
+    // ===== GRABACIÓN TEMPORAL =====
 
     async recordTemporary(duration, sampleRate = 16000) {
         return new Promise((resolve) => {
             const timestamp = Date.now();
             const filename = `temp_${timestamp}.wav`;
-            const filepath = path.join(__dirname, '../../sounds', filename);
+            const filepath = path.join(this.soundsDir, filename);
             
-            console.log(`🎙️  Grabación temporal por ${duration} segundos...`);
-            
-            const dir = path.dirname(filepath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
+            console.log(`🎙️  Grabación temporal: ${duration}s`);
             
             try {
                 const recordingOptions = {
@@ -601,8 +540,7 @@ class AudioManager extends EventEmitter {
                     channels: 1,
                     bitDepth: 16,
                     audioType: 'wav',
-                    silence: '1.0',
-                    device: null
+                    silence: '1.0'
                 };
 
                 const tempRecorder = recorder.record(recordingOptions);
@@ -610,20 +548,18 @@ class AudioManager extends EventEmitter {
                 
                 tempRecorder.stream().pipe(fileStream);
                 
-                const timeout = setTimeout(() => {
+                setTimeout(() => {
                     try {
                         tempRecorder.stop();
                         fileStream.end();
                     } catch (error) {
-                        console.log('⚠️  Error deteniendo grabación temporal:', error.message);
+                        // Ignorar errores al detener
                     }
                     
                     setTimeout(() => {
                         if (fs.existsSync(filepath)) {
-                            console.log('✅ Grabación temporal completada');
                             resolve(filepath);
                         } else {
-                            console.log('❌ Archivo de grabación no encontrado');
                             resolve(null);
                         }
                     }, 500);
@@ -631,13 +567,104 @@ class AudioManager extends EventEmitter {
                 }, duration * 1000);
                 
             } catch (error) {
-                console.error('❌ Error en grabación temporal:', error);
+                console.error('❌ Error en grabación temporal:', error.message);
                 resolve(null);
             }
         });
     }
 
-    // ===== CIERRE Y LIMPIEZA =====
+    // ===== CONTROL DE GRABACIÓN =====
+
+    pauseRecording() {
+        if (this.recordingStream && this.isRecording) {
+            try {
+                this.recordingStream.stop();
+                this.isRecording = false;
+                return true;
+            } catch (error) {
+                console.log('⚠️  Error pausando grabación:', error.message);
+                return false;
+            }
+        }
+        return false;
+    }
+
+    resumeRecording() {
+        if (!this.isRecording) {
+            this.startRecording();
+            return true;
+        }
+        return false;
+    }
+
+    // ===== UTILIDADES =====
+
+    async delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    clearAudioQueue() {
+        // Resolver todas las promesas pendientes
+        this.audioQueue.forEach(item => {
+            if (item.resolve) {
+                item.resolve();
+            }
+        });
+        
+        this.audioQueue = [];
+        
+        // Terminar proceso actual
+        if (this.currentAudioProcess && !this.currentAudioProcess.killed) {
+            this.currentAudioProcess.kill();
+            this.currentAudioProcess = null;
+        }
+        
+        this.isProcessingAudio = false;
+    }
+
+    // ===== ESTADO Y DIAGNÓSTICO =====
+
+    getStatus() {
+        return {
+            audio: {
+                isRecording: this.isRecording,
+                isProcessingAudio: this.isProcessingAudio,
+                audioQueueLength: this.audioQueue.length,
+                status: this.isRecording ? 'active' : 'inactive'
+            },
+            channel: {
+                isActive: this.channelActivity.isActive,
+                level: this.channelActivity.level,
+                threshold: this.channelActivity.threshold,
+                busy: this.channelActivity.isActive
+            },
+            rogerBeep: this.rogerBeep ? this.rogerBeep.getStatus() : { enabled: false }
+        };
+    }
+
+    async healthCheck() {
+        const status = this.getStatus();
+        
+        console.log('🔍 AudioManager Health Check:');
+        console.log(`  📹 Recording: ${status.audio.isRecording ? '✅' : '❌'}`);
+        console.log(`  🎵 Audio Queue: ${status.audio.audioQueueLength} items`);
+        console.log(`  📻 Channel: ${status.channel.isActive ? 'BUSY' : 'FREE'}`);
+        console.log(`  🔊 Roger Beep: ${status.rogerBeep.enabled ? 'ON' : 'OFF'}`);
+        
+        // Test Roger Beep si está disponible
+        if (this.rogerBeep && status.rogerBeep.enabled) {
+            try {
+                await this.testRogerBeep();
+                console.log('  ✅ Roger Beep Test: OK');
+            } catch (error) {
+                console.log('  ❌ Roger Beep Test: FAILED');
+            }
+        }
+        
+        return status;
+    }
+
+    // ===== CIERRE =====
 
     stop() {
         console.log('🛑 Deteniendo AudioManager...');
@@ -647,7 +674,7 @@ class AudioManager extends EventEmitter {
             try {
                 this.recordingStream.stop();
             } catch (error) {
-                console.log('⚠️  Error deteniendo grabación:', error.message);
+                // Ignorar errores al cerrar
             }
             this.isRecording = false;
         }
@@ -666,43 +693,23 @@ class AudioManager extends EventEmitter {
         // Limpiar cola de audio
         this.clearAudioQueue();
         
-        console.log('✅ AudioManager detenido correctamente');
-    }
-
-    // ===== MÉTODOS DE DEBUGGING =====
-
-    getStatus() {
-        return {
-            isRecording: this.isRecording,
-            isProcessingAudio: this.isProcessingAudio,
-            audioQueueLength: this.audioQueue.length,
-            channelActive: this.channelActivity.isActive,
-            channelLevel: this.channelActivity.level,
-            rogerBeepEnabled: this.rogerBeep ? this.rogerBeep.isEnabled() : false,
-            rogerBeepType: this.rogerBeep ? this.rogerBeep.getConfig().type : 'none'
-        };
-    }
-
-    async healthCheck() {
-        console.log('🔍 AudioManager Health Check:');
-        console.log(`  📹 Recording: ${this.isRecording ? '✅' : '❌'}`);
-        console.log(`  🎵 Audio Queue: ${this.audioQueue.length} items`);
-        console.log(`  📻 Channel: ${this.channelActivity.isActive ? 'BUSY' : 'FREE'}`);
-        
-        if (this.rogerBeep) {
-            console.log(`  🔊 Roger Beep: ${this.rogerBeep.isEnabled() ? 'ON' : 'OFF'} (${this.rogerBeep.getConfig().type})`);
-            
-            // Test básico
-            try {
-                await this.testRogerBeep();
-                console.log('  ✅ Roger Beep test: OK');
-            } catch (error) {
-                console.log('  ❌ Roger Beep test: FAILED -', error.message);
-            }
-        } else {
-            console.log('  ❌ Roger Beep: NOT INITIALIZED');
-        }
+        console.log('✅ AudioManager detenido');
     }
 }
 
 module.exports = AudioManager;
+
+/*
+🔧 MÉTODOS PRINCIPALES:
+- speak(text) - TTS + Roger Beep automático
+- speakNoRoger(text) - TTS sin Roger Beep
+- toggleRogerBeep() - Control desde panel web
+- testRogerBeep() - Prueba desde panel web
+- getRogerBeepStatus() - Estado actual
+
+📡 USO:
+const audioManager = new AudioManager();
+audioManager.start();
+await audioManager.speak("Mensaje"); // Con Roger Beep automático
+await audioManager.speakNoRoger("Mensaje"); // Sin Roger Beep
+*/

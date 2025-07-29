@@ -7,16 +7,7 @@
   },
   "rogerBeep": {
     "enabled": true,
-    "type": "classic",
-    "volume": 0.7,
-    "duration": 250,
-    "delay": 100,
-    "frequencies": {
-      "classic": [1000, 800],
-      "motorola": [1200, 900],
-      "kenwood": [1500, 1000],
-      "custom": [1100, 850]
-    }
+    "volume": 0.7
   },
   "baliza": {
     "enabled": true,
@@ -34,12 +25,7 @@
       "*1": "datetime",
       "*2": "ai_chat",
       "*3": "sms",
-      "*9": "baliza",
-      "*90": "roger_beep_toggle",
-      "*91": "roger_beep_classic",
-      "*92": "roger_beep_motorola",
-      "*93": "roger_beep_kenwood",
-      "*94": "roger_beep_custom"
+      "*9": "baliza"
     }
   },
   "web": {

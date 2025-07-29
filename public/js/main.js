@@ -708,14 +708,14 @@ class VX200TerminalPanel {
     handleRogerBeepConfigChanged(data) {
         console.log('🔊 Configuración roger beep actualizada:', data.config);
         this.updateRogerBeepStatus(data.config);
-        this.addLog('info', `ROGER BEEP: ${data.config.type.toUpperCase()} (${data.config.enabled ? 'ON' : 'OFF'})`);
+        this.addLog('info', `ROGER BEEP: KENWOOD (${data.config.enabled ? 'ACTIVADO' : 'DESACTIVADO'})`);
     }
 
     handleRogerBeepTest(data) {
-        console.log('🧪 Test roger beep:', data.type);
-        this.addLog('info', `ROGER BEEP TEST: ${(data.type || 'CURRENT').toUpperCase()}`);
+        console.log('🧪 Test roger beep Kenwood');
+        this.addLog('info', 'TEST ROGER BEEP KENWOOD EJECUTADO');
         
-        // Efecto visual
+        // Efecto visual en el botón de test
         const testButtons = document.querySelectorAll('.test-btn');
         testButtons.forEach(btn => {
             btn.classList.add('glow-animation');
