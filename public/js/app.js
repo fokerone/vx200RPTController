@@ -623,6 +623,58 @@ function clearDTMFHistory() {
     }
 }
 
+async function saveDebugAudio() {
+    if (!panel) return;
+    
+    try {
+        const response = await fetch('/api/debug/save-audio', {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            panel.showNotification(`Audio guardado: ${result.filename}`, 'success');
+            
+            // Crear enlace de descarga
+            const downloadLink = document.createElement('a');
+            downloadLink.href = `/debug-audio/${result.filename}`;
+            downloadLink.download = result.filename;
+            downloadLink.textContent = 'Descargar audio de debug';
+            downloadLink.style.display = 'block';
+            downloadLink.style.marginTop = '10px';
+            downloadLink.style.color = '#3498db';
+            
+            // Mostrar enlace en el panel
+            const debugArea = document.getElementById('debugArea') || createDebugArea();
+            debugArea.appendChild(downloadLink);
+            
+        } else {
+            panel.showNotification(result.message, 'warning');
+        }
+    } catch (error) {
+        console.error('Error guardando audio debug:', error);
+        panel.showNotification('Error guardando audio de debug', 'error');
+    }
+}
+
+function createDebugArea() {
+    const debugArea = document.createElement('div');
+    debugArea.id = 'debugArea';
+    debugArea.style.padding = '10px';
+    debugArea.style.border = '1px solid #ddd';
+    debugArea.style.marginTop = '10px';
+    debugArea.style.borderRadius = '5px';
+    debugArea.innerHTML = '<h4>Debug Audio:</h4>';
+    
+    const statusTab = document.getElementById('statusTab');
+    if (statusTab) {
+        statusTab.appendChild(debugArea);
+    }
+    
+    return debugArea;
+}
+
 async function saveConfiguration() {
     if (!panel) return;
 

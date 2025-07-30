@@ -65,8 +65,8 @@ class ConfigManager {
             // ===== TEXT-TO-SPEECH =====
             tts: {
                 voice: 'es',
-                speed: 150,
-                amplitude: 100,
+                speed: 140,
+                amplitude: 50,
                 timeout: 30000
             },
 

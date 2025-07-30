@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 const cors = require('cors');
 const { WEB_SERVER, MODULE_STATES } = require('../constants');
 const { createLogger } = require('../logging/Logger');
@@ -127,6 +128,56 @@ class WebServer {
                 data: this.dtmfHistory.slice(-20)
             });
         });
+
+        // API para debug de audio
+        this.app.post('/api/debug/save-audio', async (req, res) => {
+            try {
+                const audioPath = await this.controller.audio.saveDebugAudio();
+                if (audioPath) {
+                    res.json({
+                        success: true,
+                        message: 'Audio de debug guardado',
+                        path: audioPath,
+                        filename: path.basename(audioPath)
+                    });
+                } else {
+                    res.json({
+                        success: false,
+                        message: 'No hay audio para guardar'
+                    });
+                }
+            } catch (error) {
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Servir archivos de audio debug
+        this.app.get('/debug-audio/:filename', (req, res) => {
+            try {
+                const filename = req.params.filename;
+                const audioPath = path.join(__dirname, '../../temp', filename);
+                
+                if (fs.existsSync(audioPath)) {
+                    res.setHeader('Content-Type', 'audio/wav');
+                    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+                    fs.createReadStream(audioPath).pipe(res);
+                } else {
+                    res.status(404).json({
+                        success: false,
+                        error: 'Archivo no encontrado'
+                    });
+                }
+            } catch (error) {
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+        
         this.app.use((req, res) => {
             res.status(404).json({ success: false, message: 'Endpoint not found' });
         });
@@ -191,6 +242,10 @@ class WebServer {
                     enabled: this.getModuleStatus('sms') === 'enabled',
                     status: this.getModuleStatus('sms')
                 },
+                weather: {
+                    enabled: this.getModuleStatus('weather') === 'enabled',
+                    status: this.getModuleStatus('weather')
+                },
                 rogerBeep: {
                     enabled: this.controller.audio?.getRogerBeepStatus()?.enabled || false,
                     status: 'ready'
@@ -220,6 +275,10 @@ class WebServer {
             if (moduleName === 'sms') {
                 const { Config } = require('../config');
                 return Config.smsEnabled ? 'enabled' : 'disabled';
+            }
+
+            if (moduleName === 'weather') {
+                return process.env.OPENWEATHER_API_KEY ? 'enabled' : 'disabled';
             }
 
             return 'ready';

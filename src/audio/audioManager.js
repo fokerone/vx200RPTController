@@ -53,6 +53,10 @@ class AudioManager extends EventEmitter {
         this.soundsDir = path.join(__dirname, '../../sounds');
         this.tempDir = path.join(__dirname, '../../temp');
         
+        // Debug: grabación continua para análisis
+        this.debugRecording = null;
+        this.debugBuffer = [];
+        
         // Throttled broadcast para rendimiento
         this.broadcastSignalLevel = throttle((data) => {
             this.emit('signal_level', data);
@@ -191,6 +195,11 @@ class AudioManager extends EventEmitter {
                 });
             }
 
+            // Debug: Guardar audio para análisis si hay actividad
+            if (this.channelActivity.isActive && this.debugBuffer.length < 88200) { // ~2 segundos a 44100Hz
+                this.debugBuffer.push(...audioArray);
+            }
+            
             // Emitir datos de audio (throttled si es necesario)
             this.emit('audio', audioArray);
             
@@ -207,10 +216,12 @@ class AudioManager extends EventEmitter {
         }
 
         this.dtmfBuffer += dtmf;
+        this.logger.debug(`DTMF buffer actualizado: "${this.dtmfBuffer}" (timeout: ${DTMF.TIMEOUT}ms)`);
         
         // Limpiar timeout anterior
         if (this.dtmfTimeout) {
             clearTimeout(this.dtmfTimeout);
+            this.logger.debug('Timeout DTMF anterior cancelado');
         }
         
         // Configurar nuevo timeout usando constantes
@@ -221,6 +232,8 @@ class AudioManager extends EventEmitter {
                 this.dtmfBuffer = '';
             }
         }, DTMF.TIMEOUT);
+        
+        this.logger.debug(`Nuevo timeout DTMF configurado: ${DTMF.TIMEOUT}ms`);
     }
 
     detectChannelActivity(audioArray) {
@@ -965,6 +978,59 @@ class AudioManager extends EventEmitter {
         return !this.channelActivity.isActive && 
                !this.isProcessingAudio && 
                this.audioQueue.length === 0;
+    }
+
+    // ===== DEBUG AUDIO =====
+    
+    async saveDebugAudio() {
+        if (this.debugBuffer.length === 0) {
+            this.logger.warn('No hay audio de debug para guardar');
+            return null;
+        }
+        
+        const timestamp = Date.now();
+        const filename = `debug_audio_${timestamp}.wav`;
+        const filepath = path.join(this.tempDir, filename);
+        
+        try {
+            // Convertir float32 array a buffer de 16-bit PCM
+            const int16Buffer = Buffer.alloc(this.debugBuffer.length * 2);
+            for (let i = 0; i < this.debugBuffer.length; i++) {
+                const sample = Math.max(-1, Math.min(1, this.debugBuffer[i]));
+                const int16Sample = Math.round(sample * 32767);
+                int16Buffer.writeInt16LE(int16Sample, i * 2);
+            }
+            
+            // Crear header WAV simple
+            const wavHeader = Buffer.alloc(44);
+            wavHeader.write('RIFF', 0);
+            wavHeader.writeUInt32LE(36 + int16Buffer.length, 4);
+            wavHeader.write('WAVE', 8);
+            wavHeader.write('fmt ', 12);
+            wavHeader.writeUInt32LE(16, 16); // PCM format size
+            wavHeader.writeUInt16LE(1, 20);  // PCM format
+            wavHeader.writeUInt16LE(1, 22);  // Mono
+            wavHeader.writeUInt32LE(this.sampleRate, 24); // Sample rate
+            wavHeader.writeUInt32LE(this.sampleRate * 2, 28); // Byte rate
+            wavHeader.writeUInt16LE(2, 32);  // Block align
+            wavHeader.writeUInt16LE(16, 34); // Bits per sample
+            wavHeader.write('data', 36);
+            wavHeader.writeUInt32LE(int16Buffer.length, 40);
+            
+            const wavFile = Buffer.concat([wavHeader, int16Buffer]);
+            fs.writeFileSync(filepath, wavFile);
+            
+            this.logger.info(`Audio de debug guardado: ${filepath} (${this.debugBuffer.length} muestras, ${(this.debugBuffer.length / this.sampleRate).toFixed(2)}s)`);
+            
+            // Limpiar buffer
+            this.debugBuffer = [];
+            
+            return filepath;
+            
+        } catch (error) {
+            this.logger.error('Error guardando audio de debug:', error.message);
+            return null;
+        }
     }
 
     // ===== GRABACIÓN TEMPORAL =====

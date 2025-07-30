@@ -51,6 +51,11 @@ class DTMFDecoder {
             audioBuffer.reduce((sum, sample) => sum + sample * sample, 0) / audioBuffer.length
         );
         
+        // Debug: mostrar nivel de señal cada 100 muestras
+        if (Math.random() < 0.01) { // 1% de las veces
+            this.logger.debug(`Nivel RMS: ${rmsLevel.toFixed(4)} (min: ${this.minSignalLevel})`);
+        }
+        
         if (rmsLevel < this.minSignalLevel) {
             this.resetDetectionState();
             return null;
@@ -68,9 +73,15 @@ class DTMFDecoder {
         const lowFreq = this.findPeakFrequency(magnitudes, this.frequencies.low);
         const highFreq = this.findPeakFrequency(magnitudes, this.frequencies.high);
         
+        // Debug: mostrar frecuencias detectadas cuando hay señal fuerte
+        if (rmsLevel > this.minSignalLevel * 2) {
+            this.logger.debug(`Frecuencias: Low=${lowFreq} (${lowFreq >= 0 ? this.frequencies.low[lowFreq] : 'none'}Hz), High=${highFreq} (${highFreq >= 0 ? this.frequencies.high[highFreq] : 'none'}Hz)`);
+        }
+        
         if (lowFreq !== -1 && highFreq !== -1) {
             const dtmf = this.getDTMFChar(lowFreq, highFreq);
             if (dtmf && this.validateDualTone(magnitudes, lowFreq, highFreq)) {
+                this.logger.debug(`DTMF candidato: ${dtmf}`);
                 return this.confirmDetection(dtmf);
             }
         }
@@ -120,8 +131,21 @@ class DTMFDecoder {
         const lowMagnitude = magnitudes[lowBin];
         const highMagnitude = magnitudes[highBin];
         
+        // Ratio más estricto para DTMF válido
         const ratio = Math.min(lowMagnitude, highMagnitude) / Math.max(lowMagnitude, highMagnitude);
-        return ratio > 0.3;
+        
+        // Verificar que ambas frecuencias sean suficientemente fuertes
+        const avgMagnitude = (lowMagnitude + highMagnitude) / 2;
+        const strongEnough = avgMagnitude > this.threshold * 2;
+        
+        // Verificar que no haya demasiada energía en otras frecuencias (reducir falsos positivos)
+        const totalEnergy = magnitudes.reduce((sum, mag) => sum + mag, 0);
+        const dtmfEnergy = lowMagnitude + highMagnitude;
+        const purity = dtmfEnergy / totalEnergy;
+        
+        this.logger.debug(`Validación dual-tone: ratio=${ratio.toFixed(3)}, strong=${strongEnough}, purity=${purity.toFixed(3)}`);
+        
+        return ratio > 0.4 && strongEnough && purity > 0.1;
     }
 
     /**

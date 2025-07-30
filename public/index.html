@@ -60,7 +60,10 @@
             <div class="card">
                 <div class="card-header">
                     <h2>Monitor DTMF</h2>
-                    <button class="btn btn-small" onclick="clearDTMFHistory()">Limpiar</button>
+                    <div>
+                        <button class="btn btn-small" onclick="clearDTMFHistory()">Limpiar</button>
+                        <button class="btn btn-small" onclick="saveDebugAudio()" style="margin-left: 5px;">🎵 Debug Audio</button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="dtmf-monitor">
@@ -128,6 +131,18 @@
                             </div>
                             <div class="module-controls">
                                 <button class="btn btn-execute" onclick="executeModule('sms', '3')">Ejecutar</button>
+                            </div>
+                        </div>
+
+                        <div class="module-item" data-module="weather">
+                            <div class="module-header">
+                                <span class="module-name">Clima</span>
+                                <div class="module-status" id="weatherStatus">--</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-execute" onclick="executeModule('weather', '4')">Actual</button>
+                                <button class="btn btn-execute" onclick="executeModule('weather', '42')">24h</button>
+                                <button class="btn btn-execute" onclick="executeModule('weather', '43')">🎤 Voz</button>
                             </div>
                         </div>
 

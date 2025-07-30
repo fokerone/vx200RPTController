@@ -3,6 +3,7 @@ const Baliza = require('./modules/baliza');
 const DateTime = require('./modules/datetime');
 const AIChat = require('./modules/aiChat');
 const SMS = require('./modules/sms');
+const Weather = require('./modules/weather-voice');
 const WebServer = require('./web/server');
 const { Config } = require('./config');
 const { createLogger } = require('./logging/Logger');
@@ -89,6 +90,7 @@ class VX200Controller {
         this.modules.datetime = new DateTime(this.audio);
         this.modules.aiChat = new AIChat(this.audio);
         this.modules.sms = new SMS(this.audio);
+        this.modules.weather = new Weather(this.audio);
         
         this.logger.info('Módulos inicializados');
     }
@@ -193,6 +195,10 @@ class VX200Controller {
             '*1': { module: 'datetime', handler: () => this.modules.datetime.execute(sequence) },
             '*2': { module: 'aiChat', handler: () => this.modules.aiChat.execute(sequence) },
             '*3': { module: 'sms', handler: () => this.modules.sms.execute(sequence) },
+            '*4': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
+            '*41': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
+            '*42': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
+            '*43': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
             '*9': { module: 'baliza', handler: () => this.modules.baliza.execute(sequence) }
         };
 
@@ -279,6 +285,9 @@ class VX200Controller {
                     break;
                 case 'sms':
                     await this.modules.sms.execute('*3');
+                    break;
+                case 'weather':
+                    await this.modules.weather.execute('*4');
                     break;
                 default:
                     throw new Error(`Comando desconocido: ${command}`);
@@ -401,6 +410,10 @@ class VX200Controller {
                 enabled: Config.smsEnabled,
                 details: Config.smsEnabled ? 'Twilio configured' : 'No credentials'
             },
+            weather: {
+                enabled: !!process.env.OPENWEATHER_API_KEY,
+                details: process.env.OPENWEATHER_API_KEY ? 'OpenWeather configured' : 'No API key'
+            },
             webServer: { 
                 enabled: true,
                 details: `Port: ${Config.webPort}`
@@ -483,6 +496,7 @@ class VX200Controller {
             datetime: this.modules.datetime.getStatus(),
             aiChat: this.modules.aiChat.getStatus(),
             sms: this.modules.sms.getStatus(),
+            weather: this.modules.weather.getStatus(),
             rogerBeep: audioStatus.rogerBeep,
             dtmf: {
                 lastSequence: 'Esperando...',
