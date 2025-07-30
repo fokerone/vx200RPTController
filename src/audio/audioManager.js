@@ -504,14 +504,26 @@ class AudioManager extends EventEmitter {
                 if (soxTimeout) clearTimeout(soxTimeout);
                 
                 if (code === 0) {
-                    // Reproducir con aplay
-                    this.playWithAplay(tempFile, duration).then(() => {
+                    // Primero intentar con PulseAudio para evitar conflictos de dispositivo
+                    this.playWithPaplay(tempFile).then(() => {
                         this.cleanupTempFile(tempFile);
                         resolve();
-                    }).catch((error) => {
-                        this.cleanupTempFile(tempFile);
-                        this.logger.warn(`Error con aplay, usando fallback: ${error.message}`);
-                        this.playToneWithBeep(frequency, duration).then(resolve).catch(() => resolve());
+                    }).catch(async (paError) => {
+                        this.logger.debug(`Paplay falló: ${paError.message}, intentando aplay`);
+                        
+                        // Fallback 1: Intentar con aplay
+                        try {
+                            await this.playWithAplay(tempFile, duration);
+                            this.cleanupTempFile(tempFile);
+                            resolve();
+                            return;
+                        } catch (aplayError) {
+                            this.cleanupTempFile(tempFile);
+                            this.logger.debug(`Aplay también falló: ${aplayError.message}`);
+                        }
+                        
+                        // Fallback 2: Usar método sin archivo
+                        this.playToneWithoutFile(frequency, duration).then(resolve).catch(() => resolve());
                     });
                 } else {
                     this.logger.warn(`Sox falló con código ${code}, usando fallback beep`);
@@ -521,16 +533,31 @@ class AudioManager extends EventEmitter {
 
             sox.on('error', (err) => {
                 if (soxTimeout) clearTimeout(soxTimeout);
-                this.logger.warn(`Error en sox: ${err.message}, usando fallback beep`);
-                this.playToneWithBeep(frequency, duration).then(resolve).catch(() => resolve());
+                this.logger.warn(`Error en sox: ${err.message}, usando fallback directo`);
+                this.playToneWithoutFile(frequency, duration).then(resolve).catch(() => resolve());
             });
         });
     }
 
     async playWithAplay(filePath, expectedDuration) {
         return new Promise((resolve, reject) => {
-            const aplay = spawn('aplay', ['-q', filePath]);
+            // Intentar primero con aplay usando device por defecto
+            const aplayArgs = ['-q'];
+            
+            // Si hay un device específico configurado, intentar usarlo
+            if (this.device && this.device !== 'default') {
+                aplayArgs.push('-D', this.device);
+            }
+            aplayArgs.push(filePath);
+            
+            const aplay = spawn('aplay', aplayArgs);
             let aplayTimeout = null;
+            let stderr = '';
+            
+            // Capturar stderr para diagnóstico
+            aplay.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
             
             // Timeout de seguridad
             aplayTimeout = setTimeout(() => {
@@ -547,7 +574,11 @@ class AudioManager extends EventEmitter {
                     this.logger.debug('aplay completado exitosamente');
                     resolve();
                 } else {
-                    reject(new Error(`aplay falló con código ${code}`));
+                    let errorMsg = `aplay falló con código ${code}`;
+                    if (stderr.trim()) {
+                        errorMsg += `: ${stderr.trim()}`;
+                    }
+                    reject(new Error(errorMsg));
                 }
             });
             
@@ -558,33 +589,208 @@ class AudioManager extends EventEmitter {
         });
     }
 
+    async playWithPaplay(filePath) {
+        return new Promise((resolve, reject) => {
+            // Intentar con paplay sin especificar dispositivo para usar el default
+            const paplay = spawn('paplay', ['--volume=65536', filePath]);
+            let paplayTimeout = null;
+            let stderr = '';
+            
+            // Capturar stderr para diagnóstico
+            paplay.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+            
+            // Timeout de seguridad más generoso
+            paplayTimeout = setTimeout(() => {
+                if (!paplay.killed) {
+                    paplay.kill('SIGTERM');
+                    reject(new Error('paplay timeout'));
+                }
+            }, 8000);
+            
+            paplay.on('close', (code) => {
+                if (paplayTimeout) clearTimeout(paplayTimeout);
+                
+                if (code === 0) {
+                    this.logger.debug('paplay completado exitosamente');
+                    resolve();
+                } else {
+                    let errorMsg = `paplay falló con código ${code}`;
+                    if (stderr.trim()) {
+                        errorMsg += `: ${stderr.trim()}`;
+                    }
+                    reject(new Error(errorMsg));
+                }
+            });
+            
+            paplay.on('error', (err) => {
+                if (paplayTimeout) clearTimeout(paplayTimeout);
+                reject(err);
+            });
+        });
+    }
+
     async playToneWithBeep(frequency, duration) {
-        return new Promise((resolve) => {
+        return new Promise(async (resolve) => {
             try {
                 this.logger.debug(`Fallback beep: ${frequency}Hz por ${duration}ms`);
-                const beep = spawn('beep', ['-f', frequency.toString(), '-l', duration.toString()]);
                 
-                beep.on('close', () => {
-                    this.logger.debug('Beep completado');
-                    resolve();
-                });
-                
-                beep.on('error', () => {
-                    this.logger.debug('Beep falló, resolviendo silenciosamente');
-                    resolve();
-                });
+                // Intentar con beep primero
+                try {
+                    const beep = spawn('beep', ['-f', frequency.toString(), '-l', duration.toString()]);
+                    let beepCompleted = false;
+                    
+                    beep.on('close', (code) => {
+                        if (!beepCompleted) {
+                            beepCompleted = true;
+                            if (code === 0) {
+                                this.logger.debug('Beep completado exitosamente');
+                            } else {
+                                this.logger.debug(`Beep falló con código ${code}`);
+                            }
+                            resolve();
+                        }
+                    });
+                    
+                    beep.on('error', () => {
+                        if (!beepCompleted) {
+                            beepCompleted = true;
+                            this.logger.debug('Beep falló, intentando speaker-test');
+                            this.playWithSpeakerTest(frequency, duration).then(resolve).catch(() => resolve());
+                        }
+                    });
 
-                // Timeout de seguridad
-                setTimeout(() => {
-                    if (!beep.killed) {
-                        beep.kill('SIGTERM');
-                    }
+                    // Timeout de seguridad
+                    setTimeout(() => {
+                        if (!beepCompleted && !beep.killed) {
+                            beepCompleted = true;
+                            beep.kill('SIGTERM');
+                            this.logger.debug('Beep timeout, intentando speaker-test');
+                            this.playWithSpeakerTest(frequency, duration).then(resolve).catch(() => resolve());
+                        }
+                    }, duration + 1000);
+
+                } catch (error) {
+                    this.logger.debug('Error iniciando beep, intentando speaker-test');
+                    await this.playWithSpeakerTest(frequency, duration);
                     resolve();
-                }, duration + 1000);
+                }
 
             } catch (error) {
-                this.logger.debug('Error en beep fallback, resolviendo silenciosamente');
+                this.logger.debug('Error en todos los fallbacks, resolviendo silenciosamente');
                 resolve(); // Fallar silenciosamente
+            }
+        });
+    }
+
+    async playToneWithoutFile(frequency, duration) {
+        return new Promise((resolve) => {
+            try {
+                this.logger.debug(`Generando tono directo: ${frequency}Hz por ${duration}ms`);
+                const durationSeconds = (duration / 1000).toFixed(3);
+                
+                // Usar sox para generar directamente a paplay/aplay via pipe
+                const sox = spawn('sox', [
+                    '-n', '-t', 'wav', '-',
+                    'synth', durationSeconds,
+                    'sine', frequency.toString(),
+                    'vol', '0.3'
+                ]);
+                
+                // Intentar reproducir con paplay primero
+                const paplay = spawn('paplay', ['--format=s16le', '--rate=44100', '--channels=1', '-']);
+                let completed = false;
+                
+                // Conectar sox output a paplay input
+                sox.stdout.pipe(paplay.stdin);
+                
+                const cleanup = () => {
+                    if (!completed) {
+                        completed = true;
+                        try {
+                            if (!sox.killed) sox.kill('SIGTERM');
+                            if (!paplay.killed) paplay.kill('SIGTERM');
+                        } catch (e) { /* ignore */ }
+                    }
+                };
+                
+                paplay.on('close', (code) => {
+                    cleanup();
+                    if (code === 0) {
+                        this.logger.debug('Tono directo completado exitosamente');
+                    } else {
+                        this.logger.debug(`Tono directo terminó con código ${code}`);
+                    }
+                    resolve();
+                });
+                
+                paplay.on('error', () => {
+                    cleanup();
+                    this.logger.debug('Error en tono directo, intentando beep');
+                    this.playToneWithBeep(frequency, duration).then(resolve).catch(() => resolve());
+                });
+                
+                sox.on('error', () => {
+                    cleanup();
+                    this.logger.debug('Error en sox directo, intentando beep');
+                    this.playToneWithBeep(frequency, duration).then(resolve).catch(() => resolve());
+                });
+                
+                // Timeout de seguridad
+                setTimeout(() => {
+                    if (!completed) {
+                        cleanup();
+                        this.logger.debug('Timeout en tono directo');
+                        resolve();
+                    }
+                }, duration + 2000);
+                
+            } catch (error) {
+                this.logger.debug('Error configurando tono directo, usando beep');
+                this.playToneWithBeep(frequency, duration).then(resolve).catch(() => resolve());
+            }
+        });
+    }
+
+    async playWithSpeakerTest(frequency, duration) {
+        return new Promise((resolve) => {
+            try {
+                this.logger.debug(`Fallback speaker-test: tono por ${duration}ms`);
+                
+                // speaker-test genera ruido rosa por defecto, mejor que nada
+                const speakerTest = spawn('speaker-test', ['-t', 'sine', '-f', frequency.toString(), '-l', '1']);
+                let completed = false;
+                
+                // Detener después de la duración especificada
+                setTimeout(() => {
+                    if (!completed && !speakerTest.killed) {
+                        completed = true;
+                        speakerTest.kill('SIGTERM');
+                        this.logger.debug('speaker-test completado por timeout');
+                        resolve();
+                    }
+                }, duration);
+                
+                speakerTest.on('close', () => {
+                    if (!completed) {
+                        completed = true;
+                        this.logger.debug('speaker-test terminado');
+                        resolve();
+                    }
+                });
+                
+                speakerTest.on('error', () => {
+                    if (!completed) {
+                        completed = true;
+                        this.logger.debug('speaker-test falló, simulando con delay');
+                        setTimeout(resolve, duration); // Simular duración con delay
+                    }
+                });
+                
+            } catch (error) {
+                this.logger.debug('Error en speaker-test, simulando con delay');
+                setTimeout(resolve, duration); // Simular duración con delay
             }
         });
     }

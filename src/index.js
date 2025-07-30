@@ -141,8 +141,10 @@ class VX200Controller {
             this.webServer.broadcastDTMF(sequence);
         });
 
-        this.modules.baliza.on('transmitted', () => {
-            this.webServer.broadcastBalizaTransmitted();
+        this.modules.baliza.on('transmitted', (data) => {
+            if (this.webServer && typeof this.webServer.broadcastBalizaTransmitted === 'function') {
+                this.webServer.broadcastBalizaTransmitted(data);
+            }
         });
 
         this.interceptLogs();

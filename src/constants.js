@@ -2,15 +2,14 @@
  * Constantes del sistema VX200 Controller
  */
 
-// DTMF Decoder Constants
 const DTMF = {
     WINDOW_SIZE: 1024,
-    THRESHOLD: 0.05,
-    REQUIRED_COUNT: 3,
-    MIN_SIGNAL_LEVEL: 0.02,
+    THRESHOLD: 0.03,
+    REQUIRED_COUNT: 2,
+    MIN_SIGNAL_LEVEL: 0.015,
     MAX_NOISE_LEVEL: 0.1,
-    CLEANUP_INTERVAL: 3000,
-    TIMEOUT: 2000,
+    CLEANUP_INTERVAL: 2000,
+    TIMEOUT: 1500,
     
     FREQUENCIES: {
         LOW: [697, 770, 852, 941],

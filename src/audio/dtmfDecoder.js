@@ -42,58 +42,86 @@ class DTMFDecoder {
         return avgLevel > this.minSignalLevel;
     }
 
-    /**
-     * Detectar DTMF en buffer de audio
-     */
     detectDTMF(audioBuffer) {
         if (audioBuffer.length < this.windowSize) {
             return null;
         }
         
-        // Validación simplificada
-        const avgLevel = audioBuffer.reduce((sum, sample) => 
-            sum + Math.abs(sample), 0) / audioBuffer.length;
+        const rmsLevel = Math.sqrt(
+            audioBuffer.reduce((sum, sample) => sum + sample * sample, 0) / audioBuffer.length
+        );
         
-        if (avgLevel < this.minSignalLevel) {
+        if (rmsLevel < this.minSignalLevel) {
+            this.resetDetectionState();
             return null;
         }
 
-        // Aplicar FFT
-        const complexBuffer = audioBuffer.slice(0, this.windowSize).map(x => [x, 0]);
+        const windowedBuffer = audioBuffer.slice(0, this.windowSize).map((sample, index) => {
+            const window = 0.54 - 0.46 * Math.cos(2 * Math.PI * index / (this.windowSize - 1));
+            return sample * window;
+        });
+        
+        const complexBuffer = windowedBuffer.map(x => [x, 0]);
         const fftResult = FFT(complexBuffer);
         const magnitudes = FFTUtil.fftMag(fftResult);
         
-        // Buscar picos en frecuencias DTMF
         const lowFreq = this.findPeakFrequency(magnitudes, this.frequencies.low);
         const highFreq = this.findPeakFrequency(magnitudes, this.frequencies.high);
         
         if (lowFreq !== -1 && highFreq !== -1) {
             const dtmf = this.getDTMFChar(lowFreq, highFreq);
-            return this.confirmDetection(dtmf);
+            if (dtmf && this.validateDualTone(magnitudes, lowFreq, highFreq)) {
+                return this.confirmDetection(dtmf);
+            }
         }
         
         return null;
     }
-    /**
-     * Encontrar pico de frecuencia más cercano
-     */
     findPeakFrequency(magnitudes, targetFreqs) {
         let bestFreqIndex = -1;
         let maxMagnitude = 0;
+        const minThreshold = this.threshold * 1.5;
         
         for (let i = 0; i < targetFreqs.length; i++) {
             const freq = targetFreqs[i];
             const binIndex = Math.round(freq * this.windowSize / this.sampleRate);
             
-            if (binIndex < magnitudes.length && magnitudes[binIndex] > this.threshold) {
-                if (magnitudes[binIndex] > maxMagnitude) {
-                    maxMagnitude = magnitudes[binIndex];
-                    bestFreqIndex = i;
+            for (let offset = -1; offset <= 1; offset++) {
+                const checkIndex = binIndex + offset;
+                if (checkIndex >= 0 && checkIndex < magnitudes.length) {
+                    if (magnitudes[checkIndex] > minThreshold && magnitudes[checkIndex] > maxMagnitude) {
+                        const isLocalPeak = this.isLocalPeak(magnitudes, checkIndex);
+                        if (isLocalPeak) {
+                            maxMagnitude = magnitudes[checkIndex];
+                            bestFreqIndex = i;
+                        }
+                    }
                 }
             }
         }
         
         return bestFreqIndex;
+    }
+
+    isLocalPeak(magnitudes, index) {
+        const current = magnitudes[index];
+        const left = index > 0 ? magnitudes[index - 1] : 0;
+        const right = index < magnitudes.length - 1 ? magnitudes[index + 1] : 0;
+        return current >= left && current >= right;
+    }
+
+    validateDualTone(magnitudes, lowFreqIndex, highFreqIndex) {
+        const lowFreq = this.frequencies.low[lowFreqIndex];
+        const highFreq = this.frequencies.high[highFreqIndex];
+        
+        const lowBin = Math.round(lowFreq * this.windowSize / this.sampleRate);
+        const highBin = Math.round(highFreq * this.windowSize / this.sampleRate);
+        
+        const lowMagnitude = magnitudes[lowBin];
+        const highMagnitude = magnitudes[highBin];
+        
+        const ratio = Math.min(lowMagnitude, highMagnitude) / Math.max(lowMagnitude, highMagnitude);
+        return ratio > 0.3;
     }
 
     /**
@@ -106,11 +134,7 @@ class DTMFDecoder {
         return null;
     }
 
-    /**
-     * Confirmar detección con múltiples muestras
-     */
     confirmDetection(dtmf) {
-        // Limpiar timeout anterior
         if (this.cleanupTimeout) {
             clearTimeout(this.cleanupTimeout);
         }
@@ -118,22 +142,34 @@ class DTMFDecoder {
         if (dtmf === this.lastDetection) {
             this.detectionCount++;
             if (this.detectionCount >= this.requiredCount) {
-                this.detectionCount = 0;
-                this.lastDetection = '';
-                return dtmf; // ¡Detección confirmada!
+                const confirmedDTMF = dtmf;
+                this.resetDetectionState();
+                
+                this.cleanupTimeout = setTimeout(() => {
+                    this.resetDetectionState();
+                }, 800);
+                
+                return confirmedDTMF;
             }
         } else {
             this.lastDetection = dtmf;
             this.detectionCount = 1;
         }
         
-        // Auto-limpiar si no hay más detecciones
         this.cleanupTimeout = setTimeout(() => {
-            this.lastDetection = '';
-            this.detectionCount = 0;
+            this.resetDetectionState();
         }, this.cleanupInterval);
         
         return null;
+    }
+
+    resetDetectionState() {
+        this.lastDetection = '';
+        this.detectionCount = 0;
+        if (this.cleanupTimeout) {
+            clearTimeout(this.cleanupTimeout);
+            this.cleanupTimeout = null;
+        }
     }
 
     /**
@@ -150,11 +186,14 @@ class DTMFDecoder {
     /**
      * Cleanup resources
      */
+    forceReset() {
+        this.resetDetectionState();
+        this.detectionCount = 0;
+        this.lastDetection = '';
+    }
+
     destroy() {
-        if (this.cleanupTimeout) {
-            clearTimeout(this.cleanupTimeout);
-            this.cleanupTimeout = null;
-        }
+        this.forceReset();
         this.logger.info('DTMF Decoder destruido');
     }
 }

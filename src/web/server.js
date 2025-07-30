@@ -409,6 +409,19 @@ class WebServer {
         }
     }
 
+    broadcastBalizaTransmitted(data = {}) {
+        const balizaEvent = {
+            timestamp: new Date().toISOString(),
+            count: data.count || 0,
+            message: data.message || '',
+            ...data
+        };
+        
+        if (this.connectedClients.size > 0) {
+            this.io.emit('baliza_transmitted', balizaEvent);
+        }
+    }
+
     broadcastSignalLevel(data) {
         if (this.connectedClients.size > 0) {
             this.io.emit('signal_level', data);
