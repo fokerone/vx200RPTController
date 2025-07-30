@@ -6,10 +6,20 @@ class VX200Panel {
         this.systemData = {};
         this.dtmfHistory = [];
         
+        // Cache de elementos DOM para mejor rendimiento
+        this.domCache = {};
+        
+        // Control de actualizaciones del canal
+        this.currentChannelState = 'LIBRE';
+        this.lastChannelData = null;
+        this.updateTimer = null;
+        this.stateTimeout = null;
+        
         this.init();
     }
 
     init() {
+        this.cacheElements();
         this.setupSocketConnection();
         this.setupEventListeners();
         this.setupTabs();
@@ -19,7 +29,22 @@ class VX200Panel {
             if (this.isConnected) {
                 this.refreshSystemStatus();
             }
-        }, 5000);
+        }, 15000); // Cambiado de 5s a 15s para reducir carga
+    }
+
+    cacheElements() {
+        // Cachear elementos que se usan frecuentemente
+        this.domCache = {
+            connectionStatus: document.getElementById('connectionStatus'),
+            systemUptime: document.getElementById('systemUptime'),
+            systemStatus: document.getElementById('systemStatus'),
+            audioStatus: document.getElementById('audioStatus'),
+            channelStatus: document.getElementById('channelStatus'),
+            lastUpdate: document.getElementById('lastUpdate'),
+            dtmfDigits: document.getElementById('dtmfDigits'),
+            dtmfTargetModule: document.getElementById('dtmfTargetModule'),
+            dtmfRecentList: document.getElementById('dtmfRecentList')
+        };
     }
 
     setupSocketConnection() {
@@ -47,7 +72,7 @@ class VX200Panel {
         });
 
         this.socket.on('channel_activity', (data) => {
-            this.updateChannelStatus(data.isActive, data.level);
+            this.throttledChannelUpdate(data.isActive, data.level, data.transmitting, data.inputActivity);
         });
 
         this.socket.on('signal_level', (data) => {
@@ -151,7 +176,9 @@ class VX200Panel {
     }
 
     updateConnectionStatus(connected) {
-        const statusElement = document.getElementById('connectionStatus');
+        const statusElement = this.domCache.connectionStatus;
+        if (!statusElement) return;
+        
         const dot = statusElement.querySelector('.status-dot');
         const text = statusElement.querySelector('.status-text');
         
@@ -168,18 +195,29 @@ class VX200Panel {
         if (!this.systemData) return;
 
         const uptime = this.formatUptime(this.systemData.uptime);
-        document.getElementById('systemUptime').textContent = `Uptime: ${uptime}`;
+        if (this.domCache.systemUptime) {
+            this.domCache.systemUptime.textContent = `Uptime: ${uptime}`;
+        }
 
         const systemState = this.systemData.server?.state === 'active' ? 'Activo' : 'Inactivo';
         const audioState = this.systemData.audio?.status === 'active' ? 'Activo' : 'Inactivo';
         
-        document.getElementById('systemStatus').textContent = systemState;
-        document.getElementById('audioStatus').textContent = audioState;
+        if (this.domCache.systemStatus) {
+            this.domCache.systemStatus.textContent = systemState;
+        }
+        if (this.domCache.audioStatus) {
+            this.domCache.audioStatus.textContent = audioState;
+        }
 
-        const channelState = this.systemData.channel?.isActive ? 'OCUPADO' : 'LIBRE';
-        document.getElementById('channelStatus').textContent = channelState;
-        document.getElementById('channelStatus').style.color = 
-            this.systemData.channel?.isActive ? '#ef4444' : '#10b981';
+        // Actualizar estado del canal usando la función optimizada
+        if (this.systemData.channel) {
+            this.updateChannelStatus(
+                this.systemData.channel.isActive,
+                this.systemData.channel.level,
+                this.systemData.channel.transmitting,
+                this.systemData.channel.inputActivity
+            );
+        }
 
         if (this.systemData.modules) {
             Object.entries(this.systemData.modules).forEach(([name, module]) => {
@@ -187,8 +225,10 @@ class VX200Panel {
             });
         }
 
-        document.getElementById('lastUpdate').textContent = 
-            `Última actualización: ${new Date().toLocaleTimeString()}`;
+        if (this.domCache.lastUpdate) {
+            this.domCache.lastUpdate.textContent = 
+                `Última actualización: ${new Date().toLocaleTimeString()}`;
+        }
     }
 
     updateModuleUI(moduleName, moduleData) {
@@ -211,10 +251,129 @@ class VX200Panel {
         }
     }
 
+    throttledChannelUpdate(isActive, level, transmitting = false, inputActivity = false) {
+        // Guardar los datos más recientes
+        this.lastChannelData = { isActive, level, transmitting, inputActivity };
+        
+        // Determinar el nuevo estado
+        let newState = 'LIBRE';
+        if (isActive) {
+            if (transmitting) {
+                newState = 'TX';
+            } else if (inputActivity) {
+                newState = 'RX';
+            } else {
+                newState = 'RX';
+            }
+        }
+        
+        // Si el estado va a cambiar, aplicar timeout diferenciado
+        if (this.currentChannelState !== newState) {
+            // Cancelar timeout anterior si existe
+            if (this.stateTimeout) {
+                clearTimeout(this.stateTimeout);
+            }
+            
+            // Timeout diferenciado por tipo de estado
+            let delay = 100; // Default para RX
+            if (newState === 'TX') {
+                delay = 300; // Más tiempo para TX para evitar parpadeo
+            } else if (newState === 'LIBRE') {
+                delay = 500; // Más tiempo para LIBRE para confirmar inactividad
+            }
+            
+            this.stateTimeout = setTimeout(() => {
+                // Verificar que los datos siguen siendo válidos
+                if (this.lastChannelData) {
+                    this.updateChannelStatusImmediate(
+                        this.lastChannelData.isActive,
+                        this.lastChannelData.level,
+                        this.lastChannelData.transmitting,
+                        this.lastChannelData.inputActivity
+                    );
+                }
+                this.stateTimeout = null;
+            }, delay);
+        }
+    }
+
+    updateChannelStatusImmediate(isActive, level, transmitting = false, inputActivity = false) {
+        if (!this.domCache.channelStatus) {
+            return;
+        }
+        
+        // Determinar el estado del canal con prioridad TX > RX > LIBRE
+        let channelState = 'LIBRE';
+        let channelColor = '#10b981';
+        
+        if (isActive) {
+            if (transmitting) {
+                channelState = 'TX';
+                channelColor = '#f59e0b';
+            } else if (inputActivity) {
+                channelState = 'RX';
+                channelColor = '#ef4444';
+            } else {
+                channelState = 'RX';
+                channelColor = '#ef4444';
+            }
+        }
+        
+        // Solo actualizar si el estado realmente cambió
+        if (this.currentChannelState !== channelState) {
+            this.currentChannelState = channelState;
+            this.domCache.channelStatus.textContent = channelState;
+            this.domCache.channelStatus.style.color = channelColor;
+        }
+        
+        // También actualizar el nivel de señal si se proporciona
+        if (level !== undefined) {
+            this.updateSignalLevel(level);
+        }
+    }
+    
+    // Función legacy para compatibilidad
+    updateChannelStatus(isActive, level, transmitting = false, inputActivity = false) {
+        this.throttledChannelUpdate(isActive, level, transmitting, inputActivity);
+    }
+
+    updateSignalLevel(level) {
+        // Actualizar indicador visual de nivel de señal
+        // Por ahora solo registrar en consola, podríamos agregar un indicador visual más tarde
+        console.debug(`Nivel de señal: ${level}`);
+        
+        // Si hay algún elemento para mostrar el nivel de señal, actualizarlo aquí
+        const signalLevelElement = document.getElementById('signalLevel');
+        if (signalLevelElement) {
+            signalLevelElement.textContent = `${Math.round(level * 100)}%`;
+        }
+    }
+
+    updateModuleStatus(moduleName, status) {
+        const statusElement = document.getElementById(`${moduleName}Status`);
+        if (statusElement) {
+            statusElement.textContent = status.toUpperCase();
+            statusElement.className = `module-status ${status === 'enabled' ? 'enabled' : 'disabled'}`;
+        }
+
+        const moduleItem = document.querySelector(`[data-module="${moduleName}"]`);
+        if (moduleItem) {
+            moduleItem.setAttribute('data-enabled', status === 'enabled');
+        }
+
+        const toggleButton = document.getElementById(`${moduleName}Toggle`);
+        if (toggleButton) {
+            toggleButton.textContent = status === 'enabled' ? 'Desactivar' : 'Activar';
+        }
+    }
+
     handleDTMFDetected(data) {
         this.displayDTMFSequence(data.sequence);
         
-        document.getElementById('dtmfTargetModule').textContent = data.targetModule;
+        if (this.domCache.dtmfTargetModule) {
+            this.domCache.dtmfTargetModule.textContent = data.targetModule;
+        }
+        
         this.dtmfHistory.unshift(data);
         if (this.dtmfHistory.length > 15) {
             this.dtmfHistory.pop();
@@ -226,23 +385,21 @@ class VX200Panel {
     }
 
     displayDTMFSequence(sequence) {
-        const digitsContainer = document.getElementById('dtmfDigits');
-        if (!digitsContainer) return;
+        if (!this.domCache.dtmfDigits) return;
 
-        digitsContainer.innerHTML = '';
+        this.domCache.dtmfDigits.innerHTML = '';
         for (let i = 0; i < sequence.length; i++) {
             const digitElement = document.createElement('span');
             digitElement.className = 'dtmf-digit';
             digitElement.textContent = sequence[i];
-            digitsContainer.appendChild(digitElement);
+            this.domCache.dtmfDigits.appendChild(digitElement);
         }
     }
 
     updateDTMFRecentList() {
-        const recentContainer = document.getElementById('dtmfRecentList');
-        if (!recentContainer) return;
+        if (!this.domCache.dtmfRecentList) return;
 
-        recentContainer.innerHTML = '';
+        this.domCache.dtmfRecentList.innerHTML = '';
         
         this.dtmfHistory.forEach(entry => {
             const itemDiv = document.createElement('div');
@@ -254,7 +411,7 @@ class VX200Panel {
                 <div class="dtmf-recent-time">${new Date(entry.timestamp).toLocaleTimeString()}</div>
             `;
             
-            recentContainer.appendChild(itemDiv);
+            this.domCache.dtmfRecentList.appendChild(itemDiv);
         });
     }
 
@@ -417,6 +574,7 @@ class VX200Panel {
             return `${minutes}m ${seconds % 60}s`;
         }
     }
+
 }
 
 let panel;

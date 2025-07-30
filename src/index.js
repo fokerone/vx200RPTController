@@ -133,6 +133,16 @@ class VX200Controller {
             this.webServer.broadcastSignalLevel(data);
         });
 
+        this.audio.on('transmission_started', (data) => {
+            this.logger.debug('Transmisión iniciada:', data);
+            this.webServer.broadcastChannelActivity(true, 0);
+        });
+
+        this.audio.on('transmission_ended', (data) => {
+            this.logger.debug('Transmisión terminada:', data);
+            this.webServer.broadcastChannelActivity(false, 0);
+        });
+
         this.setupWebEvents();
     }
 

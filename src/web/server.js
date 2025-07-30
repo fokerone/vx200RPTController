@@ -279,9 +279,7 @@ class WebServer {
 
     updateConfiguration(newConfig) {
         try {
-            const { Config, ConfigManager } = require('../config');
-            
-            const configManager = ConfigManager.getInstance();
+            const { Config, configManager } = require('../config');
             const configUpdates = {};
             if (newConfig.callsign) {
                 configUpdates['system.callsign'] = newConfig.callsign;
@@ -405,7 +403,17 @@ class WebServer {
 
     broadcastChannelActivity(isActive, level) {
         if (this.connectedClients.size > 0) {
-            this.io.emit('channel_activity', { isActive, level });
+            // Obtener información completa del estado del canal
+            const audioStatus = this.controller?.audio?.getStatus();
+            
+            const channelInfo = {
+                isActive,
+                level,
+                transmitting: audioStatus?.channel?.transmitting || false,
+                inputActivity: audioStatus?.channel?.inputActivity || false
+            };
+            
+            this.io.emit('channel_activity', channelInfo);
         }
     }
 

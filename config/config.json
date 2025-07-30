@@ -1,23 +1,157 @@
 {
-  "callsign": "LU5MCD",
-  "version": "2.0",
+  "system": {
+    "callsign": "LU5MCD",
+    "version": "2.0",
+    "name": "VX200 Controller",
+    "description": "Sistema de Control para Repetidora Simplex",
+    "environment": "testing"
+  },
+  "web": {
+    "port": 3000,
+    "host": "0.0.0.0",
+    "allowedOrigins": [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000"
+    ],
+    "maxConnections": 100,
+    "maxBufferSize": 102400,
+    "maxJsonSize": "10mb",
+    "pingTimeout": 60000,
+    "pingInterval": 25000,
+    "signalThrottleMs": 100,
+    "requestTimeout": 30000,
+    "rateLimitWindow": 900000,
+    "rateLimitMax": 100
+  },
+  "audio": {
+    "sampleRate": 48000,
+    "channels": 1,
+    "bitDepth": 16,
+    "device": "default",
+    "channelThreshold": 0.02,
+    "sustainTime": 1000,
+    "transmissionDelay": 500,
+    "maxWaitTime": 30000,
+    "maxRecordingDuration": 10000,
+    "minRecordingDuration": 1000
+  },
+  "tts": {
+    "voice": "es",
+    "speed": 100,
+    "amplitude": 100,
+    "timeout": 30000
+  },
   "rogerBeep": {
     "enabled": true,
     "type": "kenwood",
-    "volume": 0.7,
+    "volume": 1,
     "duration": 250,
-    "delay": 100
+    "delay": 100,
+    "frequencies": [
+      1500,
+      1200,
+      1000
+    ],
+    "minVolume": 0.1,
+    "maxVolume": 1,
+    "minDuration": 50,
+    "maxDuration": 1000
   },
   "baliza": {
     "enabled": true,
     "interval": 15,
+    "message": "LU5MCD Repetidora Simplex",
+    "autoStart": true,
+    "waitForFreeChannel": true,
     "tone": {
       "frequency": 1000,
       "duration": 500,
       "volume": 0.7
     },
-    "message": "LU5MCD Repetidora Simplex",
-    "autoStart": true,
-    "waitForFreeChannel": true
-  }
+    "limits": {
+      "minInterval": 1,
+      "maxInterval": 60,
+      "minFrequency": 100,
+      "maxFrequency": 3000,
+      "minDuration": 100,
+      "maxDuration": 2000
+    }
+  },
+  "datetime": {
+    "enabled": true,
+    "locale": "es",
+    "timezone": "America/Argentina/Buenos_Aires",
+    "format": {
+      "date": "dddd, DD [de] MMMM [de] YYYY",
+      "time": "HH:mm [horas]"
+    }
+  },
+  "aiChat": {
+    "enabled": false,
+    "provider": "openai",
+    "model": "gpt-3.5-turbo",
+    "maxTokens": 150,
+    "temperature": 0.7,
+    "basePrompt": "Eres un asistente de radio amateur. Responde de forma breve y clara en español latino.",
+    "recordingDuration": 10000,
+    "timeout": 30000
+  },
+  "sms": {
+    "enabled": false,
+    "provider": "twilio",
+    "timeout": 30000,
+    "maxLength": 160,
+    "minPhoneLength": 8
+  },
+  "dtmf": {
+    "timeout": 3000,
+    "bufferTimeout": 1000,
+    "validTones": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "*",
+      "#"
+    ],
+    "commands": {
+      "*1": "datetime",
+      "*2": "aiChat",
+      "*3": "sms",
+      "*9": "baliza"
+    }
+  },
+  "delays": {
+    "short": 100,
+    "medium": 500,
+    "long": 1000,
+    "veryLong": 3000,
+    "transmissionGap": 250
+  },
+  "logging": {
+    "level": "info",
+    "toFile": false,
+    "filePath": "./logs/vx200.log",
+    "maxFileSize": 10485760,
+    "maxFiles": 5
+  },
+  "security": {
+    "sessionSecret": "vx200-default-secret-change-in-production",
+    "sessionMaxAge": 3600000,
+    "enableRateLimit": true
+  },
+  "monitoring": {
+    "healthCheckInterval": 30000,
+    "enableMetrics": true,
+    "memoryUsageThreshold": 85,
+    "cpuUsageThreshold": 80
+  },
+  "callsign": "LU5MCD",
+  "version": "2.0"
 }

@@ -432,6 +432,12 @@ class AudioManager extends EventEmitter {
         this.isProcessingAudio = true;
         this.logger.debug(`Procesando cola de audio: ${this.audioQueue.length} elementos`);
         
+        // Emitir evento de que empezamos a transmitir
+        this.emit('transmission_started', {
+            queueLength: this.audioQueue.length,
+            timestamp: Date.now()
+        });
+        
         while (this.audioQueue.length > 0 && !this.queueProcessingPaused) {
             // Ordenar por prioridad (high > normal > low)
             this.audioQueue.sort((a, b) => {
@@ -469,6 +475,11 @@ class AudioManager extends EventEmitter {
 
         this.isProcessingAudio = false;
         this.logger.debug('Cola de audio procesada completamente');
+        
+        // Emitir evento de que terminamos de transmitir
+        this.emit('transmission_ended', {
+            timestamp: Date.now()
+        });
     }
 
     async generateAndPlayTone(frequency, duration, volume = 0.5) {
@@ -950,7 +961,10 @@ class AudioManager extends EventEmitter {
     }
 
     isSafeToTransmit() {
-        return !this.channelActivity.isActive;
+        // Seguro transmitir solo si no hay actividad de entrada ni transmisión en curso
+        return !this.channelActivity.isActive && 
+               !this.isProcessingAudio && 
+               this.audioQueue.length === 0;
     }
 
     // ===== GRABACIÓN TEMPORAL =====
@@ -1092,6 +1106,11 @@ class AudioManager extends EventEmitter {
     // ===== ESTADO Y DIAGNÓSTICO =====
 
     getStatus() {
+        // Determinar si el canal está ocupado (entrada O transmisión)
+        const isChannelBusy = this.channelActivity.isActive || 
+                             this.isProcessingAudio || 
+                             this.audioQueue.length > 0;
+
         return {
             audio: {
                 isRecording: this.isRecording,
@@ -1100,10 +1119,12 @@ class AudioManager extends EventEmitter {
                 status: this.isRecording ? 'active' : 'inactive'
             },
             channel: {
-                isActive: this.channelActivity.isActive,
+                isActive: isChannelBusy,
                 level: this.channelActivity.level,
                 threshold: this.channelActivity.threshold,
-                busy: this.channelActivity.isActive
+                busy: isChannelBusy,
+                inputActivity: this.channelActivity.isActive,
+                transmitting: this.isProcessingAudio || this.audioQueue.length > 0
             },
             rogerBeep: this.rogerBeep ? this.rogerBeep.getStatus() : { enabled: false }
         };
