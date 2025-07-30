@@ -188,12 +188,10 @@ class AudioManager extends EventEmitter {
             // Detectar actividad del canal
             this.detectChannelActivity(audioArray);
             
-            // Procesar DTMF solo si hay señal
-            if (this.channelActivity.isActive) {
-                this.dtmfDecoder.detectSequence(audioArray, (dtmf) => {
-                    this.handleDTMF(dtmf);
-                });
-            }
+            // Procesar DTMF siempre (la librería maneja la detección de señal internamente)
+            this.dtmfDecoder.detectSequence(audioArray, (dtmf) => {
+                this.handleDTMF(dtmf);
+            });
 
             // Debug: Guardar audio para análisis si hay actividad
             if (this.channelActivity.isActive && this.debugBuffer.length < 88200) { // ~2 segundos a 44100Hz
@@ -216,12 +214,10 @@ class AudioManager extends EventEmitter {
         }
 
         this.dtmfBuffer += dtmf;
-        this.logger.debug(`DTMF buffer actualizado: "${this.dtmfBuffer}" (timeout: ${DTMF.TIMEOUT}ms)`);
         
         // Limpiar timeout anterior
         if (this.dtmfTimeout) {
             clearTimeout(this.dtmfTimeout);
-            this.logger.debug('Timeout DTMF anterior cancelado');
         }
         
         // Configurar nuevo timeout usando constantes
@@ -232,8 +228,6 @@ class AudioManager extends EventEmitter {
                 this.dtmfBuffer = '';
             }
         }, DTMF.TIMEOUT);
-        
-        this.logger.debug(`Nuevo timeout DTMF configurado: ${DTMF.TIMEOUT}ms`);
     }
 
     detectChannelActivity(audioArray) {

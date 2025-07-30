@@ -3,25 +3,7 @@
  */
 
 const DTMF = {
-    WINDOW_SIZE: 2048,
-    THRESHOLD: 0.02,
-    REQUIRED_COUNT: 3,
-    MIN_SIGNAL_LEVEL: 0.01,
-    MAX_NOISE_LEVEL: 0.15,
-    CLEANUP_INTERVAL: 2000,
-    TIMEOUT: 4000,
-    
-    FREQUENCIES: {
-        LOW: [697, 770, 852, 941],
-        HIGH: [1209, 1336, 1477, 1633]
-    },
-    
-    MATRIX: [
-        ['1', '2', '3', 'A'],
-        ['4', '5', '6', 'B'], 
-        ['7', '8', '9', 'C'],
-        ['*', '0', '#', 'D']
-    ]
+    TIMEOUT: 3000  // Timeout para secuencias DTMF
 };
 
 // Audio Constants - DEPRECATED: Use Config.audio instead
