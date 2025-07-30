@@ -34,7 +34,7 @@ class DTMFDecoder {
         
         // Escuchar eventos de detección
         this.dtmfStream.on('dtmf', (data) => {
-            this.logger.info(`DTMF detectado: ${data.digit} (${data.timestamp}s)`);
+            this.logger.debug(`DTMF detectado: ${data.digit} (${data.timestamp}s)`);
             this.handleDetection(data.digit);
         });
         

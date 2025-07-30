@@ -61,13 +61,7 @@ class WeatherVoice {
             this.state = MODULE_STATES.ACTIVE;
             
             switch (command) {
-                case '*41':
-                    await this.speakCurrentWeather();
-                    break;
-                case '*42':
-                    await this.speakForecast24h();
-                    break;
-                case '*43':
+                case '*5':
                     await this.speakWeatherByVoice();
                     break;
                 case '*4':
@@ -85,7 +79,7 @@ class WeatherVoice {
     }
 
     /**
-     * Comando *43: Clima por voz
+     * Comando *5: Clima por voz
      */
     async speakWeatherByVoice() {
         try {

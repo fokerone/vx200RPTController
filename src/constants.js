@@ -3,7 +3,7 @@
  */
 
 const DTMF = {
-    TIMEOUT: 3000  // Timeout para secuencias DTMF
+    TIMEOUT: 2000  // Timeout para secuencias DTMF (2s para capturar secuencias de 3 dígitos)
 };
 
 // Audio Constants - DEPRECATED: Use Config.audio instead

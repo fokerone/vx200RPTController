@@ -196,9 +196,7 @@ class VX200Controller {
             '*2': { module: 'aiChat', handler: () => this.modules.aiChat.execute(sequence) },
             '*3': { module: 'sms', handler: () => this.modules.sms.execute(sequence) },
             '*4': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
-            '*41': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
-            '*42': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
-            '*43': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
+            '*5': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
             '*9': { module: 'baliza', handler: () => this.modules.baliza.execute(sequence) }
         };
 
