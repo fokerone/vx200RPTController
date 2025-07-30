@@ -2,144 +2,162 @@
 
 ## 📡 Sistema de Control para Repetidora Simplex
 
-Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF avanzada, múltiples servicios automatizados, panel web de control y transmisión inteligente con detección de canal ocupado.
+Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF avanzada, múltiples servicios automatizados, panel web de control en tiempo real y transmisión inteligente con detección de canal ocupado.
 
----
-
-## 📦 Dependencias del Proyecto
-
-### Dependencias Principales
-
-| Paquete | Versión | Propósito |
-|---------|---------|-----------|
-| `express` | ^5.1.0 | Servidor web y API REST |
-| `socket.io` | ^4.8.1 | Comunicación en tiempo real |
-| `ejs` | ^3.1.10 | Motor de plantillas |
-| `cors` | ^2.8.5 | Configuración CORS |
-| `dotenv` | ^17.2.1 | Variables de entorno |
-
-### Audio y Procesamiento Digital
-
-| Paquete | Versión | Propósito |
-|---------|---------|-----------|
-| `node-record-lpcm16` | ^1.0.1 | Grabación de audio |
-| `speaker` | ^0.5.5 | Reproducción de audio |
-| `wav` | ^1.0.2 | Procesamiento archivos WAV |
-| `fft-js` | ^0.0.12 | Transformada rápida de Fourier |
-| `say` | ^0.16.0 | Text-to-Speech nativo |
-
-### APIs y Servicios
-
-| Paquete | Versión | Propósito |
-|---------|---------|-----------|
-| `openai` | ^5.10.2 | Integración con ChatGPT/Whisper |
-| `twilio` | ^5.8.0 | Servicios SMS y telefonía |
-| `axios` | ^1.11.0 | Cliente HTTP para APIs |
-
-### Utilidades
-
-| Paquete | Versión | Propósito |
-|---------|---------|-----------|
-| `moment` | ^2.30.1 | Manejo de fechas y tiempo |
-| `fs-extra` | ^11.3.0 | Operaciones de sistema de archivos |
-| `multer` | ^2.0.2 | Carga de archivos multipart |
-| `express-static` | ^1.2.6 | Servir archivos estáticos |
+**🎉 Sistema completamente refactorizado con las mejores prácticas de desarrollo**
 
 ---
 
 ## ✨ Características Principales
 
-### 🎵 **Decodificador DTMF Personalizado**
-- Decodificación precisa de tonos DTMF
-- Filtrado de ruido y validación de secuencias
-- Soporte para comandos complejos y parámetros
+### 🎵 **AudioManager Avanzado**
+- Grabación de audio en tiempo real con soporte para ALSA/PulseAudio
+- Decodificación DTMF usando FFT personalizada
+- Detección inteligente de actividad de canal
+- Roger Beep estilo Kenwood configurable
+- Cola de audio con prioridades
 
 ### 🔊 **Sistema de Baliza Inteligente**
 - **Automática**: Transmisión programable cada X minutos
-- **Manual**: Activación instantánea por comando DTMF
-- Mensajes personalizables y configurables
+- **Manual**: Activación instantánea por comando DTMF `*9`
+- Mensajes personalizables con TTS
+- Espera canal libre para transmitir
 
 ### 📅 **Módulo DateTime**
-- Anuncio de fecha y hora actual
+- Anuncio de fecha y hora actual en español
 - Activación por comando DTMF `*1`
-- Formato en español con voz natural
+- Formato natural con moment.js
 
-### 🤖 **Módulo IA (Simulado)**
+### 🤖 **Módulo IA Chat**
 - Sistema de consultas por DTMF `*2`
-- Preparado para integración con OpenAI
-- Respuestas contextuales por voz
+- Integración con OpenAI GPT (configurable)
+- Respuestas por voz con TTS
 
-### 📱 **Módulo SMS (Simulado)**
+### 📱 **Módulo SMS**
 - Sistema completo de mensajería por DTMF `*3`
-- Preparado para integración con Twilio
-- Envío y recepción de mensajes
+- Integración con Twilio (configurable)
+- Flujo interactivo de envío de mensajes
 
-### 🌐 **Panel Web de Control**
-- Interfaz moderna y responsiva
+### 🌐 **Panel Web de Control Moderno**
+- Interfaz terminal-style responsive
 - Monitor en tiempo real de actividad DTMF
 - Control remoto de todos los módulos
-- Logs del sistema en vivo
-- Indicador visual de estado del canal
+- Logs del sistema en vivo con Socket.IO
+- Configuración de Roger Beep
+- Indicadores visuales de estado del sistema
 
 ### 🧠 **Transmisión Inteligente**
 - Detección automática de canal ocupado
-- Cola de transmisiones pendientes
+- Cola de transmisiones con prioridades
 - Espera inteligente para evitar interferencias
+- Manejo robusto de errores
 
 ---
 
-## 🚀 Instalación
+## 🚀 Instalación y Configuración
 
 ### Prerrequisitos
-- Node.js 16.x o superior
-- NPM o Yarn
-- Sistema operativo compatible (Linux/Windows/macOS)
+- **Node.js** 16.x o superior
+- **NPM** o Yarn
+- **Sistema Linux** recomendado (probado en Arch Linux)
+- **Hardware de audio** compatible con ALSA
 
 ### Instalación Rápida
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/usuario/vx200-controller.git
-cd vx200-controller
+git clone <url-repositorio>
+cd vx200RPTController
 
 # Instalar dependencias
 npm install
 
+# Configurar variables de entorno
+cp .env.example .env
+nano .env  # Editar configuración
+
 # Ejecutar el sistema
 npm start
+```
+
+### Configuración de Audio
+
+El sistema está configurado para funcionar con hardware de audio real. Para **ThinkPad T400** con Arch Linux:
+
+```bash
+# Verificar dispositivos de audio disponibles
+aplay -l
+arecord -l
+
+# Configurar en .env
+AUDIO_DEVICE=default  # o hw:0,0 según tu hardware
 ```
 
 El sistema estará disponible en: **http://localhost:3000**
 
 ---
 
-## 📁 Estructura del Proyecto
+## ⚙️ Configuración
 
+### Variables de Entorno (.env)
+
+```env
+# Sistema
+CALLSIGN=TU_INDICATIVO
+NODE_ENV=production
+WEB_PORT=3000
+
+# Audio (configurado para hardware real)
+AUDIO_DEVICE=default
+AUDIO_SAMPLE_RATE=48000
+AUDIO_CHANNEL_THRESHOLD=0.02
+
+# TTS
+TTS_VOICE=es
+TTS_SPEED=150
+
+# Roger Beep
+ROGER_BEEP_ENABLED=true
+ROGER_BEEP_TYPE=kenwood
+ROGER_BEEP_VOLUME=0.7
+
+# Baliza
+BALIZA_ENABLED=true
+BALIZA_INTERVAL=15
+BALIZA_MESSAGE=TU_INDICATIVO Repetidora Simplex
+
+# APIs Opcionales
+OPENAI_API_KEY=sk-...
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
 ```
-vx200-controller/
-├── src/
-│   ├── index.js                 # Controlador principal
-│   ├── audio/
-│   │   ├── audioManager.js      # Gestor de audio
-│   │   └── dtmfDecoder.js       # Decodificador DTMF
-│   ├── modules/
-│   │   ├── baliza.js            # Módulo de baliza
-│   │   ├── datetime.js          # Módulo fecha/hora
-│   │   ├── aiChat.js            # Módulo IA (simulado)
-│   │   └── sms.js               # Módulo SMS (simulado)
-│   └── web/
-│       └── server.js            # Servidor web
-├── views/
-│   └── dashboard.ejs            # Panel de control
-├── public/
-│   ├── css/
-│   │   └── style.css            # Estilos del panel
-│   └── js/
-│       └── dashboard.js         # JavaScript frontend
-├── config/
-│   └── config.json              # Configuración del sistema
-├── package.json
-└── README.md
+
+### Archivo config/config.json
+
+```json
+{
+  "callsign": "LU5MCD",
+  "version": "2.0",
+  "rogerBeep": {
+    "enabled": true,
+    "type": "kenwood",
+    "volume": 0.7,
+    "duration": 250,
+    "delay": 100
+  },
+  "baliza": {
+    "enabled": true,
+    "interval": 15,
+    "tone": {
+      "frequency": 1000,
+      "duration": 500,
+      "volume": 0.7
+    },
+    "message": "LU5MCD Repetidora Simplex",
+    "autoStart": true,
+    "waitForFreeChannel": true
+  }
+}
 ```
 
 ---
@@ -149,48 +167,44 @@ vx200-controller/
 | Comando | Función | Descripción |
 |---------|---------|-------------|
 | `*1` | DateTime | Anuncia fecha y hora actual |
-| `*2` | IA Chat | Sistema de consultas (simulado) |
-| `*3` | SMS | Sistema de mensajes (simulado) |
+| `*2` | IA Chat | Sistema de consultas con GPT |
+| `*3` | SMS | Sistema de mensajes Twilio |
 | `*9` | Baliza | Activa baliza manual |
 
 ---
 
-## ⚙️ Configuración
+## 📁 Estructura del Proyecto (Refactorizada)
 
-### Archivo `config/config.json`
-
-```json
-{
-  "system": {
-    "name": "VX200 Controller",
-    "version": "1.0.0",
-    "webPort": 3000
-  },
-  "audio": {
-    "sampleRate": 44100,
-    "channels": 2,
-    "dtmfThreshold": 0.3
-  },
-  "baliza": {
-    "enabled": true,
-    "interval": 900000,
-    "message": "Repetidora VX200 - Sistema activo"
-  },
-  "modules": {
-    "datetime": { "enabled": true },
-    "aiChat": { "enabled": false },
-    "sms": { "enabled": false }
-  }
-}
 ```
-
-### Parámetros Configurables
-
-- **Puerto web**: Cambiar puerto del panel de control
-- **Intervalo de baliza**: Tiempo entre transmisiones automáticas
-- **Mensaje de baliza**: Texto personalizable
-- **Umbral DTMF**: Sensibilidad del decodificador
-- **Módulos**: Habilitar/deshabilitar servicios
+vx200RPTController/
+├── src/
+│   ├── index.js                 # VX200Controller principal
+│   ├── constants.js             # Constantes del sistema
+│   ├── utils.js                 # Utilidades compartidas
+│   ├── start-with-web.js        # Script de inicio con banner
+│   ├── audio/
+│   │   ├── audioManager.js      # Gestor de audio completo
+│   │   ├── dtmfDecoder.js       # Decodificador DTMF con FFT
+│   │   └── rogerBeep.js         # Roger Beep Kenwood
+│   ├── modules/
+│   │   ├── baliza.js            # Módulo de baliza
+│   │   ├── datetime.js          # Módulo fecha/hora
+│   │   ├── aiChat.js            # Módulo IA con OpenAI
+│   │   └── sms.js               # Módulo SMS con Twilio
+│   └── web/
+│       └── server.js            # Servidor web con Socket.IO
+├── views/
+│   └── index.ejs                # Panel web terminal-style
+├── public/
+│   ├── css/style.css            # Estilos modernos
+│   └── js/main.js               # JavaScript frontend
+├── config/
+│   └── config.json              # Configuración del sistema
+├── .env.example                 # Template de variables
+├── CONFIGURATION.md             # Guía completa de configuración
+├── package.json
+└── README.md
+```
 
 ---
 
@@ -199,99 +213,120 @@ vx200-controller/
 Accede al panel de control en **http://localhost:3000**
 
 ### Funcionalidades del Panel:
-- 📊 **Monitor DTMF**: Visualización en tiempo real de comandos
-- 🔴 **Indicador de Canal**: Estado de ocupación/libre
-- 📝 **Logs del Sistema**: Registro de actividad completo
-- 🎛️ **Controles**: Activar/desactivar módulos remotamente
-- 📈 **Estadísticas**: Uso y rendimiento del sistema
+- 📊 **Dashboard Terminal**: Estilo retro de terminal
+- 📡 **Monitor de Módulos**: Estado en tiempo real
+- 📞 **Monitor DTMF**: Visualización de comandos
+- 🔴 **Indicador de Canal**: Estado ocupado/libre con niveles
+- 🔊 **Control Roger Beep**: Toggle y test desde web
+- 📝 **Logs en Vivo**: Socket.IO en tiempo real
+- 🎛️ **Controles de Sistema**: Activar/desactivar servicios
+- ⚙️ **Configuración Baliza**: Desde el panel web
 
 ---
 
-## 🔧 Desarrollo
-
-### Comandos de Desarrollo
+## 🔧 Scripts Disponibles
 
 ```bash
-# Modo desarrollo con auto-reinicio
+# Iniciar sistema con banner
+npm start
+
+# Modo desarrollo
 npm run dev
 
-# Ejecutar tests
+# Solo servidor web
+npm run web-only
+
+# Ejecutar tests completos
 npm test
-
-# Linting de código
-npm run lint
-
-# Build para producción
-npm run build
-```
-
-### Estructura de Módulos
-
-Cada módulo sigue el patrón:
-
-```javascript
-class ModuleName {
-    constructor(config) {
-        this.config = config;
-        this.enabled = false;
-    }
-    
-    async initialize() {
-        // Inicialización del módulo
-    }
-    
-    async handleDTMF(command, params) {
-        // Procesamiento de comandos DTMF
-    }
-    
-    async transmit(message) {
-        // Lógica de transmisión
-    }
-}
 ```
 
 ---
 
-## 📋 Próximas Características
+## 🛠️ Características Técnicas
 
-### En Desarrollo
-- [ ] **API OpenAI**: Integración real para módulo IA
-- [ ] **Twilio SMS**: API real para mensajería
-- [ ] **Speech-to-Text**: Whisper API para transcripción
-- [ ] **TTS Avanzado**: Azure/Google para voz natural
-- [ ] **Base de Datos**: Persistencia de logs y configuración
+### Arquitectura
+- **Patrón MVC**: Separación clara de responsabilidades
+- **Event-Driven**: EventEmitter para comunicación entre módulos
+- **Logging Estructurado**: Logger personalizado con niveles
+- **Error Handling**: Manejo robusto de errores en todos los módulos
+- **State Management**: Estados consistentes usando constantes
 
-### Planificado
-- [ ] **App Móvil**: Control desde smartphone
-- [ ] **Multi-repetidora**: Soporte para múltiples equipos
-- [ ] **Métricas Avanzadas**: Analytics y reportes
-- [ ] **Backup Automático**: Respaldo de configuración
-- [ ] **API REST**: Integración con sistemas externos
+### Audio Processing
+- **FFT Custom**: Transformada rápida de Fourier para DTMF
+- **Detección de Canal**: Análisis RMS para actividad
+- **Queue System**: Cola de audio con prioridades
+- **TTS Integration**: espeak para síntesis de voz
+
+### Web Interface
+- **Socket.IO**: Comunicación bidireccional en tiempo real
+- **Express.js**: API REST robusta
+- **EJS Templates**: Renderizado del lado del servidor
+- **CORS Security**: Configuración segura de orígenes
 
 ---
 
-## 🛠️ Troubleshooting
+## 🐛 Troubleshooting
 
-### Problemas Comunes
-
-**El sistema no inicia:**
+### Audio No Funciona
 ```bash
-# Verificar dependencias
-npm install
+# Verificar dispositivos
+aplay -l
+arecord -l
 
-# Comprobar puerto disponible
-netstat -tulpn | grep :3000
+# Permisos de audio (si es necesario)
+sudo usermod -a -G audio $USER
+
+# Configurar device correcto en .env
+AUDIO_DEVICE=default  # o hw:0,0
 ```
 
-**DTMF no se decodifica:**
-- Verificar configuración de audio
-- Ajustar umbral de detección
-- Comprobar niveles de señal
+### Panel Web No Conecta
+```bash
+# Verificar puerto disponible
+ss -tlnp | grep :3000
 
-**Panel web no carga:**
-- Verificar que el puerto 3000 esté libre
-- Comprobar firewall/antivirus
-- Revisar logs del sistema
+# Cambiar puerto si está ocupado
+WEB_PORT=3001
+```
+
+### Errores de Grabación
+- Verificar que no haya otros procesos usando audio
+- Matar procesos sox residuales: `killall sox`
+- Reiniciar PulseAudio: `pulseaudio -k && pulseaudio --start`
+
+---
+
+## 📋 Estado del Proyecto
+
+### ✅ Completado
+- [x] **Refactorización completa** con mejores prácticas
+- [x] **AudioManager** funcionando con hardware real
+- [x] **WebServer** operativo con Socket.IO
+- [x] **Todos los módulos** refactorizados y funcionales
+- [x] **Panel web** moderno y responsive
+- [x] **Sistema de logging** estructurado
+- [x] **Configuración** flexible con .env
+- [x] **Documentación** completa
+
+### 🔄 En Progreso
+- [ ] Resolución de problemas encontrados en testing
+- [ ] Optimizaciones de rendimiento
+- [ ] Mejoras de UX en panel web
+
+### 📋 Próximas Características
+- [ ] **Métricas avanzadas** del sistema
+- [ ] **Backup automático** de configuración
+- [ ] **API REST** extendida
+- [ ] **App móvil** complementaria
+
+---
+
+## 📞 Soporte y Contacto
+
+**Desarrollado por: LU5MCD**
+
+- 📧 **Email**: fokerone@gmail.com
+- 🌐 **QRZ**: https://www.qrz.com/db/LU5MCD
 
 ---
 
@@ -301,34 +336,4 @@ Este proyecto está bajo la Licencia MIT. Ver archivo `LICENSE` para más detall
 
 ---
 
-## 👨‍💻 Autor. LU5MCD
-
-**Desarrollado para radioaficionados y entusiastas de las comunicaciones**
-
-- 🔧 **Sistema modular** y extensible
-- 🎯 **Fácil configuración** y uso
-- 🚀 **Alto rendimiento** y confiabilidad
-
----
-
-## 🤝 Contribuciones
-
-¡Las contribuciones son bienvenidas! 
-
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/nueva-caracteristica`)
-3. Commit tus cambios (`git commit -am 'Agrega nueva característica'`)
-4. Push a la rama (`git push origin feature/nueva-caracteristica`)
-5. Abre un Pull Request
-
----
-
-## 📞 Soporte
-
-¿Necesitas ayuda? 
-
-- 📧 **Email**:  fokerone@gmail.com
-- **QRZ**: https://www.qrz.com/db/LU5MCD
----
-
-**¡Disfruta controlando tu repetidora Simplex! 📡🎉**
+**¡Sistema de repetidora totalmente funcional y moderno! 📡🎉**

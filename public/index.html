@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VX200 Controller - LU5MCD</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">VX200 Controller</h1>
+                <div class="callsign">LU5MCD</div>
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-dot disconnected"></span>
+                    <span class="status-text">Desconectado</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="tabs">
+            <button class="tab-button active" data-tab="status">Estado del Sistema</button>
+            <button class="tab-button" data-tab="config">Configuración</button>
+        </nav>
+
+        <!-- Status Tab -->
+        <div class="tab-content" id="statusTab">
+            <!-- System Overview -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Estado General</h2>
+                    <div class="system-uptime" id="systemUptime">Uptime: --</div>
+                </div>
+                <div class="card-body">
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <div class="status-label">Sistema</div>
+                            <div class="status-value" id="systemStatus">--</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">Canal</div>
+                            <div class="status-value" id="channelStatus">--</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">Audio</div>
+                            <div class="status-value" id="audioStatus">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DTMF Monitor -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Monitor DTMF</h2>
+                    <button class="btn btn-small" onclick="clearDTMFHistory()">Limpiar</button>
+                </div>
+                <div class="card-body">
+                    <div class="dtmf-monitor">
+                        <div class="dtmf-live-display">
+                            <div class="dtmf-input-sequence">
+                                <label>Secuencia Detectada:</label>
+                                <div class="dtmf-digits" id="dtmfDigits">
+                                    <span class="dtmf-placeholder">Esperando DTMF...</span>
+                                </div>
+                            </div>
+                            <div class="dtmf-target-info">
+                                <label>Módulo Objetivo:</label>
+                                <div class="dtmf-target-module" id="dtmfTargetModule">--</div>
+                            </div>
+                        </div>
+                        <div class="dtmf-recent-list" id="dtmfRecentList">
+                            <!-- Lista de DTMF recientes -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modules Control -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Control de Módulos</h2>
+                </div>
+                <div class="card-body">
+                    <div class="modules-grid">
+                        <div class="module-item" data-module="baliza">
+                            <div class="module-header">
+                                <span class="module-name">Baliza</span>
+                                <div class="module-status" id="balizaStatus">--</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-toggle" id="balizaToggle">Toggle</button>
+                                <button class="btn btn-execute" onclick="executeModule('baliza', '9')">Ejecutar</button>
+                            </div>
+                        </div>
+
+                        <div class="module-item" data-module="datetime">
+                            <div class="module-header">
+                                <span class="module-name">Fecha/Hora</span>
+                                <div class="module-status" id="datetimeStatus">--</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-execute" onclick="executeModule('datetime', '1')">Ejecutar</button>
+                            </div>
+                        </div>
+
+                        <div class="module-item" data-module="aiChat">
+                            <div class="module-header">
+                                <span class="module-name">AI Chat</span>
+                                <div class="module-status" id="aiChatStatus">--</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-execute" onclick="executeModule('aiChat', '2')">Ejecutar</button>
+                            </div>
+                        </div>
+
+                        <div class="module-item" data-module="sms">
+                            <div class="module-header">
+                                <span class="module-name">SMS</span>
+                                <div class="module-status" id="smsStatus">--</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-execute" onclick="executeModule('sms', '3')">Ejecutar</button>
+                            </div>
+                        </div>
+
+                        <div class="module-item" data-module="rogerBeep">
+                            <div class="module-header">
+                                <span class="module-name">Roger Beep</span>
+                                <div class="module-status" id="rogerBeepStatus">--</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-toggle" id="rogerBeepToggle">Toggle</button>
+                                <button class="btn btn-test" onclick="testRogerBeep()">Test</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- System Control -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Control del Sistema</h2>
+                </div>
+                <div class="card-body">
+                    <div class="system-controls">
+                        <button class="btn btn-warning" onclick="systemAction('restart')">
+                            <span>🔄</span> Reiniciar Sistema
+                        </button>
+                        <button class="btn btn-danger" onclick="systemAction('shutdown')">
+                            <span>⏻</span> Apagar Sistema
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Tab -->
+        <div class="tab-content hidden" id="configTab">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Configuración del Sistema</h2>
+                    <button class="btn btn-primary" onclick="saveConfiguration()">Guardar Cambios</button>
+                </div>
+                <div class="card-body">
+                    <div class="config-sections">
+                        <!-- System Configuration -->
+                        <div class="config-section">
+                            <h3>Sistema</h3>
+                            <div class="config-group">
+                                <label for="callsign">Indicativo:</label>
+                                <input type="text" id="callsign" name="callsign" placeholder="LU5MCD">
+                            </div>
+                            <div class="config-group">
+                                <label for="webPort">Puerto Web:</label>
+                                <input type="number" id="webPort" name="webPort" placeholder="3000">
+                            </div>
+                        </div>
+
+                        <!-- Audio Configuration -->
+                        <div class="config-section">
+                            <h3>Audio</h3>
+                            <div class="config-group">
+                                <label for="audioDevice">Dispositivo de Audio:</label>
+                                <input type="text" id="audioDevice" name="audioDevice" placeholder="default">
+                            </div>
+                            <div class="config-group">
+                                <label for="channelThreshold">Umbral del Canal:</label>
+                                <input type="number" id="channelThreshold" name="channelThreshold" step="0.001" placeholder="0.010">
+                            </div>
+                        </div>
+
+                        <!-- Baliza Configuration -->
+                        <div class="config-section">
+                            <h3>Baliza</h3>
+                            <div class="config-group">
+                                <label for="balizaEnabled">Habilitada:</label>
+                                <input type="checkbox" id="balizaEnabled" name="balizaEnabled">
+                            </div>
+                            <div class="config-group">
+                                <label for="balizaInterval">Intervalo (minutos):</label>
+                                <input type="number" id="balizaInterval" name="balizaInterval" placeholder="15">
+                            </div>
+                            <div class="config-group">
+                                <label for="balizaFrequency">Frecuencia (Hz):</label>
+                                <input type="number" id="balizaFrequency" name="balizaFrequency" placeholder="1000">
+                            </div>
+                            <div class="config-group">
+                                <label for="balizaMessage">Mensaje:</label>
+                                <input type="text" id="balizaMessage" name="balizaMessage" placeholder="Repetidora LU5MCD">
+                            </div>
+                        </div>
+
+                        <!-- Roger Beep Configuration -->
+                        <div class="config-section">
+                            <h3>Roger Beep</h3>
+                            <div class="config-group">
+                                <label for="rogerBeepEnabled">Habilitado:</label>
+                                <input type="checkbox" id="rogerBeepEnabled" name="rogerBeepEnabled">
+                            </div>
+                            <div class="config-group">
+                                <label for="rogerBeepType">Tipo:</label>
+                                <select id="rogerBeepType" name="rogerBeepType">
+                                    <option value="kenwood">Kenwood</option>
+                                </select>
+                            </div>
+                            <div class="config-group">
+                                <label for="rogerBeepVolume">Volumen:</label>
+                                <input type="range" id="rogerBeepVolume" name="rogerBeepVolume" min="0" max="1" step="0.1" value="0.7">
+                                <span id="rogerBeepVolumeValue">0.7</span>
+                            </div>
+                        </div>
+
+                        <!-- TTS Configuration -->
+                        <div class="config-section">
+                            <h3>Text-to-Speech</h3>
+                            <div class="config-group">
+                                <label for="ttsVoice">Voz:</label>
+                                <input type="text" id="ttsVoice" name="ttsVoice" placeholder="es+f3">
+                            </div>
+                            <div class="config-group">
+                                <label for="ttsSpeed">Velocidad:</label>
+                                <input type="number" id="ttsSpeed" name="ttsSpeed" placeholder="160">
+                            </div>
+                        </div>
+
+                        <!-- API Configuration -->
+                        <div class="config-section">
+                            <h3>APIs Externas</h3>
+                            <div class="config-group">
+                                <label for="aiChatApiKey">OpenAI API Key:</label>
+                                <input type="password" id="aiChatApiKey" name="aiChatApiKey" placeholder="sk-...">
+                            </div>
+                            <div class="config-group">
+                                <label for="twilioAccountSid">Twilio Account SID:</label>
+                                <input type="text" id="twilioAccountSid" name="twilioAccountSid" placeholder="AC...">
+                            </div>
+                            <div class="config-group">
+                                <label for="twilioAuthToken">Twilio Auth Token:</label>
+                                <input type="password" id="twilioAuthToken" name="twilioAuthToken" placeholder="***">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <span>VX200 Controller v2.0</span>
+                <span id="lastUpdate">Última actualización: --</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

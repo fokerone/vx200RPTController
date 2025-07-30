@@ -179,21 +179,13 @@ function throttle(func, limit) {
 }
 
 /**
- * Crear logger con prefijo
+ * Crear logger con prefijo - MIGRATED TO NEW LOGGING SYSTEM
  * @param {string} prefix - Prefijo para logs
  * @returns {Object} Logger con métodos
  */
 function createLogger(prefix) {
-    return {
-        info: (message, ...args) => console.log(`${formatTimestamp()} ${prefix} ℹ️  ${message}`, ...args),
-        warn: (message, ...args) => console.warn(`${formatTimestamp()} ${prefix} ⚠️  ${message}`, ...args),
-        error: (message, ...args) => console.error(`${formatTimestamp()} ${prefix} ❌ ${message}`, ...args),
-        debug: (message, ...args) => {
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`${formatTimestamp()} ${prefix} 🐛 ${message}`, ...args);
-            }
-        }
-    };
+    const { createLogger: newLoggerFactory } = require('./logging/Logger');
+    return newLoggerFactory(prefix);
 }
 
 module.exports = {

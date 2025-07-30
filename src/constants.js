@@ -25,12 +25,13 @@ const DTMF = {
     ]
 };
 
-// Audio Constants
+// Audio Constants - DEPRECATED: Use Config.audio instead
+// Mantenidas por compatibilidad hasta completar la migración
 const AUDIO = {
     SAMPLE_RATE: 48000,
     CHANNELS: 1,
     BIT_DEPTH: 16,
-    DEVICE: 'default', // Use default ALSA device
+    DEVICE: 'default',
     CHANNEL_THRESHOLD: 0.02,
     SUSTAIN_TIME: 1000,
     TRANSMISSION_DELAY: 500,

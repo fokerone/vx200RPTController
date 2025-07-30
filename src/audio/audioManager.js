@@ -1,10 +1,10 @@
-require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process'); 
 const recorder = require('node-record-lpcm16');
 const EventEmitter = require('events');
 const RogerBeep = require('./rogerBeep');
+const { Config, getValue } = require('../config');
 const { AUDIO, MODULE_STATES, DELAYS, DTMF } = require('../constants');
 const { delay, createLogger, validateVolume, throttle } = require('../utils');
 
@@ -14,11 +14,11 @@ class AudioManager extends EventEmitter {
         this.logger = createLogger('[AudioManager]');
         this.state = MODULE_STATES.IDLE;
         
-        // Configuración de audio usando constantes
-        this.sampleRate = AUDIO.SAMPLE_RATE;
-        this.channels = AUDIO.CHANNELS;
-        this.bitDepth = AUDIO.BIT_DEPTH;
-        this.device = process.env.AUDIO_DEVICE || AUDIO.DEVICE || 'hw:0,0';
+        // Configuración de audio desde ConfigManager centralizado
+        this.sampleRate = getValue('audio.sampleRate');
+        this.channels = getValue('audio.channels');
+        this.bitDepth = getValue('audio.bitDepth');
+        this.device = getValue('audio.device');
         
         // Componentes principales
         this.dtmfDecoder = new (require('./dtmfDecoder'))(this.sampleRate);
@@ -38,12 +38,12 @@ class AudioManager extends EventEmitter {
         this.currentAudioProcess = null;
         this.queueProcessingPaused = false;
         
-        // Estado del canal usando constantes
+        // Estado del canal usando configuración centralizada
         this.channelActivity = {
             isActive: false,
             level: 0,
-            threshold: AUDIO.CHANNEL_THRESHOLD,
-            sustainTime: AUDIO.SUSTAIN_TIME,
+            threshold: getValue('audio.channelThreshold'),
+            sustainTime: getValue('audio.sustainTime'),
             lastActivityTime: 0,
             activityTimer: null
         };
@@ -113,7 +113,7 @@ class AudioManager extends EventEmitter {
                 device: this.device
             };
 
-            this.logger.debug(`Iniciando grabación con dispositivo: ${this.device}`);
+            // Removido log verboso
             this.recordingStream = recorder.record(recordingOptions);
             
             this.recordingStream.stream()
@@ -127,7 +127,7 @@ class AudioManager extends EventEmitter {
 
             this.isRecording = true;
             this.recordingRetries = 0; // Reset contador de reintentos
-            this.logger.info('Grabación de audio iniciada');
+            this.logger.debug('Grabación de audio iniciada');
             
         } catch (error) {
             this.logger.error('Error iniciando grabación:', error.message);
@@ -315,8 +315,8 @@ class AudioManager extends EventEmitter {
     async speakWithEspeak(text, options = {}) {
         return new Promise((resolve, reject) => {
             // Configuración con defaults desde variables de entorno
-            const voice = options.voice || process.env.TTS_VOICE || 'es';
-            const speed = options.speed || process.env.TTS_SPEED || '150';
+            const voice = options.voice || getValue('tts.voice');
+            const speed = options.speed || getValue('tts.speed');
             const amplitude = options.amplitude || process.env.TTS_AMPLITUDE || '100';
             
             // Sanitizar texto para evitar problemas de shell
