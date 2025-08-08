@@ -84,10 +84,10 @@ class WebServer {
             }
         });
 
-        this.app.post('/api/module/:name/toggle', (req, res) => {
+        this.app.post('/api/module/:name/toggle', async (req, res) => {
             try {
                 const { name } = req.params;
-                const result = this.toggleModule(name);
+                const result = await this.toggleModule(name);
                 res.json(result);
             } catch (error) {
                 res.status(500).json({ success: false, message: error.message });
@@ -177,6 +177,7 @@ class WebServer {
                 });
             }
         });
+
         
         this.app.use((req, res) => {
             res.status(404).json({ success: false, message: 'Endpoint not found' });
@@ -281,13 +282,14 @@ class WebServer {
                 return process.env.OPENWEATHER_API_KEY ? 'enabled' : 'disabled';
             }
 
+
             return 'ready';
         } catch (error) {
             return 'error';
         }
     }
 
-    toggleModule(moduleName) {
+    async toggleModule(moduleName) {
         try {
             switch (moduleName) {
                 case 'baliza':
@@ -306,6 +308,7 @@ class WebServer {
                         message: `Roger Beep ${newState ? 'habilitado' : 'deshabilitado'}`,
                         enabled: newState 
                     };
+
 
                 default:
                     throw new Error(`Módulo ${moduleName} no soporta toggle`);
@@ -365,6 +368,20 @@ class WebServer {
             }
             if (newConfig.balizaMessage) {
                 configUpdates['baliza.message'] = newConfig.balizaMessage;
+            }
+            
+            // Zello Integration
+            if (newConfig.zelloEnabled !== undefined) {
+                configUpdates['zello.enabled'] = Boolean(newConfig.zelloEnabled);
+            }
+            if (newConfig.zelloChannel) {
+                configUpdates['zello.network.channel'] = newConfig.zelloChannel;
+            }
+            if (newConfig.zelloUsername) {
+                configUpdates['zello.network.username'] = newConfig.zelloUsername;
+            }
+            if (newConfig.zelloVoxThreshold) {
+                configUpdates['zello.audio.voxThreshold'] = parseFloat(newConfig.zelloVoxThreshold);
             }
             
             if (newConfig.rogerBeepEnabled !== undefined) {
@@ -431,6 +448,7 @@ class WebServer {
                     return { success: true, message: 'Test Roger Beep ejecutado' };
                 }
                 throw new Error('Roger Beep no disponible');
+            
 
             default:
                 throw new Error(`Comando ${command} no reconocido`);
@@ -521,6 +539,21 @@ class WebServer {
     broadcastConfigurationUpdate(updates) {
         if (this.connectedClients.size > 0) {
             this.io.emit('configuration_updated', { updates });
+        }
+    }
+
+    broadcastZelloStatus(status) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('zello_status_change', { status, timestamp: new Date().toISOString() });
+        }
+    }
+
+    broadcastZelloActivity(activity) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('zello_activity', { 
+                ...activity, 
+                timestamp: new Date().toISOString() 
+            });
         }
     }
 

@@ -79,6 +79,12 @@ const Config = {
     get sms() { return getSection('sms'); },
     get smsEnabled() { return getValue('sms.enabled'); },
 
+    // Zello Integration
+    get zello() { return getSection('zello'); },
+    get zelloEnabled() { return getValue('zello.enabled'); },
+    get zelloChannel() { return getValue('zello.network.channel'); },
+    get zelloUsername() { return getValue('zello.network.username'); },
+
     // DTMF
     get dtmf() { return getSection('dtmf'); },
     get dtmfCommands() { return getValue('dtmf.commands'); },

@@ -18,7 +18,7 @@ class Baliza extends EventEmitter {
                 duration: 500,   // ms
                 volume: 0.7
             },
-            message: process.env.BALIZA_MESSAGE || "LU5MCD Repetidora Simplex",
+            message: process.env.BALIZA_MESSAGE || "",
             autoStart: true,
             waitForFreeChannel: true
         };
@@ -61,11 +61,7 @@ class Baliza extends EventEmitter {
             this.config.tone.duration = 500;
         }
 
-        // Sanitizar mensaje
-        this.config.message = sanitizeTextForTTS(this.config.message);
-        if (!this.config.message) {
-            this.config.message = "LU5MCD Repetidora Simplex";
-        }
+        // Baliza configurada para SOLO TONO - sin mensaje de voz
 
         return true;
     }
@@ -85,7 +81,7 @@ class Baliza extends EventEmitter {
         // Validar nueva configuración
         this.validateConfiguration();
         
-        this.logger.info(`Baliza reconfigurada: ${this.config.interval} min, ${this.config.tone.frequency}Hz`);
+        this.logger.info(`Baliza reconfigurada: ${this.config.interval} min, tono ${this.config.tone.frequency}Hz`);
         
         // Reiniciar si está corriendo y hay cambios significativos
         if (this.isRunning && (
@@ -206,7 +202,7 @@ class Baliza extends EventEmitter {
             this.emit('transmitted', { 
                 timestamp,
                 count: this.transmissionCount,
-                message: this.config.message 
+                tone: this.config.tone 
             });
             
             this.logger.info(`Baliza transmitida exitosamente (#${this.transmissionCount})`);
@@ -219,23 +215,15 @@ class Baliza extends EventEmitter {
     }
 
     /**
-     * Reproducir secuencia completa de baliza
+     * Reproducir secuencia completa de baliza - SOLO TONO
      */
     async playBalizaSequence() {
         try {
             const { frequency, duration, volume } = this.config.tone;
 
-            // Tono de identificación característico
-            this.logger.debug(`Reproduciendo tono: ${frequency}Hz por ${duration}ms`);
+            // Tono de identificación característico ÚNICAMENTE
+            this.logger.debug(`Reproduciendo tono de baliza: ${frequency}Hz por ${duration}ms`);
             await this.audioManager.playTone(frequency, duration, volume);
-
-            // Pausa breve entre tono y mensaje
-            await delay(DELAYS.MEDIUM / 2); // 250ms
-
-            // Mensaje de voz sanitizado
-            const message = sanitizeTextForTTS(this.config.message);
-            this.logger.debug(`Reproduciendo mensaje: "${message}"`);
-            await this.audioManager.speak(message);
 
         } catch (error) {
             this.logger.error('Error en secuencia de baliza:', error.message);
@@ -275,7 +263,7 @@ class Baliza extends EventEmitter {
             nextTransmission: this.timer ? 
                 moment().add(this.config.interval, 'minutes').format('HH:mm:ss') : 
                 'No programada',
-            message: this.config.message,
+            type: 'tone-only',
             tone: { ...this.config.tone }, // Copia del objeto
             config: {
                 autoStart: this.config.autoStart,

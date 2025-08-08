@@ -116,6 +116,7 @@ class VX200Controller {
         if (Config.balizaEnabled) {
             this.modules.baliza.configure(Config.baliza);
         }
+        
     }
 
     setupEventHandlers() {
@@ -335,6 +336,7 @@ class VX200Controller {
         this.logger.info('Configuración de baliza actualizada desde panel web');
     }
 
+
     async start() {
         if (this.isRunning) {
             this.logger.warn('Sistema ya está ejecutándose');
@@ -439,6 +441,10 @@ class VX200Controller {
             this.modules.baliza.stop();
         }
         
+        
+        // Clean up Docker containers if they exist
+        this.cleanupDockerContainers();
+        
         this.systemOutput.printStopped();
     }
 
@@ -466,6 +472,7 @@ class VX200Controller {
                         result = { success: true, message: 'Baliza iniciada', enabled: true };
                     }
                     break;
+                    
                     
                 default:
                     result = { success: false, message: 'Servicio desconocido' };
@@ -521,6 +528,8 @@ class VX200Controller {
             }
         };
     }
+
+
 
     async shutdown() {
         this.logger.warn('Apagando sistema...');
@@ -592,34 +601,45 @@ class VX200Controller {
 let controller = null;
 
 function setupSignalHandlers() {
-    process.on('SIGINT', () => {
-        console.log('\nCtrl+C detectado...');
+    const gracefulShutdown = async (signal) => {
+        console.log(`\n${signal} detectado - cerrando aplicación...`);
         if (controller) {
-            controller.stop();
+            try {
+                controller.stop();
+                // Wait a bit to ensure cleanup completes
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            } catch (error) {
+                console.error('Error durante shutdown:', error.message);
+            }
         }
         process.exit(0);
-    });
+    };
 
-    process.on('SIGTERM', () => {
-        console.log('\nSeñal de terminación...');
-        if (controller) {
-            controller.stop();
-        }
-        process.exit(0);
-    });
+    process.on('SIGINT', () => gracefulShutdown('SIGINT (Ctrl+C)'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-    process.on('uncaughtException', (error) => {
+    process.on('uncaughtException', async (error) => {
         console.error('Error crítico:', error.message);
         if (controller) {
-            controller.stop();
+            try {
+                controller.stop();
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (cleanupError) {
+                console.error('Error durante cleanup de emergencia:', cleanupError.message);
+            }
         }
         process.exit(1);
     });
 
-    process.on('unhandledRejection', (reason) => {
+    process.on('unhandledRejection', async (reason) => {
         console.error('Promesa rechazada:', reason);
         if (controller) {
-            controller.stop();
+            try {
+                controller.stop();
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (cleanupError) {
+                console.error('Error durante cleanup de emergencia:', cleanupError.message);
+            }
         }
         process.exit(1);
     });

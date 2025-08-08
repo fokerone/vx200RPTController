@@ -236,6 +236,7 @@ class VX200Panel {
         const toggleButton = document.getElementById(`${moduleName}Toggle`);
         const moduleItem = document.querySelector(`[data-module="${moduleName}"]`);
         
+        
         if (statusElement) {
             statusElement.textContent = moduleData.enabled ? 'ENABLED' : 'DISABLED';
             statusElement.className = `module-status ${moduleData.enabled ? 'enabled' : 'disabled'}`;
@@ -575,6 +576,8 @@ class VX200Panel {
         }
     }
 
+    
+
 }
 
 let panel;
@@ -597,6 +600,7 @@ function testRogerBeep() {
         });
     }
 }
+
 
 function systemAction(action) {
     if (panel) {

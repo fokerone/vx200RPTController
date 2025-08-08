@@ -88,7 +88,7 @@ class ConfigManager {
             baliza: {
                 enabled: true,
                 interval: 15, // minutos
-                message: 'Repetidora VX200 en servicio',
+                message: '',
                 autoStart: true,
                 waitForFreeChannel: true,
                 tone: {
@@ -182,6 +182,37 @@ class ConfigManager {
                 enableMetrics: true,
                 memoryUsageThreshold: 85, // %
                 cpuUsageThreshold: 80     // %
+            },
+
+            // ===== ZELLO INTEGRATION =====
+            zello: {
+                enabled: false,
+                mode: 'bridge',
+                audio: {
+                    inputDevice: 'default',
+                    outputDevice: 'default',
+                    sampleRate: 48000,
+                    channels: 1,
+                    voxThreshold: 0.02,
+                    voxDelay: 1000
+                },
+                network: {
+                    channel: 'VX200-Repeater',
+                    username: 'LU5MCD-RPT',
+                    password: '',
+                    server: 'wss://zello.com/ws'
+                },
+                bridge: {
+                    autoConnect: true,
+                    reconnectInterval: 30000,
+                    maxReconnectAttempts: 10,
+                    heartbeatInterval: 30000
+                },
+                filters: {
+                    enableNoiseGate: true,
+                    enableAGC: true,
+                    enableEchoCancellation: false
+                }
             }
         };
     }
@@ -284,6 +315,15 @@ class ConfigManager {
             this.config.aiChat.enabled = true;
             this.config.aiChat.apiKey = process.env.OPENAI_API_KEY;
         }
+
+        // Zello Integration
+        if (process.env.ZELLO_ENABLED) this.config.zello.enabled = process.env.ZELLO_ENABLED === 'true';
+        if (process.env.ZELLO_CHANNEL) this.config.zello.network.channel = process.env.ZELLO_CHANNEL;
+        if (process.env.ZELLO_USERNAME) this.config.zello.network.username = process.env.ZELLO_USERNAME;
+        if (process.env.ZELLO_PASSWORD) this.config.zello.network.password = process.env.ZELLO_PASSWORD;
+        if (process.env.ZELLO_VOX_THRESHOLD) this.config.zello.audio.voxThreshold = parseFloat(process.env.ZELLO_VOX_THRESHOLD);
+        if (process.env.ZELLO_INPUT_DEVICE) this.config.zello.audio.inputDevice = process.env.ZELLO_INPUT_DEVICE;
+        if (process.env.ZELLO_OUTPUT_DEVICE) this.config.zello.audio.outputDevice = process.env.ZELLO_OUTPUT_DEVICE;
         if (process.env.OPENAI_MODEL) this.config.aiChat.model = process.env.OPENAI_MODEL;
         if (process.env.OPENAI_MAX_TOKENS) this.config.aiChat.maxTokens = parseInt(process.env.OPENAI_MAX_TOKENS);
         if (process.env.OPENAI_TEMPERATURE) this.config.aiChat.temperature = parseFloat(process.env.OPENAI_TEMPERATURE);
@@ -308,7 +348,7 @@ class ConfigManager {
      */
     mergeConfig(target, source) {
         Object.keys(source).forEach(key => {
-            if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+            if (source[key] !== null && source[key] !== undefined && typeof source[key] === 'object' && !Array.isArray(source[key])) {
                 if (!target[key]) target[key] = {};
                 this.mergeConfig(target[key], source[key]);
             } else {

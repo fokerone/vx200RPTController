@@ -37,7 +37,7 @@
   },
   "tts": {
     "voice": "es",
-    "speed": 130,
+    "speed": "150",
     "amplitude": 100,
     "timeout": 30000
   },

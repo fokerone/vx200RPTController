@@ -269,6 +269,24 @@ body {
     border-color: rgba(239, 68, 68, 0.4);
 }
 
+.module-status.configuring {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.4);
+    animation: pulse 1.5s infinite;
+}
+
+.module-status.error {
+    background: rgba(220, 38, 38, 0.2);
+    color: #dc2626;
+    border-color: rgba(220, 38, 38, 0.4);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
 .module-controls {
     display: flex;
     gap: 0.5rem;
@@ -321,6 +339,11 @@ body {
     background: #8b5cf6;
     color: white;
     border-color: #7c3aed;
+}
+.btn-launch {
+    background: #06b6d4;
+    color: white;
+    border-color: #0891b2;
 }
 
 .btn-warning {
