@@ -16,6 +16,9 @@ class DTMFDecoder {
         this.detectionTimeout = null;
         this.detectionDelay = 150; // 150ms entre detecciones (más responsive)
         
+        // Estado de habilitación
+        this.enabled = true;
+        
         // Crear stream de detección DTMF
         this.setupDTMFStream();
         
@@ -44,6 +47,11 @@ class DTMFDecoder {
     }
     
     handleDetection(tone) {
+        // Si el detector está deshabilitado, ignorar detecciones
+        if (!this.enabled) {
+            return;
+        }
+        
         const now = Date.now();
         
         // Evitar detecciones duplicadas muy rápidas
@@ -106,6 +114,30 @@ class DTMFDecoder {
         // Método legacy para compatibilidad
         this.detectSequence(audioBuffer, () => {});
         return null; // La detección se maneja por eventos
+    }
+    
+    /**
+     * Habilitar detector DTMF
+     */
+    enable() {
+        this.enabled = true;
+        this.logger.debug('Detector DTMF habilitado');
+    }
+    
+    /**
+     * Deshabilitar detector DTMF
+     */
+    disable() {
+        this.enabled = false;
+        this.logger.debug('Detector DTMF deshabilitado');
+    }
+    
+    /**
+     * Verificar si el detector está habilitado
+     * @returns {boolean}
+     */
+    isEnabled() {
+        return this.enabled;
     }
     
     forceReset() {

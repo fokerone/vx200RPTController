@@ -43,6 +43,12 @@ class CityMatcher {
                 province: 'Buenos Aires',
                 aliases: ['mardel', 'mar de plata', 'mardelplata']
             },
+            'malargue': {
+                lat: -35.4719, lon: -69.5844,
+                name: 'Malargüe',
+                province: 'Mendoza',
+                aliases: ['malargue', 'malarguë', 'malarge']
+            },
             'salta': { 
                 lat: -24.7821, lon: -65.4232, 
                 name: 'Salta', 

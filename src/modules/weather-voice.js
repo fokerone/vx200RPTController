@@ -5,8 +5,8 @@ const { spawn } = require('child_process');
 const { delay, sanitizeTextForTTS } = require('../utils');
 const { createLogger } = require('../logging/Logger');
 const { MODULE_STATES } = require('../constants');
-const { getSpeechToText } = require('../utils/speechToText');
-const { getCityMatcher } = require('../utils/cityMatcher');
+const ClaudeSpeechToText = require('../utils/claudeSpeechToText');
+const { getMendozaCityMatcher } = require('../utils/mendozaCityMatcher');
 const HybridVoiceManager = require('../audio/HybridVoiceManager');
 
 class WeatherVoice {
@@ -25,11 +25,13 @@ class WeatherVoice {
             },
             cacheDuration: 600000, // 10 minutos
             timeout: 10000,
-            voiceCapture: {
-                duration: 8000, // 8 segundos de grabación
-                format: 'wav',
-                sampleRate: 16000, // Whisper prefiere 16kHz
-                timeout: 15000 // Timeout total del proceso
+            // Lista de 5 ciudades principales para selección DTMF
+            cityMenu: {
+                '1': { name: 'Mendoza', lat: -32.8833, lon: -68.8167, department: 'Capital' },
+                '2': { name: 'Las Heras', lat: -32.8500, lon: -68.8333, department: 'Las Heras' },
+                '3': { name: 'Aconcagua', lat: -32.6500, lon: -70.0000, department: 'Las Heras' }, // Zona Aconcagua
+                '4': { name: 'Malargüe', lat: -35.4719, lon: -69.5844, department: 'Malargüe' },
+                '5': { name: 'Tunuyán', lat: -33.5833, lon: -69.0167, department: 'Tunuyán' }
             }
         };
 
@@ -37,13 +39,13 @@ class WeatherVoice {
         this.cache = new Map();
         
         // Inicializar servicios
-        this.speechToText = getSpeechToText();
-        this.cityMatcher = getCityMatcher();
+        this.speechToText = new ClaudeSpeechToText();
+        this.cityMatcher = getMendozaCityMatcher();
         
         // Inicializar sistema híbrido de voz
         this.voiceManager = new HybridVoiceManager();
 
-        this.logger.info('Módulo WeatherVoice inicializado con speech-to-text y Google TTS híbrido');
+        this.logger.info('Módulo WeatherVoice inicializado con Claude speech-to-text y Google TTS híbrido');
     }
 
     /**
@@ -84,123 +86,198 @@ class WeatherVoice {
     }
 
     /**
-     * Comando *5: Clima por voz
+     * Comando *5: Selección de ciudad por DTMF
      */
     async speakWeatherByVoice() {
         try {
-            // 1. Verificar que STT esté disponible
-            if (!this.speechToText.isAvailable()) {
-                await this.speakError('Servicio de reconocimiento de voz no disponible');
-                return;
+            this.logger.info('Iniciando selección de ciudad por DTMF');
+            
+            // Asegurar que el AudioManager esté iniciado
+            if (!this.audioManager.isRecording) {
+                this.logger.info('AudioManager no está grabando, iniciando...');
+                const started = this.audioManager.start();
+                if (!started) {
+                    await this.speakError('Error iniciando sistema de audio');
+                    return;
+                }
+                // Dar tiempo para que se estabilice
+                await delay(1000);
             }
-
-            // 2. Prompt para el usuario
+            
+            // Asegurar que el detector DTMF esté habilitado
+            if (!this.audioManager.dtmfDecoder.isEnabled()) {
+                this.audioManager.dtmfDecoder.enable();
+                this.logger.info('Detector DTMF habilitado para selección de ciudad');
+            }
+            
+            // 1. Tono de confirmación
             await this.audioManager.playTone(800, 300, 0.7);
             await delay(200);
-            await this.speakWithHybridVoice(
-                'Diga el nombre de la ciudad después del tono', 
-                { voice: 'es' }
-            );
-            await delay(500);
 
-            // 3. Tono de inicio de grabación
-            await this.audioManager.playTone(1200, 500, 0.8);
-            await delay(200);
-
-            // 4. Capturar audio del usuario
-            this.logger.info('Iniciando captura de voz del usuario...');
-            const audioData = await this.captureUserVoice();
-
-            if (!audioData) {
-                await this.speakError('No se pudo capturar audio del usuario');
-                return;
-            }
-
-            // 5. Convertir voz a texto
-            this.logger.info('Procesando audio con speech-to-text...');
-            const transcription = await this.speechToText.transcribeBuffer(
-                audioData, 
-                this.config.voiceCapture.format
-            );
-
-            if (!transcription) {
-                await this.speakError('No se pudo reconocer lo que dijo');
-                return;
-            }
-
-            this.logger.info(`Usuario dijo: "${transcription}"`);
-
-            // 6. Buscar ciudad
-            const city = this.cityMatcher.findCity(transcription);
+            // 2. Anunciar menú de ciudades
+            await this.announceWeatherMenu();
             
-            if (!city) {
-                await this.speakError(`No se encontró la ciudad "${transcription}"`);
-                await delay(500);
-                await this.speakWithHybridVoice(
-                    'Ciudades disponibles incluyen Buenos Aires, Córdoba, Rosario, Mendoza, Salta'
-                );
+            // 3. Esperar selección DTMF del usuario
+            this.logger.info('Sistema listo para recibir selección DTMF');
+            this.logger.info(`AudioManager grabando: ${this.audioManager.isRecording}`);
+            this.logger.info(`Detector DTMF habilitado: ${this.audioManager.dtmfDecoder.isEnabled()}`);
+            
+            const selectedCity = await this.waitForCitySelection();
+            
+            if (!selectedCity) {
+                await this.speakError('No se recibió selección válida');
                 return;
             }
 
-            // 7. Obtener clima de la ciudad encontrada
-            this.logger.info(`Obteniendo clima para: ${city.name}`);
-            const weatherData = await this.getCurrentWeatherForCity(city);
-
-            // 8. Responder con el clima
-            await this.speakCityWeather(weatherData, city);
+            // 4. Confirmar selección y obtener clima
+            this.logger.info(`Usuario seleccionó: ${selectedCity.name}`);
+            
+            const weatherData = await this.getCurrentWeatherForCity(selectedCity);
+            await this.speakCityWeather(weatherData, selectedCity);
 
         } catch (error) {
-            this.logger.error('Error en comando de voz:', error.message);
-            await this.speakError('Error procesando comando de voz');
+            this.logger.error('Error en selección de ciudad:', error.message);
+            await this.speakError('Error en selección de ciudad');
         }
     }
 
     /**
-     * Capturar audio del usuario
+     * Anunciar menú de selección de ciudades
+     */
+    async announceWeatherMenu() {
+        const menuText = [
+            'Seleccione ciudad para consultar clima:',
+            'Uno: Mendoza',
+            'Dos: Las Heras', 
+            'Tres: Aconcagua',
+            'Cuatro: Malargüe',
+            'Cinco: Tunuyán',
+            'Presione el número correspondiente'
+        ].join('. ');
+        
+        await this.speakWithHybridVoice(menuText);
+    }
+
+    /**
+     * Esperar selección DTMF del usuario
+     * @returns {Promise<object|null>} - Ciudad seleccionada o null
+     */
+    async waitForCitySelection() {
+        return new Promise((resolve) => {
+            let timeout;
+            
+            const dtmfHandler = (dtmfSequence) => {
+                this.logger.info(`DTMF recibido durante selección: "${dtmfSequence}"`);
+                
+                // Verificar si es una selección válida (1-5)
+                // Aceptar tanto dígitos individuales como el último dígito de una secuencia
+                const lastDigit = dtmfSequence.slice(-1);
+                
+                if (/^[1-5]$/.test(lastDigit)) {
+                    const selectedCity = this.config.cityMenu[lastDigit];
+                    
+                    if (selectedCity) {
+                        this.logger.info(`✅ Ciudad seleccionada: ${lastDigit} - ${selectedCity.name}`);
+                        
+                        // Limpiar listeners y timeout
+                        clearTimeout(timeout);
+                        this.audioManager.removeListener('dtmf', dtmfHandler);
+                        
+                        resolve(selectedCity);
+                        return;
+                    }
+                }
+                
+                // Si no es válida, informar y seguir esperando
+                this.logger.debug(`⚠️ Selección no válida: "${dtmfSequence}" (esperando 1-5)`);
+            };
+            
+            // Configurar timeout de 20 segundos (más tiempo para el operador)
+            timeout = setTimeout(() => {
+                this.logger.warn('⏰ Timeout esperando selección de ciudad');
+                this.audioManager.removeListener('dtmf', dtmfHandler);
+                resolve(null);
+            }, 20000);
+            
+            // Escuchar eventos DTMF
+            this.audioManager.on('dtmf', dtmfHandler);
+            
+            this.logger.info('🎧 Esperando selección DTMF (1-5)...');
+            this.logger.debug(`Detector DTMF habilitado: ${this.audioManager.dtmfDecoder.isEnabled()}`);
+        });
+    }
+
+    /**
+     * Capturar audio del usuario usando arecord directamente
      * @returns {Promise<Buffer|null>}
      */
     async captureUserVoice() {
         return new Promise((resolve, reject) => {
             try {
-                const chunks = [];
-                let isRecording = false;
-                let recordingTimeout;
+                const tempFile = path.join(__dirname, '../../temp', `voice_capture_${Date.now()}.wav`);
+                const duration = Math.floor(this.config.voiceCapture.duration / 1000); // Convertir a segundos
+                
+                this.logger.info(`Capturando voz del usuario por ${duration} segundos...`);
+                
+                // Usar arecord para capturar audio directamente
+                const arecord = spawn('arecord', [
+                    '-f', 'S16_LE',           // Formato PCM 16-bit little endian
+                    '-r', '16000',            // Sample rate 16kHz (optimizado para Whisper)
+                    '-c', '1',                // Mono
+                    '-t', 'wav',              // Formato WAV
+                    '-d', duration.toString(), // Duración en segundos
+                    tempFile                  // Archivo de salida
+                ]);
 
-                // Configurar timeout general
-                const generalTimeout = setTimeout(() => {
-                    this.logger.warn('Timeout capturando voz del usuario');
-                    resolve(null);
-                }, this.config.voiceCapture.timeout);
+                let stderr = '';
+                arecord.stderr.on('data', (data) => {
+                    stderr += data.toString();
+                });
 
-                // Listener temporal para capturar audio
-                const audioListener = (audioBuffer) => {
-                    if (isRecording) {
-                        chunks.push(audioBuffer);
-                    }
-                };
-
-                // Iniciar captura
-                isRecording = true;
-                this.audioManager.on('audio_data', audioListener);
-
-                // Timeout de grabación
-                recordingTimeout = setTimeout(() => {
-                    isRecording = false;
-                    this.audioManager.removeListener('audio_data', audioListener);
-                    clearTimeout(generalTimeout);
-
-                    if (chunks.length > 0) {
-                        const audioBuffer = Buffer.concat(chunks);
-                        this.logger.debug(`Audio capturado: ${audioBuffer.length} bytes`);
-                        resolve(audioBuffer);
+                arecord.on('close', (code) => {
+                    if (code === 0 && fs.existsSync(tempFile)) {
+                        try {
+                            const audioBuffer = fs.readFileSync(tempFile);
+                            this.logger.debug(`Audio capturado exitosamente: ${audioBuffer.length} bytes`);
+                            
+                            // Limpiar archivo temporal después de un tiempo
+                            setTimeout(() => {
+                                try {
+                                    if (fs.existsSync(tempFile)) {
+                                        fs.unlinkSync(tempFile);
+                                    }
+                                } catch (error) {
+                                    this.logger.warn('Error eliminando archivo temporal:', error.message);
+                                }
+                            }, 60000); // 60 segundos
+                            
+                            resolve(audioBuffer);
+                        } catch (error) {
+                            this.logger.error('Error leyendo archivo de audio:', error.message);
+                            resolve(null);
+                        }
                     } else {
-                        this.logger.warn('No se capturó audio del usuario');
+                        this.logger.warn(`arecord falló con código ${code}: ${stderr}`);
                         resolve(null);
                     }
-                }, this.config.voiceCapture.duration);
+                });
+
+                arecord.on('error', (error) => {
+                    this.logger.error('Error ejecutando arecord:', error.message);
+                    resolve(null);
+                });
+
+                // Timeout de seguridad
+                setTimeout(() => {
+                    if (!arecord.killed) {
+                        arecord.kill('SIGTERM');
+                        this.logger.warn('Timeout capturando audio, proceso terminado');
+                        resolve(null);
+                    }
+                }, this.config.voiceCapture.timeout);
 
             } catch (error) {
-                this.logger.error('Error capturando voz:', error.message);
+                this.logger.error('Error configurando captura de voz:', error.message);
                 resolve(null);
             }
         });
