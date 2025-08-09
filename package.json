@@ -7,9 +7,7 @@
     "start": "node src/start-with-web.js",
     "dev": "node src/start-with-web.js",
     "test": "node src/test-complete.js",
-    "web-only": "node src/web/server.js",
-    "cleanup-zello": "./scripts/cleanup-zello.sh",
-    "validate-zello": "node ./scripts/validate-zello-state.js"
+    "web-only": "node src/web/server.js"
   },
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.2.0",

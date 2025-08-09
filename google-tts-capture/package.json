@@ -1,0 +1,17 @@
+{
+  "name": "google-tts-capture",
+  "version": "1.0.0",
+  "description": "Captura de audio de Google Translate TTS",
+  "main": "google-tts.js",
+  "scripts": {
+    "test": "node google-tts.js \"Esta es una prueba de Google TTS\"",
+    "install-deps": "npm install",
+    "setup": "npm install && echo 'Instalación completada'"
+  },
+  "dependencies": {
+    "puppeteer": "^21.5.0"
+  },
+  "keywords": ["tts", "google-translate", "text-to-speech", "puppeteer"],
+  "author": "VX200 Controller",
+  "license": "MIT"
+}

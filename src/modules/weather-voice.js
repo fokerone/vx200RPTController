@@ -1,11 +1,13 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const { delay, sanitizeTextForTTS } = require('../utils');
 const { createLogger } = require('../logging/Logger');
 const { MODULE_STATES } = require('../constants');
 const { getSpeechToText } = require('../utils/speechToText');
 const { getCityMatcher } = require('../utils/cityMatcher');
+const HybridVoiceManager = require('../audio/HybridVoiceManager');
 
 class WeatherVoice {
     constructor(audioManager) {
@@ -37,8 +39,11 @@ class WeatherVoice {
         // Inicializar servicios
         this.speechToText = getSpeechToText();
         this.cityMatcher = getCityMatcher();
+        
+        // Inicializar sistema híbrido de voz
+        this.voiceManager = new HybridVoiceManager();
 
-        this.logger.info('Módulo WeatherVoice inicializado con speech-to-text');
+        this.logger.info('Módulo WeatherVoice inicializado con speech-to-text y Google TTS híbrido');
     }
 
     /**
@@ -92,7 +97,7 @@ class WeatherVoice {
             // 2. Prompt para el usuario
             await this.audioManager.playTone(800, 300, 0.7);
             await delay(200);
-            await this.audioManager.speak(
+            await this.speakWithHybridVoice(
                 'Diga el nombre de la ciudad después del tono', 
                 { voice: 'es' }
             );
@@ -131,9 +136,8 @@ class WeatherVoice {
             if (!city) {
                 await this.speakError(`No se encontró la ciudad "${transcription}"`);
                 await delay(500);
-                await this.audioManager.speak(
-                    'Ciudades disponibles incluyen Buenos Aires, Córdoba, Rosario, Mendoza, Salta', 
-                    { voice: 'es' }
+                await this.speakWithHybridVoice(
+                    'Ciudades disponibles incluyen Buenos Aires, Córdoba, Rosario, Mendoza, Salta'
                 );
                 return;
             }
@@ -293,7 +297,7 @@ class WeatherVoice {
         mensaje += `Viento a ${weatherData.wind_speed} kilómetros por hora.`;
 
         const mensajeLimpio = sanitizeTextForTTS(mensaje);
-        await this.audioManager.speak(mensajeLimpio, { voice: 'es' });
+        await this.speakWithHybridVoice(mensajeLimpio);
     }
 
     /**
@@ -352,7 +356,7 @@ class WeatherVoice {
             }
 
             const mensajeLimpio = sanitizeTextForTTS(mensaje);
-            await this.audioManager.speak(mensajeLimpio, { voice: 'es' });
+            await this.speakWithHybridVoice(mensajeLimpio);
 
         } catch (error) {
             this.logger.error('Error obteniendo pronóstico:', error.message);
@@ -418,7 +422,7 @@ class WeatherVoice {
         await this.audioManager.playTone(400, 500, 0.8);
         await delay(300);
         const mensajeLimpio = sanitizeTextForTTS(mensaje);
-        await this.audioManager.speak(mensajeLimpio, { voice: 'es' });
+        await this.speakWithHybridVoice(mensajeLimpio);
     }
 
     /**
@@ -449,6 +453,80 @@ class WeatherVoice {
     }
 
     /**
+     * Generar y reproducir voz usando sistema híbrido
+     * @param {string} text - Texto a reproducir
+     * @param {object} options - Opciones de voz
+     */
+    async speakWithHybridVoice(text, options = {}) {
+        try {
+            // Generar audio con sistema híbrido (Google TTS -> espeak fallback)
+            const audioFile = await this.voiceManager.generateSpeech(text, options);
+            
+            // Reproducir usando paplay directamente
+            await this.playAudioFile(audioFile);
+            
+            // Ejecutar roger beep después de la reproducción
+            if (this.audioManager.rogerBeep && this.audioManager.rogerBeep.enabled) {
+                await this.audioManager.rogerBeep.executeAfterTransmission();
+            }
+            
+            // Limpiar archivo temporal después de un tiempo
+            setTimeout(() => {
+                try {
+                    if (fs.existsSync(audioFile)) {
+                        fs.unlinkSync(audioFile);
+                    }
+                } catch (error) {
+                    this.logger.warn('Error eliminando archivo temporal:', error.message);
+                }
+            }, 30000); // 30 segundos
+            
+        } catch (error) {
+            this.logger.error('Error en speakWithHybridVoice:', error.message);
+            // Fallback de emergencia usando audioManager original
+            await this.audioManager.speak(text, options);
+        }
+    }
+
+    /**
+     * Reproducir archivo de audio usando paplay
+     * @param {string} audioFile - Ruta del archivo de audio
+     * @returns {Promise<void>}
+     */
+    async playAudioFile(audioFile) {
+        return new Promise((resolve, reject) => {
+            if (!fs.existsSync(audioFile)) {
+                reject(new Error('Archivo de audio no existe'));
+                return;
+            }
+
+            this.logger.debug(`Reproduciendo archivo: ${path.basename(audioFile)}`);
+            
+            const paplay = spawn('paplay', [audioFile]);
+            
+            let stderr = '';
+            paplay.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            paplay.on('close', (code) => {
+                if (code === 0) {
+                    this.logger.debug('Reproducción completada exitosamente');
+                    resolve();
+                } else {
+                    this.logger.warn(`paplay falló con código ${code}: ${stderr}`);
+                    reject(new Error(`Error reproduciendo audio: ${stderr}`));
+                }
+            });
+
+            paplay.on('error', (error) => {
+                this.logger.error('Error ejecutando paplay:', error.message);
+                reject(error);
+            });
+        });
+    }
+
+    /**
      * Obtener estado del módulo
      */
     getStatus() {
@@ -469,6 +547,12 @@ class WeatherVoice {
      */
     destroy() {
         this.clearCache();
+        
+        // Destruir voice manager
+        if (this.voiceManager && typeof this.voiceManager.destroy === 'function') {
+            this.voiceManager.destroy();
+        }
+        
         this.state = MODULE_STATES.DISABLED;
         this.logger.info('Módulo WeatherVoice destruido');
     }

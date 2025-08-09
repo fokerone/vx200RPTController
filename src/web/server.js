@@ -370,20 +370,6 @@ class WebServer {
                 configUpdates['baliza.message'] = newConfig.balizaMessage;
             }
             
-            // Zello Integration
-            if (newConfig.zelloEnabled !== undefined) {
-                configUpdates['zello.enabled'] = Boolean(newConfig.zelloEnabled);
-            }
-            if (newConfig.zelloChannel) {
-                configUpdates['zello.network.channel'] = newConfig.zelloChannel;
-            }
-            if (newConfig.zelloUsername) {
-                configUpdates['zello.network.username'] = newConfig.zelloUsername;
-            }
-            if (newConfig.zelloVoxThreshold) {
-                configUpdates['zello.audio.voxThreshold'] = parseFloat(newConfig.zelloVoxThreshold);
-            }
-            
             if (newConfig.rogerBeepEnabled !== undefined) {
                 configUpdates['rogerBeep.enabled'] = Boolean(newConfig.rogerBeepEnabled);
             }
@@ -542,20 +528,6 @@ class WebServer {
         }
     }
 
-    broadcastZelloStatus(status) {
-        if (this.connectedClients.size > 0) {
-            this.io.emit('zello_status_change', { status, timestamp: new Date().toISOString() });
-        }
-    }
-
-    broadcastZelloActivity(activity) {
-        if (this.connectedClients.size > 0) {
-            this.io.emit('zello_activity', { 
-                ...activity, 
-                timestamp: new Date().toISOString() 
-            });
-        }
-    }
 
     getDTMFTargetModule(sequence) {
         const commands = {

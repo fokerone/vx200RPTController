@@ -442,8 +442,6 @@ class VX200Controller {
         }
         
         
-        // Clean up Docker containers if they exist
-        this.cleanupDockerContainers();
         
         this.systemOutput.printStopped();
     }
