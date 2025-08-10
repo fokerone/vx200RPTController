@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa APRS - VX200 RPT Controller</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 70vh;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .info-panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .station-info {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-connected { background-color: #28a745; }
+        .status-disconnected { background-color: #dc3545; }
+        .beacon-status { 
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        .position-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .position-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e9ecef;
+            cursor: pointer;
+        }
+        .position-item:hover {
+            background-color: #f8f9fa;
+        }
+        .callsign {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+        .coordinates {
+            font-size: 0.9em;
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">📡 VX200 RPT Controller - Mapa APRS</span>
+            <div class="d-flex align-items-center">
+                <a href="/" class="btn btn-outline-light btn-sm me-3">← Panel Principal</a>
+                <span class="status-indicator" id="connectionStatus"></span>
+                <span id="connectionText">Desconectado</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="info-panel">
+                    <h5>🗺️ Mapa de Posiciones APRS</h5>
+                    <div id="map"></div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <!-- Estado del Sistema APRS -->
+                <div class="info-panel">
+                    <h5>📡 Estado APRS</h5>
+                    <div id="aprsStatus">
+                        <div class="d-flex justify-content-between">
+                            <span>TNC:</span>
+                            <span id="tncStatus" class="text-muted">Desconocido</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Callsign:</span>
+                            <span id="callsign" class="text-muted">-</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Beacons enviados:</span>
+                            <span id="beaconsSent" class="text-muted">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Posiciones recibidas:</span>
+                            <span id="positionsReceived" class="text-muted">0</span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-primary btn-sm" onclick="sendManualBeacon()">Enviar Beacon</button>
+                        <button class="btn btn-secondary btn-sm" onclick="refreshMap()">Actualizar</button>
+                    </div>
+                </div>
+
+                <!-- Lista de Estaciones -->
+                <div class="info-panel">
+                    <h5>📋 Estaciones Recibidas (<span id="stationCount">0</span>)</h5>
+                    <div class="position-list" id="positionsList">
+                        <div class="text-center text-muted p-3">
+                            No hay posiciones recibidas
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Información Detallada -->
+                <div class="info-panel" id="detailPanel" style="display: none;">
+                    <h5>ℹ️ Información de Estación</h5>
+                    <div id="stationDetails"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <script>
+        // Variables globales
+        let map;
+        let socket;
+        let markers = {};
+        let repeaterMarker;
+        let positions = [];
+        
+        // Configuración del repetidor (deberían venir del servidor)
+        const REPEATER_CONFIG = {
+            callsign: 'BASE1',
+            lat: -32.885,
+            lon: -68.739,
+            name: 'VX200 RPT Controller - Guaymallén'
+        };
+        
+        // Inicializar aplicación
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeMap();
+            initializeSocket();
+            loadInitialData();
+        });
+        
+        // Inicializar mapa
+        function initializeMap() {
+            map = L.map('map').setView([REPEATER_CONFIG.lat, REPEATER_CONFIG.lon], 10);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            // Agregar marcador del repetidor
+            repeaterMarker = L.marker([REPEATER_CONFIG.lat, REPEATER_CONFIG.lon], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(map);
+            
+            repeaterMarker.bindPopup(`
+                <b>${REPEATER_CONFIG.callsign}</b><br>
+                ${REPEATER_CONFIG.name}<br>
+                <small>Repetidor Base</small>
+            `);
+        }
+        
+        // Inicializar WebSocket
+        function initializeSocket() {
+            socket = io();
+            
+            socket.on('connect', function() {
+                updateConnectionStatus(true);
+                console.log('Conectado al servidor');
+            });
+            
+            socket.on('disconnect', function() {
+                updateConnectionStatus(false);
+                console.log('Desconectado del servidor');
+            });
+            
+            socket.on('aprs_position', function(data) {
+                console.log('Nueva posición APRS:', data);
+                addPosition(data.data);
+            });
+            
+            socket.on('aprs_beacon', function(data) {
+                console.log('Beacon APRS enviado:', data);
+                updateBeaconCount();
+            });
+            
+            socket.on('aprs_status', function(data) {
+                console.log('Estado APRS actualizado:', data);
+                updateAPRSStatus(data.data);
+            });
+        }
+        
+        // Cargar datos iniciales
+        async function loadInitialData() {
+            try {
+                // Cargar posiciones existentes
+                const positionsResponse = await fetch('/api/aprs/positions');
+                if (positionsResponse.ok) {
+                    const positionsData = await positionsResponse.json();
+                    if (positionsData.success) {
+                        positions = positionsData.data;
+                        renderPositions();
+                    }
+                }
+                
+                // Cargar estado APRS
+                const statusResponse = await fetch('/api/aprs/status');
+                if (statusResponse.ok) {
+                    const statusData = await statusResponse.json();
+                    if (statusData.success) {
+                        updateAPRSStatus(statusData.data);
+                    }
+                }
+            } catch (error) {
+                console.error('Error cargando datos iniciales:', error);
+            }
+        }
+        
+        // Actualizar estado de conexión
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('connectionStatus');
+            const textElement = document.getElementById('connectionText');
+            
+            if (connected) {
+                statusElement.className = 'status-indicator status-connected';
+                textElement.textContent = 'Conectado';
+            } else {
+                statusElement.className = 'status-indicator status-disconnected';
+                textElement.textContent = 'Desconectado';
+            }
+        }
+        
+        // Agregar nueva posición
+        function addPosition(position) {
+            // Buscar si ya existe
+            const existingIndex = positions.findIndex(p => p.callsign === position.callsign);
+            
+            if (existingIndex >= 0) {
+                positions[existingIndex] = position;
+            } else {
+                positions.push(position);
+            }
+            
+            renderPositions();
+            updatePositionMarker(position);
+        }
+        
+        // Renderizar lista de posiciones
+        function renderPositions() {
+            const listContainer = document.getElementById('positionsList');
+            const countElement = document.getElementById('stationCount');
+            
+            countElement.textContent = positions.length;
+            
+            if (positions.length === 0) {
+                listContainer.innerHTML = '<div class="text-center text-muted p-3">No hay posiciones recibidas</div>';
+                return;
+            }
+            
+            // Ordenar por timestamp más reciente
+            const sortedPositions = [...positions].sort((a, b) => 
+                new Date(b.timestamp) - new Date(a.timestamp)
+            );
+            
+            const html = sortedPositions.map(pos => {
+                const timeAgo = getTimeAgo(new Date(pos.timestamp));
+                return `
+                    <div class="position-item" onclick="showStationDetails('${pos.callsign}')">
+                        <div class="callsign">${pos.callsign}</div>
+                        <div class="coordinates">${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)}</div>
+                        <div class="timestamp">${timeAgo}</div>
+                        ${pos.comment ? `<div class="text-muted" style="font-size: 0.8em;">${pos.comment}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            listContainer.innerHTML = html;
+        }
+        
+        // Actualizar marcador en el mapa
+        function updatePositionMarker(position) {
+            const key = position.callsign;
+            
+            // Remover marcador existente si existe
+            if (markers[key]) {
+                map.removeLayer(markers[key]);
+            }
+            
+            // Crear nuevo marcador
+            const marker = L.marker([position.lat, position.lon], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(map);
+            
+            const timeAgo = getTimeAgo(new Date(position.timestamp));
+            marker.bindPopup(`
+                <b>${position.callsign}</b><br>
+                ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)}<br>
+                <small>${timeAgo}</small>
+                ${position.comment ? `<br><i>${position.comment}</i>` : ''}
+            `);
+            
+            markers[key] = marker;
+        }
+        
+        // Mostrar detalles de estación
+        function showStationDetails(callsign) {
+            const position = positions.find(p => p.callsign === callsign);
+            if (!position) return;
+            
+            const detailPanel = document.getElementById('detailPanel');
+            const detailsContainer = document.getElementById('stationDetails');
+            
+            const timeAgo = getTimeAgo(new Date(position.timestamp));
+            
+            detailsContainer.innerHTML = `
+                <div class="station-info">
+                    <h6>${position.callsign}</h6>
+                    <div><strong>Ubicación:</strong> ${position.lat.toFixed(6)}, ${position.lon.toFixed(6)}</div>
+                    <div><strong>Última actualización:</strong> ${timeAgo}</div>
+                    <div><strong>Timestamp:</strong> ${new Date(position.timestamp).toLocaleString()}</div>
+                    ${position.comment ? `<div><strong>Comentario:</strong> ${position.comment}</div>` : ''}
+                    ${position.symbol ? `<div><strong>Símbolo:</strong> ${position.symbol}</div>` : ''}
+                </div>
+            `;
+            
+            detailPanel.style.display = 'block';
+            
+            // Centrar mapa en la posición
+            map.setView([position.lat, position.lon], 12);
+            if (markers[callsign]) {
+                markers[callsign].openPopup();
+            }
+        }
+        
+        // Actualizar estado APRS
+        function updateAPRSStatus(status) {
+            document.getElementById('tncStatus').textContent = status.tncConnected ? 'Conectado' : 'Desconectado';
+            document.getElementById('callsign').textContent = status.config.callsign || '-';
+            document.getElementById('beaconsSent').textContent = status.stats.beaconsSent || 0;
+            document.getElementById('positionsReceived').textContent = status.stats.positionsReceived || 0;
+            
+            const tncElement = document.getElementById('tncStatus');
+            tncElement.className = status.tncConnected ? 'text-success' : 'text-danger';
+        }
+        
+        // Enviar beacon manual
+        async function sendManualBeacon() {
+            try {
+                const response = await fetch('/api/aprs/beacon', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Beacon APRS enviado correctamente');
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error enviando beacon:', error);
+                alert('Error enviando beacon');
+            }
+        }
+        
+        // Actualizar mapa
+        function refreshMap() {
+            loadInitialData();
+        }
+        
+        // Utilidad para calcular tiempo transcurrido
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+            
+            if (diffDays > 0) return `hace ${diffDays} día${diffDays > 1 ? 's' : ''}`;
+            if (diffHours > 0) return `hace ${diffHours} hora${diffHours > 1 ? 's' : ''}`;
+            if (diffMins > 0) return `hace ${diffMins} minuto${diffMins > 1 ? 's' : ''}`;
+            return 'hace menos de 1 minuto';
+        }
+    </script>
+</body>
+</html>

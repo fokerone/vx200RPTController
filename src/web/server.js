@@ -75,6 +75,10 @@ class WebServer {
             res.sendFile(path.join(__dirname, '../../public/index.html'));
         });
 
+        this.app.get('/aprs-map', (req, res) => {
+            res.sendFile(path.join(__dirname, '../../public/aprs-map.html'));
+        });
+
         this.app.get('/api/status', (req, res) => {
             try {
                 const status = this.getSystemStatus();
@@ -178,6 +182,67 @@ class WebServer {
             }
         });
 
+        // Rutas APRS
+        this.app.get('/api/aprs/positions', (req, res) => {
+            try {
+                if (this.controller.modules.aprs) {
+                    const positions = this.controller.modules.aprs.getAllPositions();
+                    res.json({ success: true, data: positions });
+                } else {
+                    res.json({ success: false, message: 'Módulo APRS no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.get('/api/aprs/status', (req, res) => {
+            try {
+                if (this.controller.modules.aprs) {
+                    const status = this.controller.modules.aprs.getStatus();
+                    res.json({ success: true, data: status });
+                } else {
+                    res.json({ success: false, message: 'Módulo APRS no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.post('/api/aprs/beacon', async (req, res) => {
+            try {
+                if (this.controller.modules.aprs && this.controller.modules.aprs.isRunning) {
+                    await this.controller.modules.aprs.sendBeacon();
+                    res.json({ success: true, message: 'Beacon enviado' });
+                } else {
+                    res.json({ success: false, message: 'Módulo APRS no está activo' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.post('/api/aprs/config', async (req, res) => {
+            try {
+                const { enabled, interval, callsign, comment } = req.body;
+                
+                if (this.controller.modules.aprs) {
+                    // Actualizar configuración
+                    await this.controller.modules.aprs.updateBeaconConfig({
+                        enabled: enabled !== undefined ? enabled : true,
+                        interval: interval || 15,
+                        callsign: callsign || 'BASE1',
+                        comment: comment || 'VX200 RPT Controller - Guaymallen, Mendoza'
+                    });
+                    
+                    res.json({ success: true, message: 'Configuración APRS actualizada' });
+                } else {
+                    res.json({ success: false, message: 'Módulo APRS no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
         
         this.app.use((req, res) => {
             res.status(404).json({ success: false, message: 'Endpoint not found' });
@@ -525,6 +590,40 @@ class WebServer {
     broadcastConfigurationUpdate(updates) {
         if (this.connectedClients.size > 0) {
             this.io.emit('configuration_updated', { updates });
+        }
+    }
+
+    // Eventos APRS
+    broadcastAPRSPosition(position) {
+        if (this.connectedClients.size > 0) {
+            const positionEvent = {
+                callsign: position.callsign,
+                lat: position.lat,
+                lon: position.lon,
+                timestamp: position.timestamp,
+                comment: position.comment,
+                symbol: position.symbol
+            };
+            this.io.emit('aprs_position', { data: positionEvent });
+            this.logger.debug(`Posición APRS transmitida: ${position.callsign}`);
+        }
+    }
+
+    broadcastAPRSBeacon(beacon) {
+        if (this.connectedClients.size > 0) {
+            const beaconEvent = {
+                callsign: beacon.callsign,
+                location: beacon.location,
+                timestamp: beacon.timestamp
+            };
+            this.io.emit('aprs_beacon', { data: beaconEvent });
+            this.logger.debug(`Beacon APRS transmitido: ${beacon.callsign}`);
+        }
+    }
+
+    broadcastAPRSStatus(status) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('aprs_status', { data: status });
         }
     }
 

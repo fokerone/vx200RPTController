@@ -28,6 +28,7 @@
     "socket.io": "^4.8.1",
     "speaker": "^0.5.5",
     "twilio": "^5.8.0",
+    "utils-for-aprs": "^3.0.4",
     "wav": "^1.0.2"
   }
 }

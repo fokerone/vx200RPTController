@@ -15,11 +15,16 @@
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <h1 class="title">VX200 Controller</h1>
-                <div class="callsign">LU5MCD</div>
-                <div class="connection-status" id="connectionStatus">
-                    <span class="status-dot disconnected"></span>
-                    <span class="status-text">Desconectado</span>
+                <div class="header-left">
+                    <h1 class="title">VX200 Controller</h1>
+                    <div class="callsign">LU5MCD</div>
+                </div>
+                <div class="header-right">
+                    <a href="/aprs-map" class="aprs-link">📡 Ver Mapa APRS</a>
+                    <div class="connection-status" id="connectionStatus">
+                        <span class="status-dot disconnected"></span>
+                        <span class="status-text">Desconectado</span>
+                    </div>
                 </div>
             </div>
         </header>
@@ -28,6 +33,9 @@
         <nav class="tabs">
             <button class="tab-button active" data-tab="status">Estado del Sistema</button>
             <button class="tab-button" data-tab="config">Configuración</button>
+            <a href="/aprs-map" class="tab-button tab-link">
+                📡 Mapa APRS
+            </a>
         </nav>
 
         <!-- Status Tab -->
@@ -146,6 +154,17 @@
                             </div>
                         </div>
 
+                        <div class="module-item" data-module="aprs">
+                            <div class="module-header">
+                                <span class="module-name">📡 APRS</span>
+                                <div class="module-status" id="aprsStatus">--</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-execute" onclick="executeModule('aprs', '6')">Estado</button>
+                                <button class="btn btn-execute" onclick="executeModule('aprs', '61')">Beacon</button>
+                                <a href="/aprs-map" class="btn btn-primary" style="text-decoration: none;">🗺️ Mapa</a>
+                            </div>
+                        </div>
 
                         <div class="module-item" data-module="rogerBeep">
                             <div class="module-header">
@@ -224,7 +243,7 @@
                             </div>
                             <div class="config-group">
                                 <label for="balizaInterval">Intervalo (minutos):</label>
-                                <input type="number" id="balizaInterval" name="balizaInterval" placeholder="15">
+                                <input type="number" id="balizaInterval" name="balizaInterval" placeholder="60" value="60">
                             </div>
                             <div class="config-group">
                                 <label for="balizaFrequency">Frecuencia (Hz):</label>
@@ -233,6 +252,27 @@
                             <div class="config-group">
                                 <label for="balizaMessage">Mensaje:</label>
                                 <input type="text" id="balizaMessage" name="balizaMessage" placeholder="Repetidora LU5MCD">
+                            </div>
+                        </div>
+
+                        <!-- APRS Configuration -->
+                        <div class="config-section">
+                            <h3>APRS</h3>
+                            <div class="config-group">
+                                <label for="aprsEnabled">Beacon Habilitado:</label>
+                                <input type="checkbox" id="aprsEnabled" name="aprsEnabled" checked>
+                            </div>
+                            <div class="config-group">
+                                <label for="aprsInterval">Intervalo Beacon (minutos):</label>
+                                <input type="number" id="aprsInterval" name="aprsInterval" value="15" min="5" max="60">
+                            </div>
+                            <div class="config-group">
+                                <label for="aprsCallsign">Callsign:</label>
+                                <input type="text" id="aprsCallsign" name="aprsCallsign" value="BASE1" maxlength="9">
+                            </div>
+                            <div class="config-group">
+                                <label for="aprsComment">Comentario:</label>
+                                <input type="text" id="aprsComment" name="aprsComment" value="VX200 RPT Controller - Guaymallen, Mendoza" maxlength="43">
                             </div>
                         </div>
 
