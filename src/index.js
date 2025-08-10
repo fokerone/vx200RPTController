@@ -4,6 +4,8 @@ const DateTime = require('./modules/datetime');
 const AIChat = require('./modules/aiChat');
 const SMS = require('./modules/sms');
 const Weather = require('./modules/weather-voice');
+const APRS = require('./modules/aprs');
+const DirewolfManager = require('./utils/direwolfManager');
 const WebServer = require('./web/server');
 const { Config } = require('./config');
 const { createLogger } = require('./logging/Logger');
@@ -22,6 +24,7 @@ class VX200Controller {
         this.config = Config.getAll();
         this.audio = null;
         this.modules = {};
+        this.direwolf = null;
         this.webServer = null;
         
         this.isRunning = false;
@@ -92,6 +95,42 @@ class VX200Controller {
         this.modules.sms = new SMS(this.audio);
         this.modules.weather = new Weather(this.audio);
         
+        // Inicializar Direwolf primero
+        try {
+            this.direwolf = new DirewolfManager();
+            this.logger.info('Iniciando Direwolf TNC...');
+            const direwolfStarted = await this.direwolf.start();
+            if (direwolfStarted) {
+                this.logger.info('Direwolf TNC iniciado correctamente');
+                // Esperar un momento para que se establezca la conexión
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            } else {
+                this.logger.warn('Error iniciando Direwolf TNC');
+                this.initializationErrors.push('Direwolf');
+            }
+        } catch (error) {
+            this.logger.error('Error inicializando Direwolf:', error.message);
+            this.initializationErrors.push('Direwolf');
+        }
+        
+        // Inicializar APRS después de Direwolf
+        this.modules.aprs = new APRS(this.audio);
+        try {
+            const aprsInitialized = await this.modules.aprs.initialize();
+            if (aprsInitialized) {
+                const aprsStarted = await this.modules.aprs.start();
+                if (aprsStarted) {
+                    this.logger.info('Módulo APRS iniciado correctamente');
+                } else {
+                    this.logger.warn('Error iniciando módulo APRS');
+                    this.initializationErrors.push('APRS');
+                }
+            }
+        } catch (error) {
+            this.logger.error('Error inicializando APRS:', error.message);
+            this.initializationErrors.push('APRS');
+        }
+        
         this.logger.info('Módulos inicializados');
     }
 
@@ -157,6 +196,33 @@ class VX200Controller {
         this.modules.baliza.on('transmitted', (data) => {
             if (this.webServer && typeof this.webServer.broadcastBalizaTransmitted === 'function') {
                 this.webServer.broadcastBalizaTransmitted(data);
+            }
+        });
+
+        // Eventos APRS
+        this.modules.aprs.on('position_received', (position) => {
+            if (this.webServer && typeof this.webServer.broadcastAPRSPosition === 'function') {
+                this.webServer.broadcastAPRSPosition(position);
+            }
+        });
+
+        this.modules.aprs.on('beacon_sent', (beacon) => {
+            if (this.webServer && typeof this.webServer.broadcastAPRSBeacon === 'function') {
+                this.webServer.broadcastAPRSBeacon(beacon);
+            }
+        });
+
+        this.modules.aprs.on('tnc_connected', () => {
+            if (this.webServer && typeof this.webServer.broadcastAPRSStatus === 'function') {
+                const status = this.modules.aprs.getStatus();
+                this.webServer.broadcastAPRSStatus(status);
+            }
+        });
+
+        this.modules.aprs.on('tnc_disconnected', () => {
+            if (this.webServer && typeof this.webServer.broadcastAPRSStatus === 'function') {
+                const status = this.modules.aprs.getStatus();
+                this.webServer.broadcastAPRSStatus(status);
             }
         });
 
@@ -376,6 +442,20 @@ class VX200Controller {
                 }
             }
             
+            // Inicializar APRS si está habilitado
+            if (this.modules.aprs) {
+                try {
+                    const aprsStarted = await this.modules.aprs.start();
+                    if (aprsStarted) {
+                        this.logger.info('Sistema APRS iniciado correctamente');
+                    } else {
+                        this.logger.warn('No se pudo iniciar sistema APRS');
+                    }
+                } catch (error) {
+                    this.logger.warn('Error iniciando APRS:', error.message);
+                }
+            }
+            
             this.isRunning = true;
             this.state = MODULE_STATES.ACTIVE;
             
@@ -441,7 +521,13 @@ class VX200Controller {
             this.modules.baliza.stop();
         }
         
+        if (this.modules.aprs?.isRunning) {
+            this.modules.aprs.stop();
+        }
         
+        if (this.direwolf) {
+            this.direwolf.stop();
+        }
         
         this.systemOutput.printStopped();
     }
@@ -500,6 +586,7 @@ class VX200Controller {
             aiChat: this.modules.aiChat.getStatus(),
             sms: this.modules.sms.getStatus(),
             weather: this.modules.weather.getStatus(),
+            aprs: this.modules.aprs.getStatus(),
             rogerBeep: audioStatus.rogerBeep,
             dtmf: {
                 lastSequence: 'Esperando...',

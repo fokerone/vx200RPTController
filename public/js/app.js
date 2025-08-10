@@ -236,14 +236,26 @@ class VX200Panel {
         const toggleButton = document.getElementById(`${moduleName}Toggle`);
         const moduleItem = document.querySelector(`[data-module="${moduleName}"]`);
         
-        
         if (statusElement) {
-            statusElement.textContent = moduleData.enabled ? 'ENABLED' : 'DISABLED';
-            statusElement.className = `module-status ${moduleData.enabled ? 'enabled' : 'disabled'}`;
+            // Manejo especial para APRS
+            if (moduleName === 'aprs') {
+                const status = moduleData.running ? 'ACTIVO' : 
+                             moduleData.initialized ? 'LISTO' : 'INACTIVO';
+                statusElement.textContent = status;
+                statusElement.className = `module-status ${moduleData.running ? 'enabled' : 
+                                         moduleData.initialized ? 'ready' : 'disabled'}`;
+            } else {
+                statusElement.textContent = moduleData.enabled ? 'ENABLED' : 'DISABLED';
+                statusElement.className = `module-status ${moduleData.enabled ? 'enabled' : 'disabled'}`;
+            }
         }
 
         if (moduleItem) {
-            moduleItem.setAttribute('data-enabled', moduleData.enabled);
+            if (moduleName === 'aprs') {
+                moduleItem.setAttribute('data-enabled', moduleData.running || moduleData.initialized);
+            } else {
+                moduleItem.setAttribute('data-enabled', moduleData.enabled);
+            }
         }
 
         if (toggleButton) {
@@ -689,6 +701,7 @@ async function saveConfiguration() {
             'callsign', 'webPort', 'audioDevice', 'channelThreshold',
             'balizaEnabled', 'balizaInterval', 'balizaFrequency', 'balizaMessage',
             'rogerBeepEnabled', 'rogerBeepType', 'rogerBeepVolume',
+            'aprsEnabled', 'aprsInterval', 'aprsCallsign', 'aprsComment',
             'ttsVoice', 'ttsSpeed', 'aiChatApiKey', 'twilioAccountSid', 'twilioAuthToken'
         ];
         
@@ -716,6 +729,33 @@ async function saveConfiguration() {
         const result = await response.json();
 
         if (result.success) {
+            // Guardar configuración APRS específica
+            if (formData.aprsEnabled !== undefined || formData.aprsInterval || formData.aprsCallsign || formData.aprsComment) {
+                const aprsConfig = {
+                    enabled: formData.aprsEnabled,
+                    interval: formData.aprsInterval,
+                    callsign: formData.aprsCallsign,
+                    comment: formData.aprsComment
+                };
+                
+                try {
+                    const aprsResponse = await fetch('/api/aprs/config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(aprsConfig)
+                    });
+                    
+                    const aprsResult = await aprsResponse.json();
+                    if (!aprsResult.success) {
+                        console.warn('Error actualizando configuración APRS:', aprsResult.message);
+                    }
+                } catch (error) {
+                    console.warn('Error enviando configuración APRS:', error);
+                }
+            }
+            
             panel.showNotification(
                 `Configuración guardada (${result.applied} cambios aplicados)`, 
                 'success'

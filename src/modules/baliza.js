@@ -12,7 +12,7 @@ class Baliza extends EventEmitter {
         
         this.config = {
             enabled: true,
-            interval: 15, // minutos
+            interval: 60, // minutos (1 hora)
             tone: {
                 frequency: 1000, // Hz
                 duration: 500,   // ms
