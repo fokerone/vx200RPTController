@@ -9,11 +9,6 @@ class VX200Panel {
         // Cache de elementos DOM para mejor rendimiento
         this.domCache = {};
         
-        // Control de actualizaciones del canal
-        this.currentChannelState = 'IDLE';
-        this.lastChannelData = null;
-        this.updateTimer = null;
-        this.stateTimeout = null;
         
         this.init();
     }
@@ -40,7 +35,6 @@ class VX200Panel {
             systemUptime: document.getElementById('systemUptime'),
             systemStatus: document.getElementById('systemStatus'),
             audioStatus: document.getElementById('audioStatus'),
-            channelStatus: document.getElementById('channelStatus'),
             lastUpdate: document.getElementById('lastUpdate'),
             dtmfDigits: document.getElementById('dtmfDigits'),
             dtmfTargetModule: document.getElementById('dtmfTargetModule'),
@@ -72,9 +66,6 @@ class VX200Panel {
             this.handleDTMFDetected(data);
         });
 
-        this.socket.on('channel_activity', (data) => {
-            this.throttledChannelUpdate(data.isActive, data.level, data.transmitting, data.inputActivity);
-        });
 
         this.socket.on('signal_level', (data) => {
             this.updateSignalLevel(data.level);
@@ -224,18 +215,6 @@ class VX200Panel {
             this.domCache.audioStatus.textContent = audioState;
         }
 
-        // Actualizar estado del canal usando la función optimizada
-        if (this.systemData.channel) {
-            this.updateChannelStatus(
-                this.systemData.channel.isActive,
-                this.systemData.channel.level,
-                this.systemData.channel.transmitting,
-                this.systemData.channel.inputActivity
-            );
-        } else {
-            // Inicializar con estado IDLE si no hay datos del canal
-            this.updateChannelStatusImmediate(false, 0, false, false);
-        }
 
         if (this.systemData.modules) {
             Object.entries(this.systemData.modules).forEach(([name, module]) => {
@@ -285,94 +264,6 @@ class VX200Panel {
         }
     }
 
-    throttledChannelUpdate(isActive, level, transmitting = false, inputActivity = false) {
-        // Guardar los datos más recientes
-        this.lastChannelData = { isActive, level, transmitting, inputActivity };
-        
-        // Determinar el nuevo estado correctamente
-        let newState = 'IDLE';
-        
-        if (transmitting) {
-            // Prioridad máxima: TX cuando la repetidora transmite
-            newState = 'TX';
-        } else if (isActive) {
-            // Segundo: BUSY cuando hay actividad de entrada (alguien hablando)
-            newState = 'BUSY';
-        }
-        // Por defecto: IDLE cuando no hay actividad
-        
-        // Si el estado va a cambiar, aplicar timeout diferenciado
-        if (this.currentChannelState !== newState) {
-            // Cancelar timeout anterior si existe
-            if (this.stateTimeout) {
-                clearTimeout(this.stateTimeout);
-            }
-            
-            // Timeout diferenciado por tipo de estado
-            let delay = 100; // Default para BUSY
-            if (newState === 'TX') {
-                delay = 50; // Rápido para TX, es importante mostrar inmediatamente
-            } else if (newState === 'IDLE') {
-                delay = 300; // Más tiempo para IDLE para confirmar inactividad
-            }
-            
-            this.stateTimeout = setTimeout(() => {
-                // Verificar que los datos siguen siendo válidos
-                if (this.lastChannelData) {
-                    this.updateChannelStatusImmediate(
-                        this.lastChannelData.isActive,
-                        this.lastChannelData.level,
-                        this.lastChannelData.transmitting,
-                        this.lastChannelData.inputActivity
-                    );
-                }
-                this.stateTimeout = null;
-            }, delay);
-        }
-    }
-
-    updateChannelStatusImmediate(isActive, level, transmitting = false, inputActivity = false) {
-        if (!this.domCache.channelStatus) {
-            return;
-        }
-        
-        // Determinar el estado del canal correctamente
-        let channelState = 'IDLE';
-        let channelColor = '#f59e0b'; // Naranja para IDLE
-        
-        if (transmitting) {
-            // Prioridad máxima: TX cuando la repetidora transmite
-            channelState = 'TX';
-            channelColor = '#ef4444'; // Rojo para TX
-        } else if (isActive) {
-            // Segundo: BUSY cuando hay actividad de entrada (alguien hablando)
-            channelState = 'BUSY';
-            channelColor = '#10b981'; // Verde para BUSY
-        }
-        // Por defecto: IDLE (naranja) cuando no hay actividad
-        
-        // Solo actualizar si el estado realmente cambió
-        if (this.currentChannelState !== channelState) {
-            this.currentChannelState = channelState;
-            this.domCache.channelStatus.textContent = channelState;
-            this.domCache.channelStatus.style.color = channelColor;
-            this.domCache.channelStatus.style.backgroundColor = channelColor;
-            this.domCache.channelStatus.style.borderColor = channelColor;
-            
-            // Agregar clase para efecto LED
-            this.domCache.channelStatus.className = `status-value channel-led ${channelState.toLowerCase()}`;
-        }
-        
-        // También actualizar el nivel de señal si se proporciona
-        if (level !== undefined) {
-            this.updateSignalLevel(level);
-        }
-    }
-    
-    // Función legacy para compatibilidad
-    updateChannelStatus(isActive, level, transmitting = false, inputActivity = false) {
-        this.throttledChannelUpdate(isActive, level, transmitting, inputActivity);
-    }
 
     updateSignalLevel(level) {
         // Actualizar indicador visual de nivel de señal
