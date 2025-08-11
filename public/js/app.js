@@ -25,6 +25,9 @@ class VX200Panel {
         this.setupTabs();
         this.loadInitialData();
         
+        // Inicializar estado del canal inmediatamente
+        this.initializeChannelStatus();
+        
         setInterval(() => {
             if (this.isConnected) {
                 this.refreshSystemStatus();
@@ -98,6 +101,15 @@ class VX200Panel {
         this.socket.on('aprs_beacon', (data) => {
             this.handleAPRSBeacon(data);
         });
+    }
+
+    initializeChannelStatus() {
+        // Inicializar el indicador de canal en estado IDLE
+        if (this.domCache.channelStatus) {
+            this.domCache.channelStatus.textContent = 'IDLE';
+            this.domCache.channelStatus.className = 'status-value channel-led idle';
+            this.currentChannelState = 'IDLE';
+        }
     }
 
     setupEventListeners() {
