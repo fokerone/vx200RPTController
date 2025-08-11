@@ -10,7 +10,7 @@ class VX200Panel {
         this.domCache = {};
         
         // Control de actualizaciones del canal
-        this.currentChannelState = 'LIBRE';
+        this.currentChannelState = 'IDLE';
         this.lastChannelData = null;
         this.updateTimer = null;
         this.stateTimeout = null;
@@ -230,6 +230,9 @@ class VX200Panel {
                 this.systemData.channel.transmitting,
                 this.systemData.channel.inputActivity
             );
+        } else {
+            // Inicializar con estado IDLE si no hay datos del canal
+            this.updateChannelStatusImmediate(false, 0, false, false);
         }
 
         if (this.systemData.modules) {
@@ -284,17 +287,17 @@ class VX200Panel {
         // Guardar los datos más recientes
         this.lastChannelData = { isActive, level, transmitting, inputActivity };
         
-        // Determinar el nuevo estado
-        let newState = 'LIBRE';
-        if (isActive) {
-            if (transmitting) {
-                newState = 'TX';
-            } else if (inputActivity) {
-                newState = 'RX';
-            } else {
-                newState = 'RX';
-            }
+        // Determinar el nuevo estado correctamente
+        let newState = 'IDLE';
+        
+        if (transmitting) {
+            // Prioridad máxima: TX cuando la repetidora transmite
+            newState = 'TX';
+        } else if (isActive) {
+            // Segundo: BUSY cuando hay actividad de entrada (alguien hablando)
+            newState = 'BUSY';
         }
+        // Por defecto: IDLE cuando no hay actividad
         
         // Si el estado va a cambiar, aplicar timeout diferenciado
         if (this.currentChannelState !== newState) {
@@ -304,11 +307,11 @@ class VX200Panel {
             }
             
             // Timeout diferenciado por tipo de estado
-            let delay = 100; // Default para RX
+            let delay = 100; // Default para BUSY
             if (newState === 'TX') {
-                delay = 300; // Más tiempo para TX para evitar parpadeo
-            } else if (newState === 'LIBRE') {
-                delay = 500; // Más tiempo para LIBRE para confirmar inactividad
+                delay = 50; // Rápido para TX, es importante mostrar inmediatamente
+            } else if (newState === 'IDLE') {
+                delay = 300; // Más tiempo para IDLE para confirmar inactividad
             }
             
             this.stateTimeout = setTimeout(() => {
@@ -331,28 +334,31 @@ class VX200Panel {
             return;
         }
         
-        // Determinar el estado del canal con prioridad TX > RX > LIBRE
-        let channelState = 'LIBRE';
-        let channelColor = '#10b981';
+        // Determinar el estado del canal correctamente
+        let channelState = 'IDLE';
+        let channelColor = '#f59e0b'; // Naranja para IDLE
         
-        if (isActive) {
-            if (transmitting) {
-                channelState = 'TX';
-                channelColor = '#f59e0b';
-            } else if (inputActivity) {
-                channelState = 'RX';
-                channelColor = '#ef4444';
-            } else {
-                channelState = 'RX';
-                channelColor = '#ef4444';
-            }
+        if (transmitting) {
+            // Prioridad máxima: TX cuando la repetidora transmite
+            channelState = 'TX';
+            channelColor = '#ef4444'; // Rojo para TX
+        } else if (isActive) {
+            // Segundo: BUSY cuando hay actividad de entrada (alguien hablando)
+            channelState = 'BUSY';
+            channelColor = '#10b981'; // Verde para BUSY
         }
+        // Por defecto: IDLE (naranja) cuando no hay actividad
         
         // Solo actualizar si el estado realmente cambió
         if (this.currentChannelState !== channelState) {
             this.currentChannelState = channelState;
             this.domCache.channelStatus.textContent = channelState;
             this.domCache.channelStatus.style.color = channelColor;
+            this.domCache.channelStatus.style.backgroundColor = channelColor;
+            this.domCache.channelStatus.style.borderColor = channelColor;
+            
+            // Agregar clase para efecto LED
+            this.domCache.channelStatus.className = `status-value channel-led ${channelState.toLowerCase()}`;
         }
         
         // También actualizar el nivel de señal si se proporciona

@@ -886,6 +886,75 @@ body {
     }
 }
 
+/* Channel LED Indicator */
+.channel-led {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 80px;
+    padding: 0.5rem 1rem !important;
+    border-radius: 20px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: white !important;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    border: 2px solid;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    font-size: 0.9rem !important;
+}
+
+.channel-led::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    animation: ledShine 2s infinite;
+}
+
+.channel-led.idle {
+    background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+    border-color: #f59e0b !important;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.channel-led.busy {
+    background: linear-gradient(135deg, #10b981, #059669) !important;
+    border-color: #10b981 !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.channel-led.tx {
+    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    animation: ledPulse 0.5s infinite alternate;
+}
+
+@keyframes ledShine {
+    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+}
+
+@keyframes ledPulse {
+    0% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+    100% { box-shadow: 0 0 25px rgba(239, 68, 68, 1), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+}
+
+/* Responsive para channel LED */
+@media (max-width: 768px) {
+    .channel-led {
+        min-width: 60px;
+        padding: 0.4rem 0.8rem !important;
+        font-size: 0.8rem !important;
+    }
+}
+
 /* Utilidades */
 .text-center { text-align: center; }
 .text-left { text-align: left; }
