@@ -121,6 +121,17 @@
       "*",
       "#"
     ],
+    "sensitivity": "medium",
+    "voiceDetection": {
+      "enabled": true,
+      "threshold": 0.30,
+      "maxFramesDisable": 25
+    },
+    "validation": {
+      "minDetections": 1,
+      "windowMs": 500,
+      "delayMs": 200
+    },
     "commands": {
       "*1": "datetime",
       "*2": "aiChat",

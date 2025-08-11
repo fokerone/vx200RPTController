@@ -24,6 +24,9 @@ class AudioManager extends EventEmitter {
         this.dtmfDecoder = new (require('./dtmfDecoder'))(this.sampleRate);
         this.rogerBeep = new RogerBeep(this);
         
+        // Configurar DTMF con parámetros del ConfigManager
+        this.configureDTMF();
+        
         // Estado de grabación
         this.isRecording = false;
         this.recordingStream = null;
@@ -64,6 +67,39 @@ class AudioManager extends EventEmitter {
         
         this.initializeDirectories();
         this.logger.info('AudioManager inicializado');
+    }
+
+    /**
+     * Configurar detector DTMF con parámetros del ConfigManager
+     */
+    configureDTMF() {
+        try {
+            const dtmfConfig = getValue('dtmf');
+            
+            if (!dtmfConfig) {
+                this.logger.warn('Configuración DTMF no encontrada, usando valores por defecto');
+                return;
+            }
+            
+            // Aplicar sensibilidad configurada
+            if (dtmfConfig.sensitivity) {
+                this.dtmfDecoder.setSensitivity(dtmfConfig.sensitivity);
+            }
+            
+            // Configurar parámetros específicos si están definidos
+            if (dtmfConfig.voiceDetection && dtmfConfig.validation) {
+                this.dtmfDecoder.voiceActivityThreshold = dtmfConfig.voiceDetection.threshold;
+                this.dtmfDecoder.maxVoiceFramesBeforeDisable = dtmfConfig.voiceDetection.maxFramesDisable;
+                this.dtmfDecoder.minDetectionCount = dtmfConfig.validation.minDetections;
+                this.dtmfDecoder.maxDetectionWindow = dtmfConfig.validation.windowMs;
+                this.dtmfDecoder.detectionDelay = dtmfConfig.validation.delayMs;
+            }
+            
+            this.logger.info(`DTMF configurado: sensibilidad=${dtmfConfig.sensitivity}, anti-voz=${dtmfConfig.voiceDetection?.enabled}`);
+            
+        } catch (error) {
+            this.logger.error('Error configurando DTMF:', error.message);
+        }
     }
 
     // ===== INICIALIZACIÓN =====

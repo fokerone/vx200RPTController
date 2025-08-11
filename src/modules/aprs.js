@@ -170,6 +170,9 @@ class APRS extends EventEmitter {
             const parsed = APRSInfoParser(frame);
             
             if (parsed && parsed.aprs && parsed.aprs.position) {
+                const existingPos = this.receivedPositions.get(parsed.source);
+                const isNewStation = !existingPos;
+                
                 const position = {
                     callsign: parsed.source,
                     lat: parsed.aprs.position.lat,
@@ -177,16 +180,23 @@ class APRS extends EventEmitter {
                     timestamp: new Date(),
                     comment: parsed.aprs.comment || '',
                     symbol: parsed.aprs.symbol || '/',
+                    lastHeard: new Date(),
+                    count: isNewStation ? 1 : (existingPos.count || 1) + 1,
+                    firstHeard: isNewStation ? new Date() : (existingPos.firstHeard || existingPos.timestamp),
                     raw: frame
                 };
                 
-                // Guardar posición
+                // Guardar posición (actualizar o crear nueva)
                 this.receivedPositions.set(parsed.source, position);
                 this.stats.positionsReceived++;
                 this.stats.lastPosition = position;
                 
-                // Log
-                this.logger.info(`Posición recibida: ${position.callsign} @ ${position.lat}, ${position.lon}`);
+                // Log diferenciado para estaciones nuevas vs conocidas
+                if (isNewStation) {
+                    this.logger.info(`🆕 Nueva estación APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} - ${position.comment}`);
+                } else {
+                    this.logger.info(`📍 Actualización APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} (#${position.count})`);
+                }
                 
                 // Guardar a archivo
                 await this.savePositionToLog(position);
@@ -206,36 +216,119 @@ class APRS extends EventEmitter {
     }
 
     /**
-     * Cargar posiciones guardadas
+     * Cargar posiciones guardadas (compatible con formato anterior y nuevo)
      */
     async loadSavedPositions() {
         try {
             if (fs.existsSync(this.logFile)) {
                 const data = fs.readFileSync(this.logFile, 'utf8');
-                const positions = JSON.parse(data);
+                const fileContent = JSON.parse(data);
+                
+                let positions = [];
+                
+                // Detectar formato (nuevo con metadata o viejo array directo)
+                if (fileContent.metadata && fileContent.stations) {
+                    // Formato nuevo con metadata
+                    positions = fileContent.stations;
+                    this.logger.info(`Archivo APRS v${fileContent.metadata.version} - ${fileContent.metadata.totalStations} estaciones`);
+                } else if (Array.isArray(fileContent)) {
+                    // Formato viejo (array directo)
+                    positions = fileContent;
+                    this.logger.info('Migrando formato anterior de posiciones APRS');
+                } else {
+                    this.logger.warn('Formato de archivo APRS desconocido');
+                    return;
+                }
                 
                 positions.forEach(pos => {
                     // Convertir timestamp string de vuelta a Date
-                    pos.timestamp = new Date(pos.timestamp);
+                    if (pos.timestamp) pos.timestamp = new Date(pos.timestamp);
+                    if (pos.lastHeard) pos.lastHeard = new Date(pos.lastHeard);
+                    
+                    // Inicializar contador si no existe
+                    if (!pos.count) pos.count = 1;
+                    
                     this.receivedPositions.set(pos.callsign, pos);
                 });
                 
-                this.logger.info(`Cargadas ${positions.length} posiciones desde archivo`);
+                this.logger.info(`Cargadas ${positions.length} posiciones APRS desde archivo`);
+                
+                // Si era formato viejo, guardar en formato nuevo
+                if (Array.isArray(fileContent)) {
+                    await this.savePositionToLog(null);
+                }
             }
         } catch (error) {
             this.logger.warn('Error cargando posiciones guardadas:', error.message);
+            this.logger.warn('Se continuará sin posiciones previas');
         }
     }
 
     /**
-     * Guardar posición a archivo de log
+     * Guardar posición a archivo de log (con respaldo rotativo)
      */
     async savePositionToLog(position) {
         try {
-            const positions = Array.from(this.receivedPositions.values());
-            fs.writeFileSync(this.logFile, JSON.stringify(positions, null, 2));
+            // Crear respaldo cada 100 posiciones
+            if (this.receivedPositions.size > 0 && this.receivedPositions.size % 100 === 0) {
+                await this.createBackup();
+            }
+
+            const positions = Array.from(this.receivedPositions.values()).map(pos => ({
+                callsign: pos.callsign,
+                lat: pos.lat,
+                lon: pos.lon,
+                timestamp: pos.timestamp,
+                comment: pos.comment || '',
+                symbol: pos.symbol || '/',
+                lastHeard: pos.timestamp,
+                count: pos.count || 1 // Contador de beacons recibidos
+            }));
+
+            // Guardar de forma asíncrona para no bloquear
+            fs.writeFileSync(this.logFile, JSON.stringify({
+                metadata: {
+                    version: '1.0',
+                    generated: new Date(),
+                    totalStations: positions.length,
+                    repeater: {
+                        callsign: this.config.callsign,
+                        location: this.config.location
+                    }
+                },
+                stations: positions
+            }, null, 2));
+
         } catch (error) {
             this.logger.error('Error guardando posición:', error.message);
+        }
+    }
+
+    /**
+     * Crear respaldo de posiciones
+     */
+    async createBackup() {
+        try {
+            const backupFile = this.logFile.replace('.json', `-backup-${Date.now()}.json`);
+            const currentData = fs.readFileSync(this.logFile, 'utf8');
+            fs.writeFileSync(backupFile, currentData);
+            
+            // Mantener solo los últimos 5 respaldos
+            const backupsDir = path.dirname(this.logFile);
+            const backupFiles = fs.readdirSync(backupsDir)
+                .filter(f => f.includes('aprs-positions-backup'))
+                .sort()
+                .reverse();
+            
+            if (backupFiles.length > 5) {
+                backupFiles.slice(5).forEach(file => {
+                    fs.unlinkSync(path.join(backupsDir, file));
+                });
+            }
+            
+            this.logger.info('Respaldo de posiciones APRS creado');
+        } catch (error) {
+            this.logger.warn('Error creando respaldo:', error.message);
         }
     }
 
@@ -455,6 +548,9 @@ class APRS extends EventEmitter {
                 await this.startBeaconTimer();
             }
             
+            // Iniciar limpieza automática de posiciones
+            this.scheduleCleanup();
+            
             this.logger.info('Sistema APRS iniciado');
             return true;
             
@@ -482,6 +578,11 @@ class APRS extends EventEmitter {
             if (this.beaconTimer) {
                 clearInterval(this.beaconTimer);
                 this.beaconTimer = null;
+            }
+            
+            if (this.cleanupTimer) {
+                clearInterval(this.cleanupTimer);
+                this.cleanupTimer = null;
             }
             
             this.isRunning = false;
@@ -518,10 +619,38 @@ class APRS extends EventEmitter {
     }
 
     /**
-     * Obtener todas las posiciones para el mapa
+     * Obtener todas las posiciones para el mapa (solo activas)
      */
     getAllPositions() {
-        return Array.from(this.receivedPositions.values());
+        return Array.from(this.receivedPositions.values())
+            .filter(pos => !pos.archived)
+            .sort((a, b) => (b.lastHeard || b.timestamp) - (a.lastHeard || a.timestamp));
+    }
+
+    /**
+     * Obtener estadísticas detalladas
+     */
+    getDetailedStats() {
+        const positions = Array.from(this.receivedPositions.values());
+        const active = positions.filter(pos => !pos.archived);
+        const archived = positions.filter(pos => pos.archived);
+        
+        return {
+            total: positions.length,
+            active: active.length,
+            archived: archived.length,
+            beacons: {
+                sent: this.stats.beaconsSent,
+                received: this.stats.positionsReceived,
+                lastSent: this.stats.lastBeacon,
+                lastReceived: this.stats.lastPosition?.timestamp
+            },
+            uptime: this.stats.startTime ? Math.floor((Date.now() - this.stats.startTime.getTime()) / 1000 / 60) : 0,
+            mostActive: active
+                .sort((a, b) => (b.count || 0) - (a.count || 0))
+                .slice(0, 5)
+                .map(pos => ({ callsign: pos.callsign, count: pos.count || 0 }))
+        };
     }
 
     /**
@@ -608,23 +737,44 @@ class APRS extends EventEmitter {
     }
 
     /**
-     * Limpiar posiciones antiguas (más de 24 horas)
+     * Limpiar posiciones antiguas (configurables por edad)
      */
     cleanupOldPositions() {
-        const cutoff = Date.now() - (24 * 60 * 60 * 1000); // 24 horas
+        const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 días por defecto
+        const cutoff = Date.now() - maxAge;
         let removed = 0;
+        let archived = 0;
         
         for (const [callsign, position] of this.receivedPositions.entries()) {
-            if (position.timestamp.getTime() < cutoff) {
-                this.receivedPositions.delete(callsign);
-                removed++;
+            const lastHeard = position.lastHeard || position.timestamp;
+            
+            if (lastHeard.getTime() < cutoff) {
+                // Archivar posiciones muy antiguas pero importantes
+                if (position.count >= 5) { // Estaciones frecuentes
+                    position.archived = true;
+                    archived++;
+                } else {
+                    // Eliminar estaciones poco frecuentes
+                    this.receivedPositions.delete(callsign);
+                    removed++;
+                }
             }
         }
         
-        if (removed > 0) {
-            this.logger.info(`Limpiadas ${removed} posiciones antiguas`);
+        if (removed > 0 || archived > 0) {
+            this.logger.info(`Limpieza APRS: ${removed} eliminadas, ${archived} archivadas`);
             this.savePositionToLog(null); // Guardar cambios
         }
+    }
+
+    /**
+     * Programar limpieza automática
+     */
+    scheduleCleanup() {
+        // Limpiar cada 6 horas
+        this.cleanupTimer = setInterval(() => {
+            this.cleanupOldPositions();
+        }, 6 * 60 * 60 * 1000);
     }
 
     /**

@@ -243,6 +243,84 @@ class WebServer {
                 res.status(500).json({ success: false, message: error.message });
             }
         });
+
+        // APRS Estadísticas detalladas
+        this.app.get('/api/aprs/stats', (req, res) => {
+            try {
+                if (this.controller.modules.aprs) {
+                    const stats = this.controller.modules.aprs.getDetailedStats();
+                    res.json({ success: true, data: stats });
+                } else {
+                    res.json({ success: false, message: 'Módulo APRS no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        // APRS Posiciones activas
+        this.app.get('/api/aprs/positions', (req, res) => {
+            try {
+                if (this.controller.modules.aprs) {
+                    const positions = this.controller.modules.aprs.getAllPositions();
+                    res.json({ success: true, data: positions, total: positions.length });
+                } else {
+                    res.json({ success: false, message: 'Módulo APRS no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        // DTMF Estado y estadísticas
+        this.app.get('/api/dtmf/stats', (req, res) => {
+            try {
+                if (this.controller.audio && this.controller.audio.dtmfDecoder) {
+                    const stats = this.controller.audio.dtmfDecoder.getStats();
+                    res.json({ success: true, data: stats });
+                } else {
+                    res.json({ success: false, message: 'Detector DTMF no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        // DTMF Configurar sensibilidad
+        this.app.post('/api/dtmf/sensitivity', (req, res) => {
+            try {
+                const { level } = req.body;
+                
+                if (!['low', 'medium', 'high'].includes(level)) {
+                    return res.status(400).json({ success: false, message: 'Nivel debe ser: low, medium, high' });
+                }
+                
+                if (this.controller.audio && this.controller.audio.dtmfDecoder) {
+                    this.controller.audio.dtmfDecoder.setSensitivity(level);
+                    res.json({ success: true, message: `Sensibilidad DTMF configurada: ${level}` });
+                } else {
+                    res.json({ success: false, message: 'Detector DTMF no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        // DTMF Debug mode
+        this.app.post('/api/dtmf/debug', (req, res) => {
+            try {
+                const { enabled } = req.body;
+                
+                if (this.controller.audio && this.controller.audio.dtmfDecoder) {
+                    this.controller.audio.dtmfDecoder.setDebugMode(enabled === true);
+                    res.json({ success: true, message: `Modo debug DTMF: ${enabled ? 'activado' : 'desactivado'}` });
+                } else {
+                    res.json({ success: false, message: 'Detector DTMF no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
         
         this.app.use((req, res) => {
             res.status(404).json({ success: false, message: 'Endpoint not found' });

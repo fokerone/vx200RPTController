@@ -143,6 +143,17 @@ class ConfigManager {
                 timeout: 3000, // ms entre tonos
                 bufferTimeout: 1000, // ms para completar secuencia
                 validTones: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#'],
+                sensitivity: 'medium', // low, medium, high
+                voiceDetection: {
+                    enabled: true, // Habilitar detección de voz
+                    threshold: 0.15, // Umbral de actividad de voz
+                    maxFramesDisable: 10 // Frames consecutivos antes de deshabilitar
+                },
+                validation: {
+                    minDetections: 2, // Mínimo detecciones para confirmar
+                    windowMs: 800, // Ventana de validación en ms
+                    delayMs: 300 // Delay entre detecciones del mismo tono
+                },
                 commands: {
                     '*1': 'datetime',
                     '*2': 'aiChat', 
