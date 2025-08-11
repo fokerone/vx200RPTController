@@ -1,72 +1,62 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex
+## 📡 Sistema de Control para Repetidora Simplex v2.1.1
 
-Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF avanzada, múltiples servicios automatizados, panel web de control en tiempo real y transmisión inteligente con detección de canal ocupado.
+Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa.
 
-**🎉 Sistema completamente refactorizado con las mejores prácticas de desarrollo**
+**🎉 Versión 2.1.1 - Panel Web Moderno y Optimizado**
 
 ---
 
 ## ✨ Características Principales
 
-### 🎵 **AudioManager Avanzado**
-- Grabación de audio en tiempo real con soporte para ALSA/PulseAudio
-- Decodificación DTMF usando FFT personalizada
-- Detección inteligente de actividad de canal
+### 🎵 **Sistema de Audio Avanzado**
+- Grabación en tiempo real con soporte ALSA/PulseAudio
+- **Decodificador DTMF Profesional** con `dtmf-detection-stream`
+- **Anti-falsos positivos** con detección de voz integrada
+- Configuración de sensibilidad (Low/Medium/High)
+- Modo debug para desarrollo y pruebas
 - Roger Beep estilo Kenwood configurable
-- Cola de audio con prioridades
 
-### 🔊 **Sistema de Baliza Inteligente**
-- **Automática**: Transmisión programable cada X minutos
-- **Manual**: Activación instantánea por comando DTMF `*9`
-- Mensajes personalizables con TTS
-- Espera canal libre para transmitir
+### 📡 **Integración APRS Completa**
+- **TNC Software** integrado con Direwolf
+- Transmisión de beacons automáticos y manuales
+- Recepción y tracking de estaciones
+- **Mapa APRS interactivo** en tiempo real
+- Configuración dinámica desde panel web
+- Estadísticas detalladas de tráfico APRS
 
-### 📅 **Módulo DateTime**
-- Anuncio de fecha y hora actual en español
-- Activación por comando DTMF `*1`
-- Formato natural con moment.js
+### 🌐 **Panel Web Moderno v2.1**
+- **Navegación por pestañas** (Estado, DTMF, APRS, Configuración)
+- **Monitor DTMF en tiempo real** con historial
+- **Dashboard APRS** con mapa y estadísticas
+- Controles de sensibilidad y debug DTMF
+- Interfaz completamente **responsive**
+- **Socket.IO** para actualizaciones en tiempo real
 
-### 🤖 **Módulo IA Chat**
-- Sistema de consultas por DTMF `*2`
-- Integración con OpenAI GPT (configurable)
-- Respuestas por voz con TTS
-
-### 📱 **Módulo SMS**
-- Sistema completo de mensajería por DTMF `*3`
-- Integración con Twilio (configurable)
-- Flujo interactivo de envío de mensajes
-
-### 🌐 **Panel Web de Control Moderno**
-- Interfaz terminal-style responsive
-- Monitor en tiempo real de actividad DTMF
-- Control remoto de todos los módulos
-- Logs del sistema en vivo con Socket.IO
-- Configuración de Roger Beep
-- Indicadores visuales de estado del sistema
-
-### 🧠 **Transmisión Inteligente**
-- Detección automática de canal ocupado
-- Cola de transmisiones con prioridades
-- Espera inteligente para evitar interferencias
-- Manejo robusto de errores
+### 🔊 **Sistema de Módulos**
+- **Baliza Inteligente**: Transmisión automática/manual (`*9`)
+- **DateTime**: Anuncio de fecha y hora (`*1`)
+- **AI Chat**: Consultas con OpenAI GPT (`*2`)
+- **SMS**: Mensajería con Twilio (`*3`)
+- **Weather**: Información meteorológica (`*4` actual, `*5` voz)
 
 ---
 
 ## 🚀 Instalación y Configuración
 
 ### Prerrequisitos
-- **Node.js** 16.x o superior
+- **Node.js** 18.x o superior
 - **NPM** o Yarn
-- **Sistema Linux** recomendado (probado en Arch Linux)
+- **Sistema Linux** (probado en Arch Linux)
 - **Hardware de audio** compatible con ALSA
+- **Direwolf** (para funcionalidad APRS)
 
 ### Instalación Rápida
 
 ```bash
 # Clonar el repositorio
-git clone <url-repositorio>
+git clone https://github.com/fokerone/vx200RPTController.git
 cd vx200RPTController
 
 # Instalar dependencias
@@ -82,18 +72,31 @@ npm start
 
 ### Configuración de Audio
 
-El sistema está configurado para funcionar con hardware de audio real. Para **ThinkPad T400** con Arch Linux:
-
 ```bash
-# Verificar dispositivos de audio disponibles
+# Verificar dispositivos disponibles
 aplay -l
 arecord -l
 
 # Configurar en .env
 AUDIO_DEVICE=default  # o hw:0,0 según tu hardware
+AUDIO_SAMPLE_RATE=48000
+AUDIO_CHANNEL_THRESHOLD=0.02
 ```
 
-El sistema estará disponible en: **http://localhost:3000**
+### Configuración APRS (Opcional)
+
+```bash
+# Instalar Direwolf
+sudo pacman -S direwolf  # Arch Linux
+sudo apt install direwolf  # Ubuntu/Debian
+
+# Configurar TNC en .env
+APRS_ENABLED=true
+APRS_CALLSIGN=TU_INDICATIVO
+APRS_LOCATION=lat,lon
+```
+
+**Panel web disponible en: http://localhost:3000**
 
 ---
 
@@ -107,14 +110,14 @@ CALLSIGN=TU_INDICATIVO
 NODE_ENV=production
 WEB_PORT=3000
 
-# Audio (configurado para hardware real)
+# Audio
 AUDIO_DEVICE=default
 AUDIO_SAMPLE_RATE=48000
 AUDIO_CHANNEL_THRESHOLD=0.02
 
 # TTS
-TTS_VOICE=es
-TTS_SPEED=150
+TTS_VOICE=es+f3
+TTS_SPEED=160
 
 # Roger Beep
 ROGER_BEEP_ENABLED=true
@@ -123,41 +126,20 @@ ROGER_BEEP_VOLUME=0.7
 
 # Baliza
 BALIZA_ENABLED=true
-BALIZA_INTERVAL=15
+BALIZA_INTERVAL=60
 BALIZA_MESSAGE=TU_INDICATIVO Repetidora Simplex
 
+# APRS (Opcional)
+APRS_ENABLED=true
+APRS_CALLSIGN=YOSHUA
+APRS_COMMENT=VX200 RPT
+APRS_BEACON_INTERVAL=15
+
 # APIs Opcionales
+OPENWEATHER_API_KEY=tu_api_key
 OPENAI_API_KEY=sk-...
 TWILIO_ACCOUNT_SID=AC...
 TWILIO_AUTH_TOKEN=...
-```
-
-### Archivo config/config.json
-
-```json
-{
-  "callsign": "LU5MCD",
-  "version": "2.0",
-  "rogerBeep": {
-    "enabled": true,
-    "type": "kenwood",
-    "volume": 0.7,
-    "duration": 250,
-    "delay": 100
-  },
-  "baliza": {
-    "enabled": true,
-    "interval": 15,
-    "tone": {
-      "frequency": 1000,
-      "duration": 500,
-      "volume": 0.7
-    },
-    "message": "LU5MCD Repetidora Simplex",
-    "autoStart": true,
-    "waitForFreeChannel": true
-  }
-}
 ```
 
 ---
@@ -167,101 +149,104 @@ TWILIO_AUTH_TOKEN=...
 | Comando | Función | Descripción |
 |---------|---------|-------------|
 | `*1` | DateTime | Anuncia fecha y hora actual |
-| `*2` | IA Chat | Sistema de consultas con GPT |
+| `*2` | AI Chat | Sistema de consultas con OpenAI |
 | `*3` | SMS | Sistema de mensajes Twilio |
+| `*4` | Weather | Clima actual |
+| `*5` | Weather Voice | Clima con voz natural |
 | `*9` | Baliza | Activa baliza manual |
 
 ---
 
-## 📁 Estructura del Proyecto (Refactorizada)
+## 📁 Estructura del Proyecto
 
 ```
 vx200RPTController/
 ├── src/
 │   ├── index.js                 # VX200Controller principal
 │   ├── constants.js             # Constantes del sistema
-│   ├── utils.js                 # Utilidades compartidas
-│   ├── start-with-web.js        # Script de inicio con banner
+│   ├── config/                  # Sistema de configuración
+│   ├── logging/                 # Sistema de logging
 │   ├── audio/
 │   │   ├── audioManager.js      # Gestor de audio completo
-│   │   ├── dtmfDecoder.js       # Decodificador DTMF con FFT
+│   │   ├── dtmfDecoder.js       # Decodificador DTMF profesional
 │   │   └── rogerBeep.js         # Roger Beep Kenwood
 │   ├── modules/
 │   │   ├── baliza.js            # Módulo de baliza
 │   │   ├── datetime.js          # Módulo fecha/hora
 │   │   ├── aiChat.js            # Módulo IA con OpenAI
-│   │   └── sms.js               # Módulo SMS con Twilio
+│   │   ├── sms.js               # Módulo SMS con Twilio
+│   │   ├── weather.js           # Módulo meteorológico
+│   │   └── aprs.js              # Módulo APRS con Direwolf
 │   └── web/
 │       └── server.js            # Servidor web con Socket.IO
-├── views/
-│   └── index.ejs                # Panel web terminal-style
 ├── public/
+│   ├── index.html               # Panel web principal
+│   ├── aprs-map.html            # Mapa APRS interactivo
 │   ├── css/style.css            # Estilos modernos
-│   └── js/main.js               # JavaScript frontend
+│   └── js/app.js                # JavaScript frontend
 ├── config/
-│   └── config.json              # Configuración del sistema
+│   └── default.json             # Configuración por defecto
 ├── .env.example                 # Template de variables
-├── CONFIGURATION.md             # Guía completa de configuración
-├── package.json
 └── README.md
 ```
 
 ---
 
-## 🖥️ Panel Web
+## 🖥️ Panel Web v2.1
 
-Accede al panel de control en **http://localhost:3000**
+### **Navegación por Pestañas**
+- **🏠 Estado del Sistema**: Overview general y control de módulos
+- **📞 Monitor DTMF**: Seguimiento en tiempo real con estadísticas
+- **📡 APRS**: Dashboard completo con mapa y beacons
+- **⚙️ Configuración**: Settings dinámicos del sistema
 
-### Funcionalidades del Panel:
-- 📊 **Dashboard Terminal**: Estilo retro de terminal
-- 📡 **Monitor de Módulos**: Estado en tiempo real
-- 📞 **Monitor DTMF**: Visualización de comandos
-- 🔴 **Indicador de Canal**: Estado ocupado/libre con niveles
-- 🔊 **Control Roger Beep**: Toggle y test desde web
-- 📝 **Logs en Vivo**: Socket.IO en tiempo real
-- 🎛️ **Controles de Sistema**: Activar/desactivar servicios
-- ⚙️ **Configuración Baliza**: Desde el panel web
+### **Funcionalidades Destacadas**
+- **Monitor DTMF en Tiempo Real**: Historial, validaciones y debug
+- **Dashboard APRS**: Mapa interactivo con estaciones activas
+- **Estadísticas Avanzadas**: Métricas de DTMF y APRS
+- **Controles Dinámicos**: Sensibilidad DTMF, beacons APRS
+- **Responsive Design**: Optimizado para móviles y tablets
 
 ---
 
 ## 🔧 Scripts Disponibles
 
 ```bash
-# Iniciar sistema con banner
+# Iniciar sistema completo
 npm start
 
-# Modo desarrollo
+# Modo desarrollo con hot-reload
 npm run dev
 
-# Solo servidor web
+# Solo servidor web (testing)
 npm run web-only
 
-# Ejecutar tests completos
-npm test
+# Limpiar archivos temporales
+npm run clean
 ```
 
 ---
 
-## 🛠️ Características Técnicas
+## 🛠️ Características Técnicas v2.1
 
-### Arquitectura
-- **Patrón MVC**: Separación clara de responsabilidades
-- **Event-Driven**: EventEmitter para comunicación entre módulos
-- **Logging Estructurado**: Logger personalizado con niveles
-- **Error Handling**: Manejo robusto de errores en todos los módulos
-- **State Management**: Estados consistentes usando constantes
+### **DTMF Profesional**
+- **dtmf-detection-stream**: Librería especializada
+- **Anti-falsos positivos**: Detección de voz integrada
+- **Configuración avanzada**: 3 niveles de sensibilidad
+- **Modo debug**: Para desarrollo y troubleshooting
+- **Validación temporal**: Evita detecciones erróneas
 
-### Audio Processing
-- **FFT Custom**: Transformada rápida de Fourier para DTMF
-- **Detección de Canal**: Análisis RMS para actividad
-- **Queue System**: Cola de audio con prioridades
-- **TTS Integration**: espeak para síntesis de voz
+### **APRS Integration**
+- **Direwolf TNC**: Software TNC completo
+- **Beacon automático**: Transmisión programable
+- **Position tracking**: Seguimiento de estaciones
+- **Mapa en tiempo real**: Visualización web interactiva
 
-### Web Interface
-- **Socket.IO**: Comunicación bidireccional en tiempo real
-- **Express.js**: API REST robusta
-- **EJS Templates**: Renderizado del lado del servidor
-- **CORS Security**: Configuración segura de orígenes
+### **Web Architecture**
+- **Socket.IO**: Comunicación bidireccional
+- **Navegación SPA**: Single Page Application
+- **Cache DOM**: Optimización de rendimiento
+- **Responsive CSS**: Grid y Flexbox moderno
 
 ---
 
@@ -270,54 +255,71 @@ npm test
 ### Audio No Funciona
 ```bash
 # Verificar dispositivos
-aplay -l
-arecord -l
+aplay -l && arecord -l
 
-# Permisos de audio (si es necesario)
+# Permisos de audio
 sudo usermod -a -G audio $USER
 
-# Configurar device correcto en .env
-AUDIO_DEVICE=default  # o hw:0,0
+# Configurar device en .env
+AUDIO_DEVICE=default
 ```
 
-### Panel Web No Conecta
+### DTMF No Detecta
 ```bash
-# Verificar puerto disponible
-ss -tlnp | grep :3000
-
-# Cambiar puerto si está ocupado
-WEB_PORT=3001
+# Verificar desde panel web:
+# 1. Ir a pestaña "Monitor DTMF"
+# 2. Activar "Modo Debug"
+# 3. Cambiar sensibilidad a "Alta"
+# 4. Verificar estadísticas en tiempo real
 ```
 
-### Errores de Grabación
-- Verificar que no haya otros procesos usando audio
-- Matar procesos sox residuales: `killall sox`
-- Reiniciar PulseAudio: `pulseaudio -k && pulseaudio --start`
+### APRS No Conecta
+```bash
+# Verificar Direwolf
+direwolf -t 0
+
+# Verificar configuración TNC
+ps aux | grep direwolf
+```
 
 ---
 
-## 📋 Estado del Proyecto
+## 📋 Changelog v2.1.1
 
-### ✅ Completado
-- [x] **Refactorización completa** con mejores prácticas
-- [x] **AudioManager** funcionando con hardware real
-- [x] **WebServer** operativo con Socket.IO
-- [x] **Todos los módulos** refactorizados y funcionales
-- [x] **Panel web** moderno y responsive
-- [x] **Sistema de logging** estructurado
-- [x] **Configuración** flexible con .env
-- [x] **Documentación** completa
+### ✅ Nuevas Características
+- [x] **Panel web rediseñado** con navegación por pestañas
+- [x] **Monitor DTMF profesional** con estadísticas en tiempo real
+- [x] **Dashboard APRS completo** con mapa interactivo
+- [x] **Sistema de configuración dinámico**
+- [x] **Controles de sensibilidad DTMF**
 
-### 🔄 En Progreso
-- [ ] Resolución de problemas encontrados en testing
-- [ ] Optimizaciones de rendimiento
-- [ ] Mejoras de UX en panel web
+### 🐛 Correcciones
+- [x] **Mapeo DTMF** corregido para comandos *4 y *5
+- [x] **Optimización de rendimiento** del panel web
+- [x] **Limpieza de código** - eliminadas 181 líneas innecesarias
+- [x] **Interfaz simplificada** - removido indicador de canal
 
-### 📋 Próximas Características
+### ⚡ Mejoras Técnicas
+- [x] **Cache de elementos DOM** para mejor performance
+- [x] **Socket.IO optimizado** para tiempo real
+- [x] **CSS responsive** completamente reescrito
+- [x] **Timeouts inteligentes** para actualizaciones
+
+---
+
+## 🎯 Próximas Versiones
+
+### v2.2 - Planificado
 - [ ] **Métricas avanzadas** del sistema
+- [ ] **API REST completa** para integraciones
 - [ ] **Backup automático** de configuración
-- [ ] **API REST** extendida
-- [ ] **App móvil** complementaria
+- [ ] **Sistema de alertas** por email/SMS
+
+### v2.3 - Futuro
+- [ ] **App móvil nativa** con React Native
+- [ ] **Integración LoRa** para enlaces remotos
+- [ ] **Machine Learning** para predicción de tráfico
+- [ ] **Multi-repetidora** con sincronización
 
 ---
 
@@ -325,8 +327,18 @@ WEB_PORT=3001
 
 **Desarrollado por: LU5MCD**
 
-- 📧 **Email**: fokerone@gmail.com
-- 🌐 **QRZ**: https://www.qrz.com/db/LU5MCD
+- 📧 **Email**: fokerone@gmail.com  
+- 🌐 **GitHub**: https://github.com/fokerone/vx200RPTController
+- 📻 **QRZ**: https://www.qrz.com/db/LU5MCD
+
+---
+
+## 🏆 Reconocimientos
+
+- **dtmf-detection-stream**: Excelente librería para detección DTMF
+- **Direwolf**: Software TNC indispensable para APRS
+- **OpenAI**: Integración de IA conversacional
+- **Socket.IO**: Comunicación en tiempo real
 
 ---
 
@@ -336,4 +348,4 @@ Este proyecto está bajo la Licencia MIT. Ver archivo `LICENSE` para más detall
 
 ---
 
-**¡Sistema de repetidora totalmente funcional y moderno! 📡🎉**
+**✨ VX200 Controller v2.1.1 - Sistema de Repetidora Moderno y Profesional 📡🚀**
