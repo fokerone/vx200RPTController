@@ -370,9 +370,9 @@ class ConfigManager {
         }
 
         // Validar intervalo de baliza
-        if (this.config.baliza.interval < 1 || this.config.baliza.interval > 60) {
-            this.logger.warn(`Intervalo de baliza inválido: ${this.config.baliza.interval}, usando 15`);
-            this.config.baliza.interval = 15;
+        if (this.config.baliza.interval < 1 || this.config.baliza.interval > 120) {
+            this.logger.warn(`Intervalo de baliza inválido: ${this.config.baliza.interval}, usando 60`);
+            this.config.baliza.interval = 60;
         }
 
         // Validar volúmenes

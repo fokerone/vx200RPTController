@@ -90,6 +90,19 @@ class VX200Panel {
         this.socket.on('aprs_beacon', (data) => {
             this.handleAPRSBeacon(data);
         });
+
+        // Weather Alerts events
+        this.socket.on('weather_alert_new', (data) => {
+            this.handleNewWeatherAlert(data);
+        });
+
+        this.socket.on('weather_alerts_status', (data) => {
+            this.updateWeatherAlertsStatus(data);
+        });
+
+        this.socket.on('weather_alert_expired', (data) => {
+            this.handleExpiredWeatherAlert(data);
+        });
     }
 
 
@@ -700,6 +713,97 @@ class VX200Panel {
         }
     }
 
+    // Weather Alerts methods
+    handleNewWeatherAlert(data) {
+        console.log('Nueva alerta meteorológica:', data);
+        this.showNotification(`🌦️ Nueva alerta: ${data.data.title}`, 'warning');
+        this.updateWeatherAlertsDisplay();
+    }
+
+    handleExpiredWeatherAlert(data) {
+        console.log('Alerta meteorológica expirada:', data);
+        this.updateWeatherAlertsDisplay();
+    }
+
+    updateWeatherAlertsStatus(data) {
+        // Update weather alerts module status
+        this.updateModuleStatus('weatherAlerts', data.enabled ? 'enabled' : 'disabled');
+        
+        // Update alerts count
+        const alertCountElement = document.getElementById('alertCount');
+        if (alertCountElement && data.activeAlerts !== undefined) {
+            alertCountElement.textContent = `${data.activeAlerts} alertas activas`;
+        }
+        
+        // Update last check time
+        const lastCheckElement = document.getElementById('lastCheck');
+        if (lastCheckElement && data.lastCheck) {
+            const lastCheckDate = new Date(data.lastCheck);
+            lastCheckElement.textContent = `Última verificación: ${lastCheckDate.toLocaleTimeString('es-AR')}`;
+        }
+        
+        // Update system status
+        const alertSystemStatusElement = document.getElementById('alertSystemStatus');
+        if (alertSystemStatusElement) {
+            alertSystemStatusElement.textContent = data.state || 'DESCONOCIDO';
+            alertSystemStatusElement.className = `status-text ${data.state === 'ACTIVE' ? 'enabled' : 'disabled'}`;
+        }
+        
+        // Update next check time
+        const nextCheckElement = document.getElementById('nextCheck');
+        if (nextCheckElement && data.nextCheck) {
+            const nextCheckDate = new Date(data.nextCheck);
+            nextCheckElement.textContent = `Próxima verificación: ${nextCheckDate.toLocaleTimeString('es-AR')}`;
+        }
+        
+        // Update alerts badge
+        const alertBadgeElement = document.getElementById('alertBadge');
+        if (alertBadgeElement) {
+            const count = data.activeAlerts || 0;
+            alertBadgeElement.textContent = `${count} activas`;
+            alertBadgeElement.className = `alert-badge ${count > 0 ? 'has-alerts' : ''}`;
+        }
+    }
+
+    async updateWeatherAlertsDisplay() {
+        try {
+            const response = await fetch('/api/weather-alerts/active');
+            const result = await response.json();
+            
+            if (result.success) {
+                this.displayActiveAlerts(result.data);
+            }
+        } catch (error) {
+            console.error('Error fetching active alerts:', error);
+        }
+    }
+
+    displayActiveAlerts(alerts) {
+        const alertsList = document.getElementById('alertsList');
+        const noAlertsMessage = document.getElementById('noAlertsMessage');
+        
+        if (!alertsList || !noAlertsMessage) return;
+        
+        if (alerts.length === 0) {
+            noAlertsMessage.style.display = 'block';
+            alertsList.innerHTML = '';
+            return;
+        }
+        
+        noAlertsMessage.style.display = 'none';
+        
+        alertsList.innerHTML = alerts.map(alert => `
+            <div class="alert-item ${alert.severity || 'medium'}">
+                <div class="alert-header">
+                    <span class="alert-title">${alert.title}</span>
+                    <span class="alert-time">${new Date(alert.firstSeen || alert.timestamp).toLocaleTimeString('es-AR')}</span>
+                </div>
+                <div class="alert-description">${alert.description}</div>
+                ${alert.instructions ? `<div class="alert-instructions">${alert.instructions}</div>` : ''}
+            </div>
+        `).join('');
+    }
+
 }
 
 let panel;
@@ -966,5 +1070,67 @@ async function saveConfiguration() {
     } catch (error) {
         console.error('Error guardando configuración:', error);
         panel.showNotification('Error guardando configuración', 'error');
+    }
+}
+
+// Weather Alerts functions
+async function toggleWeatherAlerts() {
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/weather-alerts/toggle', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            panel.showNotification(result.message, 'success');
+            // Refresh weather alerts status
+            refreshWeatherAlertsStatus();
+        } else {
+            panel.showNotification(result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error toggling weather alerts:', error);
+        panel.showNotification('Error cambiando estado de alertas meteorológicas', 'error');
+    }
+}
+
+async function refreshWeatherAlertsStatus() {
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/weather-alerts/status');
+        const result = await response.json();
+
+        if (result.success) {
+            panel.updateWeatherAlertsStatus(result.data);
+        }
+    } catch (error) {
+        console.error('Error refreshing weather alerts status:', error);
+    }
+}
+
+async function checkWeatherAlerts() {
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/weather-alerts/check', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            panel.showNotification('Verificación de alertas iniciada', 'success');
+            // Refresh status after check
+            setTimeout(refreshWeatherAlertsStatus, 2000);
+        } else {
+            panel.showNotification(result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error checking weather alerts:', error);
+        panel.showNotification('Error verificando alertas', 'error');
     }
 }

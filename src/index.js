@@ -4,6 +4,7 @@ const DateTime = require('./modules/datetime');
 const AIChat = require('./modules/aiChat');
 const SMS = require('./modules/sms');
 const Weather = require('./modules/weather-voice');
+const WeatherAlerts = require('./modules/weatherAlerts');
 const APRS = require('./modules/aprs');
 const DirewolfManager = require('./utils/direwolfManager');
 const WebServer = require('./web/server');
@@ -95,6 +96,9 @@ class VX200Controller {
         this.modules.sms = new SMS(this.audio);
         this.modules.weather = new Weather(this.audio);
         
+        // Inicializar WeatherAlerts después del módulo APRS
+        this.modules.weatherAlerts = null; // Se inicializa después de APRS
+        
         // Inicializar Direwolf primero
         try {
             this.direwolf = new DirewolfManager();
@@ -126,6 +130,15 @@ class VX200Controller {
         } catch (error) {
             this.logger.error('Error inicializando APRS:', error.message);
             this.initializationErrors.push('APRS');
+        }
+        
+        // Inicializar WeatherAlerts con referencia a APRS
+        try {
+            this.modules.weatherAlerts = new WeatherAlerts(this.audio, this.modules.aprs);
+            this.logger.info('Módulo WeatherAlerts inicializado correctamente');
+        } catch (error) {
+            this.logger.error('Error inicializando WeatherAlerts:', error.message);
+            this.initializationErrors.push('WeatherAlerts');
         }
         
         this.logger.info('Módulos inicializados');
@@ -261,6 +274,8 @@ class VX200Controller {
             '*3': { module: 'sms', handler: () => this.modules.sms.execute(sequence) },
             '*4': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
             '*5': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
+            '*7': { module: 'weatherAlerts', handler: () => this.modules.weatherAlerts?.execute(sequence) },
+            '*0': { module: 'weatherAlerts', handler: () => this.modules.weatherAlerts?.execute(sequence) },
             '*9': { module: 'baliza', handler: () => this.modules.baliza.execute(sequence) }
         };
 
@@ -350,6 +365,9 @@ class VX200Controller {
                     break;
                 case 'weather':
                     await this.modules.weather.execute('*4');
+                    break;
+                case 'weather_alerts':
+                    await this.modules.weatherAlerts?.execute('*7');
                     break;
                 default:
                     throw new Error(`Comando desconocido: ${command}`);
@@ -453,6 +471,16 @@ class VX200Controller {
                 }
             }
             
+            // Inicializar monitoreo de alertas meteorológicas
+            if (this.modules.weatherAlerts) {
+                try {
+                    await this.modules.weatherAlerts.start();
+                    this.logger.info('Sistema de alertas meteorológicas iniciado');
+                } catch (error) {
+                    this.logger.warn('Error iniciando alertas meteorológicas:', error.message);
+                }
+            }
+            
             this.isRunning = true;
             this.state = MODULE_STATES.ACTIVE;
             
@@ -529,6 +557,10 @@ class VX200Controller {
             this.modules.aprs.stop();
         }
         
+        if (this.modules.weatherAlerts) {
+            this.modules.weatherAlerts.stop();
+        }
+        
         if (this.direwolf) {
             this.direwolf.stop();
         }
@@ -590,6 +622,7 @@ class VX200Controller {
             aiChat: this.modules.aiChat.getStatus(),
             sms: this.modules.sms.getStatus(),
             weather: this.modules.weather.getStatus(),
+            weatherAlerts: this.modules.weatherAlerts?.getStatus() || { enabled: false, state: 'not_initialized' },
             aprs: this.modules.aprs.getStatus(),
             rogerBeep: audioStatus.rogerBeep,
             dtmf: {

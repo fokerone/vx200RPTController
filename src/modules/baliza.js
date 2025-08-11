@@ -42,10 +42,10 @@ class Baliza extends EventEmitter {
             return false;
         }
 
-        // Validar intervalo (mínimo 1 minuto, máximo 60 minutos)
-        if (this.config.interval < 1 || this.config.interval > 60) {
-            this.logger.warn(`Intervalo fuera de rango: ${this.config.interval} min, usando 15 min`);
-            this.config.interval = 15;
+        // Validar intervalo (mínimo 1 minuto, máximo 120 minutos)
+        if (this.config.interval < 1 || this.config.interval > 120) {
+            this.logger.warn(`Intervalo fuera de rango: ${this.config.interval} min, usando 60 min`);
+            this.config.interval = 60;
         }
 
         // Validar configuración de tono

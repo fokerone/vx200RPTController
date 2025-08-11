@@ -145,6 +145,21 @@
                             </div>
                         </div>
 
+                        <div class="module-item weather-alerts" data-module="weatherAlerts">
+                            <div class="module-header">
+                                <span class="module-name">🌦️ Alertas Meteo</span>
+                                <div class="module-status" id="weatherAlertsStatus">--</div>
+                            </div>
+                            <div class="module-info">
+                                <div class="alert-count" id="alertCount">0 alertas activas</div>
+                                <div class="last-check" id="lastCheck">Última verificación: --</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-execute" onclick="executeModule('weatherAlerts', '6')">*6 Consultar</button>
+                                <button class="btn btn-toggle" id="weatherAlertsToggle" onclick="toggleWeatherAlerts()">Toggle</button>
+                            </div>
+                        </div>
+
                         <div class="module-item" data-module="rogerBeep">
                             <div class="module-header">
                                 <span class="module-name">Roger Beep</span>
@@ -159,6 +174,67 @@
                 </div>
             </div>
 
+            <!-- Weather Alerts Details -->
+            <div class="card" id="weatherAlertsCard">
+                <div class="card-header">
+                    <h2>🌦️ Alertas Meteorológicas - SMN Argentina</h2>
+                    <div class="alert-source">
+                        <small>Fuente: Servicio Meteorológico Nacional</small>
+                        <span class="alert-badge" id="alertBadge">0 activas</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="weather-alerts-section">
+                        <div class="alerts-status">
+                            <div class="status-item">
+                                <label>Estado del sistema:</label>
+                                <span id="alertSystemStatus" class="status-text">--</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Próxima verificación:</label>
+                                <span id="nextCheck" class="status-text">--</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Región monitoreada:</label>
+                                <span class="status-text">Mendoza, Argentina</span>
+                            </div>
+                        </div>
+                        
+                        <div class="active-alerts" id="activeAlertsList">
+                            <h3>Alertas Activas</h3>
+                            <div class="no-alerts" id="noAlertsMessage">
+                                <span class="icon">✅</span>
+                                <span>No hay alertas meteorológicas activas para Mendoza</span>
+                            </div>
+                            <div id="alertsList" class="alerts-list">
+                                <!-- Las alertas se cargarán dinámicamente aquí -->
+                            </div>
+                        </div>
+                        
+                        <div class="alerts-config">
+                            <h3>Configuración</h3>
+                            <div class="config-grid">
+                                <div class="config-item">
+                                    <label>Verificación automática:</label>
+                                    <span>Cada 90 minutos</span>
+                                </div>
+                                <div class="config-item">
+                                    <label>Repetición de anuncios:</label>
+                                    <span>Cada 105 minutos</span>
+                                </div>
+                                <div class="config-item">
+                                    <label>TTS:</label>
+                                    <span>Google TTS + Espeak fallback</span>
+                                </div>
+                                <div class="config-item">
+                                    <label>APRS integración:</label>
+                                    <span>Comment dinámico habilitado</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- System Control -->
             <div class="card">

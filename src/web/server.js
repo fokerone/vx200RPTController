@@ -321,6 +321,65 @@ class WebServer {
                 res.status(500).json({ success: false, message: error.message });
             }
         });
+
+        // Weather Alerts API routes
+        this.app.get('/api/weather-alerts/status', (req, res) => {
+            try {
+                if (this.controller.modules.weatherAlerts) {
+                    const status = this.controller.modules.weatherAlerts.getStatus();
+                    res.json({ success: true, data: status });
+                } else {
+                    res.json({ success: false, message: 'Módulo Weather Alerts no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.get('/api/weather-alerts/active', (req, res) => {
+            try {
+                if (this.controller.modules.weatherAlerts) {
+                    const alerts = this.controller.modules.weatherAlerts.getActiveAlerts();
+                    res.json({ success: true, data: alerts });
+                } else {
+                    res.json({ success: false, message: 'Módulo Weather Alerts no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.post('/api/weather-alerts/check', async (req, res) => {
+            try {
+                if (this.controller.modules.weatherAlerts) {
+                    await this.controller.modules.weatherAlerts.checkForAlerts();
+                    res.json({ success: true, message: 'Verificación de alertas iniciada' });
+                } else {
+                    res.json({ success: false, message: 'Módulo Weather Alerts no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.post('/api/weather-alerts/toggle', (req, res) => {
+            try {
+                if (this.controller.modules.weatherAlerts) {
+                    const currentState = this.controller.modules.weatherAlerts.state;
+                    if (currentState === 'ACTIVE') {
+                        this.controller.modules.weatherAlerts.stop();
+                        res.json({ success: true, message: 'Sistema de alertas detenido', enabled: false });
+                    } else {
+                        this.controller.modules.weatherAlerts.start();
+                        res.json({ success: true, message: 'Sistema de alertas iniciado', enabled: true });
+                    }
+                } else {
+                    res.json({ success: false, message: 'Módulo Weather Alerts no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
         
         this.app.use((req, res) => {
             res.status(404).json({ success: false, message: 'Endpoint not found' });
@@ -390,6 +449,11 @@ class WebServer {
                     enabled: this.getModuleStatus('weather') === 'enabled',
                     status: this.getModuleStatus('weather')
                 },
+                weatherAlerts: {
+                    enabled: this.getModuleStatus('weatherAlerts') === 'enabled',
+                    status: this.getModuleStatus('weatherAlerts'),
+                    activeAlerts: this.controller.modules?.weatherAlerts?.getActiveAlerts()?.length || 0
+                },
                 rogerBeep: {
                     enabled: this.controller.audio?.getRogerBeepStatus()?.enabled || false,
                     status: 'ready'
@@ -425,6 +489,10 @@ class WebServer {
                 return process.env.OPENWEATHER_API_KEY ? 'enabled' : 'disabled';
             }
 
+            if (moduleName === 'weatherAlerts') {
+                const module = this.controller.modules?.weatherAlerts;
+                return module && module.config?.enabled ? 'enabled' : 'disabled';
+            }
 
             return 'ready';
         } catch (error) {
@@ -452,6 +520,18 @@ class WebServer {
                         enabled: newState 
                     };
 
+                case 'weatherAlerts':
+                    if (this.controller.modules.weatherAlerts) {
+                        const currentState = this.controller.modules.weatherAlerts.state;
+                        if (currentState === 'ACTIVE') {
+                            this.controller.modules.weatherAlerts.stop();
+                            return { success: true, message: 'Sistema de alertas detenido', enabled: false };
+                        } else {
+                            this.controller.modules.weatherAlerts.start();
+                            return { success: true, message: 'Sistema de alertas iniciado', enabled: true };
+                        }
+                    }
+                    return { success: false, message: 'Módulo Weather Alerts no disponible' };
 
                 default:
                     throw new Error(`Módulo ${moduleName} no soporta toggle`);
@@ -705,6 +785,33 @@ class WebServer {
         }
     }
 
+    // Weather Alerts broadcast methods
+    broadcastWeatherAlert(alert) {
+        if (this.connectedClients.size > 0) {
+            const alertEvent = {
+                id: alert.id,
+                title: alert.title,
+                description: alert.description,
+                severity: alert.severity,
+                timestamp: alert.firstSeen || Date.now()
+            };
+            this.io.emit('weather_alert_new', { data: alertEvent });
+            this.logger.info(`Nueva alerta meteorológica transmitida: ${alert.title}`);
+        }
+    }
+
+    broadcastWeatherAlertStatus(status) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('weather_alerts_status', { data: status });
+        }
+    }
+
+    broadcastWeatherAlertExpired(alertId) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('weather_alert_expired', { data: { id: alertId } });
+        }
+    }
+
 
     getDTMFTargetModule(sequence) {
         const commands = {
@@ -713,6 +820,8 @@ class WebServer {
             '*3': 'SMS',
             '*4': 'Clima',
             '*5': 'Clima Voz',
+            '*7': 'Alertas Meteo',
+            '*0': 'Test Alertas',
             '*9': 'Baliza'
         };
         return commands[sequence] || 'Unknown';

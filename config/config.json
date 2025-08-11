@@ -70,7 +70,7 @@
     },
     "limits": {
       "minInterval": 1,
-      "maxInterval": 60,
+      "maxInterval": 120,
       "minFrequency": 100,
       "maxFrequency": 3000,
       "minDuration": 100,
@@ -136,9 +136,10 @@
       "*1": "datetime",
       "*2": "aiChat",
       "*3": "sms",
-      "*9": "baliza",
       "*4": "weather",
-      "*5": "weather-voice"
+      "*5": "weather-voice",
+      "*7": "weather-alerts",
+      "*9": "baliza"
     }
   },
   "delays": {
