@@ -735,6 +735,157 @@ body {
     border-radius: 4px;
 }
 
+/* Stats Grid - Para estadísticas rápidas y DTMF/APRS */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 1.5rem;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    transition: background-color 0.2s ease;
+}
+
+.stat-item:hover {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #f1f5f9;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+}
+
+/* Config Grid - Para configuración DTMF */
+.config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+/* APRS Stations List */
+.aprs-stations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.aprs-station-item {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    transition: background-color 0.2s ease;
+}
+
+.aprs-station-item:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.station-callsign {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #60a5fa;
+    margin-bottom: 0.25rem;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+}
+
+.station-location {
+    font-size: 0.9rem;
+    color: #10b981;
+    margin-bottom: 0.25rem;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+}
+
+.station-time {
+    font-size: 0.8rem;
+    color: #f59e0b;
+    display: inline-block;
+    margin-right: 1rem;
+}
+
+.station-count {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    display: inline-block;
+}
+
+.station-comment {
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    margin-top: 0.5rem;
+    font-style: italic;
+    background: rgba(15, 23, 42, 0.5);
+    padding: 0.5rem;
+    border-radius: 4px;
+}
+
+/* Secondary Button Style */
+.btn-secondary {
+    background: #64748b;
+    color: white;
+    border-color: #475569;
+}
+
+.btn-secondary:hover {
+    background: #475569;
+}
+
+/* Mejorar espaciado en card headers con múltiples elementos */
+.card-header div {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Responsive para stats-grid */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+    
+    .stat-item {
+        padding: 1rem;
+    }
+    
+    .stat-value {
+        font-size: 1.25rem;
+    }
+    
+    .config-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .aprs-station-item {
+        padding: 0.75rem 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Utilidades */
 .text-center { text-align: center; }
 .text-left { text-align: left; }

@@ -32,10 +32,9 @@
         <!-- Navigation Tabs -->
         <nav class="tabs">
             <button class="tab-button active" data-tab="status">Estado del Sistema</button>
+            <button class="tab-button" data-tab="dtmf">Monitor DTMF</button>
+            <button class="tab-button" data-tab="aprs">📡 APRS</button>
             <button class="tab-button" data-tab="config">Configuración</button>
-            <a href="/aprs-map" class="tab-button tab-link">
-                📡 Mapa APRS
-            </a>
         </nav>
 
         <!-- Status Tab -->
@@ -64,32 +63,28 @@
                 </div>
             </div>
 
-            <!-- DTMF Monitor -->
+            <!-- Quick Stats -->
             <div class="card">
                 <div class="card-header">
-                    <h2>Monitor DTMF</h2>
-                    <small style="color: #666; margin-left: 10px;">Powered by dtmf-detection-stream</small>
-                    <div>
-                        <button class="btn btn-small" onclick="clearDTMFHistory()">Limpiar</button>
-                        <button class="btn btn-small" onclick="saveDebugAudio()" style="margin-left: 5px;">🎵 Debug Audio</button>
-                    </div>
+                    <h2>Estadísticas Rápidas</h2>
                 </div>
                 <div class="card-body">
-                    <div class="dtmf-monitor">
-                        <div class="dtmf-live-display">
-                            <div class="dtmf-input-sequence">
-                                <label>Secuencia Detectada:</label>
-                                <div class="dtmf-digits" id="dtmfDigits">
-                                    <span class="dtmf-placeholder">Esperando DTMF...</span>
-                                </div>
-                            </div>
-                            <div class="dtmf-target-info">
-                                <label>Módulo Objetivo:</label>
-                                <div class="dtmf-target-module" id="dtmfTargetModule">--</div>
-                            </div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-label">DTMF Detectados</div>
+                            <div class="stat-value" id="dtmfCount">--</div>
                         </div>
-                        <div class="dtmf-recent-list" id="dtmfRecentList">
-                            <!-- Lista de DTMF recientes -->
+                        <div class="stat-item">
+                            <div class="stat-label">Estaciones APRS</div>
+                            <div class="stat-value" id="aprsCount">--</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Beacons Enviados</div>
+                            <div class="stat-value" id="beaconCount">--</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Último DTMF</div>
+                            <div class="stat-value" id="lastDtmf">--</div>
                         </div>
                     </div>
                 </div>
@@ -154,18 +149,6 @@
                             </div>
                         </div>
 
-                        <div class="module-item" data-module="aprs">
-                            <div class="module-header">
-                                <span class="module-name">📡 APRS</span>
-                                <div class="module-status" id="aprsStatus">--</div>
-                            </div>
-                            <div class="module-controls">
-                                <button class="btn btn-execute" onclick="executeModule('aprs', '6')">Estado</button>
-                                <button class="btn btn-execute" onclick="executeModule('aprs', '61')">Beacon</button>
-                                <a href="/aprs-map" class="btn btn-primary" style="text-decoration: none;">🗺️ Mapa</a>
-                            </div>
-                        </div>
-
                         <div class="module-item" data-module="rogerBeep">
                             <div class="module-header">
                                 <span class="module-name">Roger Beep</span>
@@ -194,6 +177,166 @@
                         <button class="btn btn-danger" onclick="systemAction('shutdown')">
                             <span>⏻</span> Apagar Sistema
                         </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DTMF Tab -->
+        <div class="tab-content hidden" id="dtmfTab">
+            <!-- DTMF Monitor -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Monitor DTMF en Tiempo Real</h2>
+                    <small style="color: #666; margin-left: 10px;">Powered by dtmf-detection-stream</small>
+                    <div>
+                        <button class="btn btn-small" onclick="clearDTMFHistory()">Limpiar</button>
+                        <button class="btn btn-small" onclick="saveDebugAudio()" style="margin-left: 5px;">🎵 Debug Audio</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="dtmf-monitor">
+                        <div class="dtmf-live-display">
+                            <div class="dtmf-input-sequence">
+                                <label>Secuencia Detectada:</label>
+                                <div class="dtmf-digits" id="dtmfDigits">
+                                    <span class="dtmf-placeholder">Esperando DTMF...</span>
+                                </div>
+                            </div>
+                            <div class="dtmf-target-info">
+                                <label>Módulo Objetivo:</label>
+                                <div class="dtmf-target-module" id="dtmfTargetModule">--</div>
+                            </div>
+                        </div>
+                        <div class="dtmf-recent-list" id="dtmfRecentList">
+                            <!-- Lista de DTMF recientes -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DTMF Configuration -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Configuración DTMF</h2>
+                </div>
+                <div class="card-body">
+                    <div class="config-grid">
+                        <div class="config-group">
+                            <label for="dtmfSensitivity">Sensibilidad:</label>
+                            <select id="dtmfSensitivity" onchange="updateDTMFSensitivity()">
+                                <option value="low">Baja (menos falsos positivos)</option>
+                                <option value="medium" selected>Media (balanceada)</option>
+                                <option value="high">Alta (más sensible)</option>
+                            </select>
+                        </div>
+                        <div class="config-group">
+                            <label>
+                                <input type="checkbox" id="dtmfDebugMode" onchange="toggleDTMFDebug()"> Modo Debug
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DTMF Statistics -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Estadísticas DTMF</h2>
+                    <button class="btn btn-small" onclick="refreshDTMFStats()">🔄 Actualizar</button>
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid" id="dtmfStatsGrid">
+                        <div class="stat-item">
+                            <div class="stat-label">Estado</div>
+                            <div class="stat-value" id="dtmfStatsEnabled">--</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Frames de Voz</div>
+                            <div class="stat-value" id="dtmfStatsVoiceFrames">--</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Suprimido por Voz</div>
+                            <div class="stat-value" id="dtmfStatsSuppressed">--</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Último Tono</div>
+                            <div class="stat-value" id="dtmfStatsLast">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- APRS Tab -->
+        <div class="tab-content hidden" id="aprsTab">
+            <!-- APRS Status -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Estado APRS</h2>
+                    <div>
+                        <button class="btn btn-primary" onclick="sendAPRSBeacon()">📡 Enviar Beacon</button>
+                        <a href="/aprs-map" class="btn btn-secondary" style="text-decoration: none;">🗺️ Ver Mapa</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <div class="status-label">Estado TNC</div>
+                            <div class="status-value" id="aprsTNCStatus">--</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">Beacon Automático</div>
+                            <div class="status-value" id="aprsBeaconStatus">--</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">Indicativo</div>
+                            <div class="status-value" id="aprsCallsignStatus">--</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">Ubicación</div>
+                            <div class="status-value" id="aprsLocationStatus">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- APRS Statistics -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Estadísticas APRS</h2>
+                    <button class="btn btn-small" onclick="refreshAPRSStats()">🔄 Actualizar</button>
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid" id="aprsStatsGrid">
+                        <div class="stat-item">
+                            <div class="stat-label">Beacons Enviados</div>
+                            <div class="stat-value" id="aprsStatsSent">--</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Posiciones Recibidas</div>
+                            <div class="stat-value" id="aprsStatsReceived">--</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Estaciones Activas</div>
+                            <div class="stat-value" id="aprsStatsActive">--</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Último Beacon</div>
+                            <div class="stat-value" id="aprsStatsLastBeacon">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent APRS Stations -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Estaciones Recientes</h2>
+                </div>
+                <div class="card-body">
+                    <div class="aprs-stations-list" id="aprsStationsList">
+                        <!-- Lista de estaciones APRS -->
                     </div>
                 </div>
             </div>
@@ -306,6 +449,27 @@
                             <div class="config-group">
                                 <label for="ttsSpeed">Velocidad:</label>
                                 <input type="number" id="ttsSpeed" name="ttsSpeed" placeholder="160">
+                            </div>
+                        </div>
+
+                        <!-- DTMF Configuration -->
+                        <div class="config-section">
+                            <h3>DTMF</h3>
+                            <div class="config-group">
+                                <label for="dtmfSensitivityConfig">Sensibilidad por Defecto:</label>
+                                <select id="dtmfSensitivityConfig" name="dtmfSensitivityConfig">
+                                    <option value="low">Baja</option>
+                                    <option value="medium" selected>Media</option>
+                                    <option value="high">Alta</option>
+                                </select>
+                            </div>
+                            <div class="config-group">
+                                <label for="dtmfVoiceDetection">Detección de Voz:</label>
+                                <input type="checkbox" id="dtmfVoiceDetection" name="dtmfVoiceDetection" checked>
+                            </div>
+                            <div class="config-group">
+                                <label for="dtmfTimeout">Timeout (ms):</label>
+                                <input type="number" id="dtmfTimeout" name="dtmfTimeout" value="3000" min="500" max="10000">
                             </div>
                         </div>
 

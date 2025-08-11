@@ -90,6 +90,14 @@ class VX200Panel {
         this.socket.on('command_result', (result) => {
             this.showNotification(result.message, result.success ? 'success' : 'error');
         });
+
+        this.socket.on('aprs_position', (data) => {
+            this.handleAPRSPosition(data);
+        });
+
+        this.socket.on('aprs_beacon', (data) => {
+            this.handleAPRSBeacon(data);
+        });
     }
 
     setupEventListeners() {
@@ -132,6 +140,11 @@ class VX200Panel {
                 
                 if (tabName === 'config') {
                     this.loadConfiguration();
+                } else if (tabName === 'dtmf') {
+                    this.refreshDTMFStats();
+                } else if (tabName === 'aprs') {
+                    this.refreshAPRSStats();
+                    this.loadAPRSStations();
                 }
             });
         });
@@ -229,6 +242,9 @@ class VX200Panel {
             this.domCache.lastUpdate.textContent = 
                 `Última actualización: ${new Date().toLocaleTimeString()}`;
         }
+
+        // Actualizar estadísticas rápidas
+        this.updateQuickStats();
     }
 
     updateModuleUI(moduleName, moduleData) {
@@ -588,7 +604,202 @@ class VX200Panel {
         }
     }
 
-    
+    updateQuickStats() {
+        // Actualizar estadísticas rápidas en el panel principal
+        const dtmfCountEl = document.getElementById('dtmfCount');
+        if (dtmfCountEl) {
+            dtmfCountEl.textContent = this.dtmfHistory.length;
+        }
+
+        const lastDtmfEl = document.getElementById('lastDtmf');
+        if (lastDtmfEl && this.dtmfHistory.length > 0) {
+            lastDtmfEl.textContent = this.dtmfHistory[0].sequence;
+        }
+
+        // Obtener estadísticas APRS de forma asíncrona
+        this.getAPRSQuickStats();
+    }
+
+    async getAPRSQuickStats() {
+        try {
+            const response = await fetch('/api/aprs/stats');
+            const result = await response.json();
+            
+            if (result.success) {
+                const aprsCountEl = document.getElementById('aprsCount');
+                const beaconCountEl = document.getElementById('beaconCount');
+                
+                if (aprsCountEl) {
+                    aprsCountEl.textContent = result.data.active || 0;
+                }
+                if (beaconCountEl) {
+                    beaconCountEl.textContent = result.data.beacons.sent || 0;
+                }
+            }
+        } catch (error) {
+            console.error('Error obteniendo estadísticas APRS:', error);
+        }
+    }
+
+    async refreshDTMFStats() {
+        try {
+            const response = await fetch('/api/dtmf/stats');
+            const result = await response.json();
+            
+            if (result.success) {
+                const stats = result.data;
+                
+                document.getElementById('dtmfStatsEnabled').textContent = 
+                    stats.enabled ? 'HABILITADO' : 'DESHABILITADO';
+                document.getElementById('dtmfStatsVoiceFrames').textContent = 
+                    stats.consecutiveVoiceFrames || 0;
+                document.getElementById('dtmfStatsSuppressed').textContent = 
+                    stats.voiceSuppressed ? 'SÍ' : 'NO';
+                document.getElementById('dtmfStatsLast').textContent = 
+                    stats.lastDetection || '--';
+                
+                // Aplicar colores según el estado
+                const enabledEl = document.getElementById('dtmfStatsEnabled');
+                if (enabledEl) {
+                    enabledEl.style.color = stats.enabled ? '#10b981' : '#ef4444';
+                }
+                
+                const suppressedEl = document.getElementById('dtmfStatsSuppressed');
+                if (suppressedEl) {
+                    suppressedEl.style.color = stats.voiceSuppressed ? '#f59e0b' : '#10b981';
+                }
+            }
+        } catch (error) {
+            console.error('Error obteniendo estadísticas DTMF:', error);
+            this.showNotification('Error obteniendo estadísticas DTMF', 'error');
+        }
+    }
+
+    async refreshAPRSStats() {
+        try {
+            const response = await fetch('/api/aprs/stats');
+            const result = await response.json();
+            
+            if (result.success) {
+                const stats = result.data;
+                
+                document.getElementById('aprsStatsSent').textContent = 
+                    stats.beacons.sent || 0;
+                document.getElementById('aprsStatsReceived').textContent = 
+                    stats.beacons.received || 0;
+                document.getElementById('aprsStatsActive').textContent = 
+                    stats.active || 0;
+                
+                const lastBeacon = stats.beacons.lastSent;
+                document.getElementById('aprsStatsLastBeacon').textContent = 
+                    lastBeacon ? new Date(lastBeacon).toLocaleTimeString() : '--';
+            }
+
+            // También obtener estado APRS
+            const statusResponse = await fetch('/api/aprs/status');
+            const statusResult = await statusResponse.json();
+            
+            if (statusResult.success) {
+                const status = statusResult.data;
+                
+                document.getElementById('aprsTNCStatus').textContent = 
+                    status.tncConnected ? 'CONECTADO' : 'DESCONECTADO';
+                document.getElementById('aprsBeaconStatus').textContent = 
+                    status.config.beaconEnabled ? 'HABILITADO' : 'DESHABILITADO';
+                document.getElementById('aprsCallsignStatus').textContent = 
+                    status.config.callsign || '--';
+                
+                const location = status.config.location;
+                document.getElementById('aprsLocationStatus').textContent = 
+                    location ? `${location.lat.toFixed(4)}, ${location.lon.toFixed(4)}` : '--';
+                
+                // Aplicar colores
+                const tncEl = document.getElementById('aprsTNCStatus');
+                if (tncEl) {
+                    tncEl.style.color = status.tncConnected ? '#10b981' : '#ef4444';
+                }
+            }
+        } catch (error) {
+            console.error('Error obteniendo estadísticas APRS:', error);
+            this.showNotification('Error obteniendo estadísticas APRS', 'error');
+        }
+    }
+
+    async loadAPRSStations() {
+        try {
+            const response = await fetch('/api/aprs/positions');
+            const result = await response.json();
+            
+            if (result.success) {
+                this.displayAPRSStations(result.data);
+            }
+        } catch (error) {
+            console.error('Error cargando estaciones APRS:', error);
+        }
+    }
+
+    displayAPRSStations(stations) {
+        const listElement = document.getElementById('aprsStationsList');
+        if (!listElement) return;
+
+        listElement.innerHTML = '';
+
+        if (stations.length === 0) {
+            listElement.innerHTML = '<p style="color: #666; text-align: center;">No hay estaciones APRS recibidas</p>';
+            return;
+        }
+
+        stations.slice(0, 10).forEach(station => {
+            const stationDiv = document.createElement('div');
+            stationDiv.className = 'aprs-station-item';
+            
+            const lastHeard = station.lastHeard || station.timestamp;
+            const timeAgo = this.formatTimeAgo(new Date(lastHeard));
+            
+            stationDiv.innerHTML = `
+                <div class="station-callsign">${station.callsign}</div>
+                <div class="station-location">${station.lat.toFixed(4)}, ${station.lon.toFixed(4)}</div>
+                <div class="station-time">${timeAgo}</div>
+                <div class="station-count">${station.count || 1} beacons</div>
+                ${station.comment ? `<div class="station-comment">${station.comment}</div>` : ''}
+            `;
+            
+            listElement.appendChild(stationDiv);
+        });
+    }
+
+    formatTimeAgo(date) {
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        
+        if (diffMins < 1) return 'Hace menos de 1 min';
+        if (diffMins < 60) return `Hace ${diffMins} min`;
+        
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `Hace ${diffHours}h`;
+        
+        const diffDays = Math.floor(diffHours / 24);
+        return `Hace ${diffDays}d`;
+    }
+
+    handleAPRSPosition(data) {
+        this.showNotification(`Nueva posición APRS: ${data.data.callsign}`, 'info');
+        // Actualizar estadísticas si estamos en la pestaña APRS
+        if (this.currentTab === 'aprs') {
+            this.refreshAPRSStats();
+            this.loadAPRSStations();
+        }
+    }
+
+    handleAPRSBeacon(data) {
+        this.showNotification(`Beacon APRS enviado: ${data.data.callsign}`, 'success');
+        // Actualizar estadísticas
+        this.updateQuickStats();
+        if (this.currentTab === 'aprs') {
+            this.refreshAPRSStats();
+        }
+    }
 
 }
 
@@ -691,6 +902,94 @@ function createDebugArea() {
     return debugArea;
 }
 
+async function updateDTMFSensitivity() {
+    if (!panel) return;
+
+    const sensitivity = document.getElementById('dtmfSensitivity').value;
+    
+    try {
+        const response = await fetch('/api/dtmf/sensitivity', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ level: sensitivity })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            panel.showNotification(result.message, 'success');
+        } else {
+            panel.showNotification(result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error actualizando sensibilidad DTMF:', error);
+        panel.showNotification('Error actualizando sensibilidad DTMF', 'error');
+    }
+}
+
+async function toggleDTMFDebug() {
+    if (!panel) return;
+
+    const enabled = document.getElementById('dtmfDebugMode').checked;
+    
+    try {
+        const response = await fetch('/api/dtmf/debug', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ enabled })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            panel.showNotification(result.message, enabled ? 'warning' : 'success');
+        } else {
+            panel.showNotification(result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error cambiando modo debug DTMF:', error);
+        panel.showNotification('Error cambiando modo debug DTMF', 'error');
+    }
+}
+
+function refreshDTMFStats() {
+    if (panel) {
+        panel.refreshDTMFStats();
+    }
+}
+
+function refreshAPRSStats() {
+    if (panel) {
+        panel.refreshAPRSStats();
+        panel.loadAPRSStations();
+    }
+}
+
+async function sendAPRSBeacon() {
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/aprs/beacon', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            panel.showNotification(result.message, 'success');
+        } else {
+            panel.showNotification(result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error enviando beacon APRS:', error);
+        panel.showNotification('Error enviando beacon APRS', 'error');
+    }
+}
+
 async function saveConfiguration() {
     if (!panel) return;
 
@@ -702,7 +1001,8 @@ async function saveConfiguration() {
             'balizaEnabled', 'balizaInterval', 'balizaFrequency', 'balizaMessage',
             'rogerBeepEnabled', 'rogerBeepType', 'rogerBeepVolume',
             'aprsEnabled', 'aprsInterval', 'aprsCallsign', 'aprsComment',
-            'ttsVoice', 'ttsSpeed', 'aiChatApiKey', 'twilioAccountSid', 'twilioAuthToken'
+            'ttsVoice', 'ttsSpeed', 'aiChatApiKey', 'twilioAccountSid', 'twilioAuthToken',
+            'dtmfSensitivityConfig', 'dtmfVoiceDetection', 'dtmfTimeout'
         ];
         
         fields.forEach(fieldId => {
