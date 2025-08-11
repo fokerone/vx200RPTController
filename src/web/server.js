@@ -711,6 +711,8 @@ class WebServer {
             '*1': 'DateTime',
             '*2': 'AI Chat',
             '*3': 'SMS',
+            '*4': 'Clima',
+            '*5': 'Clima Voz',
             '*9': 'Baliza'
         };
         return commands[sequence] || 'Unknown';
