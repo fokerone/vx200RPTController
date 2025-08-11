@@ -231,8 +231,8 @@ class WebServer {
                     await this.controller.modules.aprs.updateBeaconConfig({
                         enabled: enabled !== undefined ? enabled : true,
                         interval: interval || 15,
-                        callsign: callsign || 'BASE1',
-                        comment: comment || 'VX200 RPT Controller - Guaymallen, Mendoza'
+                        callsign: callsign || 'YOSHUA',
+                        comment: comment || 'VX200 RPT'
                     });
                     
                     res.json({ success: true, message: 'Configuración APRS actualizada' });

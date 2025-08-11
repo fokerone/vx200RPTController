@@ -21,24 +21,22 @@ class APRS extends EventEmitter {
         this.isRunning = false;
         this.isInitialized = false;
         
-        // Configuración APRS
+        // Configuración APRS desde ConfigManager
+        const { Config } = require('../config');
         this.config = {
-            callsign: 'BASE1',
-            location: {
-                lat: -32.885,
-                lon: -68.739,
-                name: 'Guaymallén, Mendoza, Argentina'
-            },
+            callsign: Config.aprs.callsign,
+            location: Config.aprs.location,
             beacon: {
-                enabled: true,
-                interval: 15 * 60 * 1000, // 15 minutos en ms
+                enabled: Config.aprs.beacon.enabled,
+                interval: Config.aprs.beacon.interval * 60 * 1000, // convertir a ms
                 offset: 7.5 * 60 * 1000, // 7.5 minutos de offset para evitar choque con baliza
-                comment: 'VX200 RPT Controller - Guaymallen, Mendoza'
+                comment: Config.aprs.beacon.comment,
+                symbol: Config.aprs.beacon.symbol
             },
             direwolf: {
                 configPath: path.join(__dirname, '../../config/direwolf.conf'),
-                kissPort: 8001,
-                agwPort: 8000
+                kissPort: Config.aprs.direwolf.kissPort,
+                agwPort: Config.aprs.direwolf.agwPort
             }
         };
         
@@ -326,36 +324,62 @@ class APRS extends EventEmitter {
         const lat = this.config.location.lat;
         const lon = this.config.location.lon;
         
-        // Convertir a formato APRS
+        // Convertir coordenadas decimales a formato APRS DDMM.MM
         const latDeg = Math.abs(lat);
         const latDir = lat >= 0 ? 'N' : 'S';
         const lonDeg = Math.abs(lon);
         const lonDir = lon >= 0 ? 'E' : 'W';
         
-        // Formato DDMM.MM
-        const latStr = String(Math.floor(latDeg)).padStart(2, '0') + 
-                      ((latDeg % 1) * 60).toFixed(2).padStart(5, '0') + latDir;
-        const lonStr = String(Math.floor(lonDeg)).padStart(3, '0') + 
-                      ((lonDeg % 1) * 60).toFixed(2).padStart(5, '0') + lonDir;
+        // Calcular grados y minutos
+        const latDegrees = Math.floor(latDeg);
+        const latMinutes = (latDeg - latDegrees) * 60;
+        const lonDegrees = Math.floor(lonDeg);
+        const lonMinutes = (lonDeg - lonDegrees) * 60;
         
-        return `=${latStr}/R${lonStr}&${this.config.beacon.comment || 'VX200 RPT'}`;
+        // Formato APRS: DDMM.hhN/DDDMM.hhW
+        // Latitud: DD MM . hh N (8 caracteres)
+        const latStr = String(latDegrees).padStart(2, '0') + 
+                      String(latMinutes.toFixed(2)).padStart(5, '0') + latDir;
+        
+        // Longitud: DDD MM . hh W (9 caracteres)  
+        const lonStr = String(lonDegrees).padStart(3, '0') + 
+                      String(lonMinutes.toFixed(2)).padStart(5, '0') + lonDir;
+        
+        // Símbolo APRS: tabla/símbolo (ej: /h para casa)
+        const symbolTable = this.config.beacon.symbol ? this.config.beacon.symbol[0] : '/';
+        const symbolCode = this.config.beacon.symbol ? this.config.beacon.symbol[1] : 'h';
+        
+        // Formato APRS estándar: =DDMM.hhN/DDDMM.hhWsCommentario
+        return `=${latStr}${symbolTable}${lonStr}${symbolCode}${this.config.beacon.comment || 'VX200 RPT'}`;
     }
 
     /**
      * Crear packet AX.25 básico
      */
     createAX25Packet(info) {
-        // Simplificado: crear packet AX.25 básico manualmente
-        // En una implementación completa usaríamos una librería AX.25
+        // Los callsigns en AX.25 deben ser shifted 1 bit a la izquierda
+        function shiftCallsign(call) {
+            const padded = call.padEnd(6, ' ');
+            const shifted = Buffer.alloc(6);
+            for (let i = 0; i < 6; i++) {
+                shifted[i] = padded.charCodeAt(i) << 1;
+            }
+            return shifted;
+        }
         
-        const callsign = this.config.callsign.padEnd(6, ' ');
-        const dest = 'APRS  '; // Destination
+        // Destination (APRS) y Source callsign
+        const dest = shiftCallsign('APRS');
+        const source = shiftCallsign(this.config.callsign);
         
-        // Header AX.25 simplificado
+        // SSID bytes (último bit indica end-of-address)
+        const destSSID = 0x60; // SSID 0, command bit, not repeated
+        const sourceSSID = 0x61; // SSID 0, command bit, last address (bit 0 = 1)
+        
+        // Header AX.25 completo
         const header = Buffer.concat([
-            Buffer.from(dest), Buffer.from([0x60]), // Dest
-            Buffer.from(callsign), Buffer.from([0x61]), // Source  
-            Buffer.from([0x03, 0xF0]) // Control + PID
+            dest, Buffer.from([destSSID]),
+            source, Buffer.from([sourceSSID]),
+            Buffer.from([0x03, 0xF0]) // Control (UI frame) + PID (no layer 3)
         ]);
         
         return Buffer.concat([header, Buffer.from(info)]);
@@ -367,6 +391,46 @@ class APRS extends EventEmitter {
     getTimeSinceLastBeacon() {
         if (!this.stats.lastBeacon) return 'nunca';
         return Math.floor((Date.now() - this.stats.lastBeacon.getTime()) / 1000 / 60);
+    }
+
+    /**
+     * Iniciar timer de beacon automático
+     */
+    async startBeaconTimer() {
+        if (this.beaconTimer) {
+            clearInterval(this.beaconTimer);
+        }
+
+        const interval = this.config.beacon.interval; // ya está en ms
+        const offset = this.config.beacon.offset || 0; // offset para evitar colisiones
+
+        // Enviar primer beacon después del offset
+        setTimeout(async () => {
+            await this.sendBeaconSafe();
+            
+            // Luego enviar cada intervalo
+            this.beaconTimer = setInterval(async () => {
+                await this.sendBeaconSafe();
+            }, interval);
+            
+        }, offset);
+
+        this.logger.info(`Beacon automático configurado: cada ${Math.floor(interval/60000)} minutos`);
+    }
+
+    /**
+     * Enviar beacon de forma segura con manejo de errores
+     */
+    async sendBeaconSafe() {
+        try {
+            if (this.tncConnection) {
+                await this.sendBeacon();
+            } else {
+                this.logger.warn('Beacon omitido: sin conexión TNC');
+            }
+        } catch (error) {
+            this.logger.error('Error enviando beacon automático:', error.message);
+        }
     }
 
     /**
@@ -384,10 +448,14 @@ class APRS extends EventEmitter {
             }
             
             // El endpoint KISS se conecta automáticamente
-            
             this.isRunning = true;
-            this.logger.info('Sistema APRS iniciado');
             
+            // Iniciar beacon automático si está habilitado
+            if (this.config.beacon.enabled) {
+                await this.startBeaconTimer();
+            }
+            
+            this.logger.info('Sistema APRS iniciado');
             return true;
             
         } catch (error) {

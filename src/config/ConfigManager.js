@@ -87,7 +87,7 @@ class ConfigManager {
             // ===== BALIZA =====
             baliza: {
                 enabled: true,
-                interval: 15, // minutos
+                interval: 60, // minutos (1 hora)
                 message: '',
                 autoStart: true,
                 waitForFreeChannel: true,
@@ -183,6 +183,28 @@ class ConfigManager {
                 memoryUsageThreshold: 85, // %
                 cpuUsageThreshold: 80     // %
             },
+
+            // ===== APRS =====
+            aprs: {
+                enabled: true,
+                callsign: 'YOSHUA',
+                location: {
+                    lat: -32.9082647,
+                    lon: -68.8162689,
+                    elevation: 775,
+                    name: 'Guaymallén, Mendoza, Argentina'
+                },
+                beacon: {
+                    enabled: true,
+                    interval: 15, // minutos
+                    comment: 'VX200 RPT',
+                    symbol: '/-'
+                },
+                direwolf: {
+                    kissPort: 8001,
+                    agwPort: 8000
+                }
+            }
 
         };
     }

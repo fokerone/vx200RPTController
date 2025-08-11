@@ -4,7 +4,7 @@
     "version": "2.0",
     "name": "VX200 Controller",
     "description": "Sistema de Control para Repetidora Simplex",
-    "environment": "testing"
+    "environment": "production"
   },
   "web": {
     "port": 3000,
@@ -59,7 +59,7 @@
   },
   "baliza": {
     "enabled": true,
-    "interval": 15,
+    "interval": 60,
     "message": "LU5MCD Repetidora Simplex",
     "autoStart": true,
     "waitForFreeChannel": true,
@@ -164,6 +164,24 @@
     "timeout": 10000,
     "apiUrl": "https://api.openweathermap.org/data/2.5"
   },
-  "callsign": "LU5MCD",
-  "version": "2.0"
+  "aprs": {
+    "enabled": true,
+    "callsign": "YOSHUA",
+    "location": {
+      "lat": -32.9082647,
+      "lon": -68.8162689,
+      "elevation": 775,
+      "name": "Guaymallén, Mendoza, Argentina"
+    },
+    "beacon": {
+      "enabled": true,
+      "interval": 15,
+      "comment": "VX200 RPT",
+      "symbol": "/-"
+    },
+    "direwolf": {
+      "kissPort": 8001,
+      "agwPort": 8000
+    }
+  }
 }

@@ -113,18 +113,15 @@ class VX200Controller {
             this.initializationErrors.push('Direwolf');
         }
         
-        // Inicializar APRS después de Direwolf
+        // Inicializar APRS después de Direwolf (solo inicializar, no iniciar)
         this.modules.aprs = new APRS(this.audio);
         try {
             const aprsInitialized = await this.modules.aprs.initialize();
             if (aprsInitialized) {
-                const aprsStarted = await this.modules.aprs.start();
-                if (aprsStarted) {
-                    this.logger.info('Módulo APRS iniciado correctamente');
-                } else {
-                    this.logger.warn('Error iniciando módulo APRS');
-                    this.initializationErrors.push('APRS');
-                }
+                this.logger.info('Módulo APRS inicializado correctamente');
+            } else {
+                this.logger.warn('Error inicializando módulo APRS');
+                this.initializationErrors.push('APRS');
             }
         } catch (error) {
             this.logger.error('Error inicializando APRS:', error.message);
@@ -475,8 +472,9 @@ class VX200Controller {
                 details: this.audio ? `Device: ${this.audio.device}` : 'Not initialized'
             },
             baliza: { 
-                enabled: Config.balizaEnabled,
-                details: Config.balizaEnabled ? `Every ${Config.balizaInterval} min` : null
+                enabled: this.modules.baliza && this.modules.baliza.config.enabled,
+                details: this.modules.baliza && this.modules.baliza.config.enabled ? 
+                    `Every ${this.modules.baliza.config.interval} min` : null
             },
             rogerBeep: { 
                 enabled: Config.rogerBeepEnabled,
@@ -493,6 +491,12 @@ class VX200Controller {
             weather: {
                 enabled: !!process.env.OPENWEATHER_API_KEY,
                 details: process.env.OPENWEATHER_API_KEY ? 'OpenWeather configured' : 'No API key'
+            },
+            aprs: {
+                enabled: this.modules.aprs && this.modules.aprs.isRunning,
+                details: this.modules.aprs && this.modules.aprs.isRunning ? 
+                    `Callsign: ${this.modules.aprs.config.callsign}` : 
+                    'TNC not connected'
             },
             webServer: { 
                 enabled: true,

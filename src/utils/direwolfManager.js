@@ -15,20 +15,19 @@ class DirewolfManager {
         this.configPath = path.join(__dirname, '../../config/direwolf.conf');
         this.logPath = path.join(__dirname, '../../logs/direwolf.log');
         
-        // Configuración por defecto
+        // Configuración desde ConfigManager
+        const { Config } = require('../config');
         this.config = {
-            callsign: 'BASE1',
-            location: {
-                lat: -32.885,
-                lon: -68.739
-            },
+            callsign: Config.aprs.callsign,
+            location: Config.aprs.location,
             beacon: {
-                interval: 15, // minutos
-                comment: 'VX200 RPT Controller - Guaymallen, Mendoza'
+                interval: Config.aprs.beacon.interval,
+                comment: Config.aprs.beacon.comment,
+                symbol: Config.aprs.beacon.symbol
             },
             ports: {
-                kiss: 8001,
-                agw: 8000
+                kiss: Config.aprs.direwolf.kissPort,
+                agw: Config.aprs.direwolf.agwPort
             }
         };
     }
@@ -37,25 +36,25 @@ class DirewolfManager {
      * Generar archivo de configuración de Direwolf
      */
     generateConfig() {
-        const config = `# Configuración Direwolf para VX200 RPT Controller
-# Generado automáticamente
+        const config = `# Configuracion Direwolf para VX200 RPT Controller
+# Generado automaticamente
 
 # Callsign del repetidor
 MYCALL ${this.config.callsign}
 
-# Configuración de audio (usando mismo dispositivo que VX200 Controller)
+# Configuracion de audio (usando mismo dispositivo que VX200 Controller)
 ADEVICE default default
 ARATE 48000
 
-# Configuración de módem para canal 0
+# Configuracion de modem para canal 0
 MODEM 0 1200
 
 # Puertos de servicio
 KISSPORT ${this.config.ports.kiss}
 AGWPORT ${this.config.ports.agw}
 
-# Beacon del repetidor cada ${this.config.beacon.interval} minutos
-PBEACON delay=450 every=${this.config.beacon.interval} overlay=R symbol="repeater" lat=${this.config.location.lat} long=${this.config.location.lon} comment="${this.config.beacon.comment}"
+# Beacon del repetidor - DESHABILITADO (se maneja por código KISS)
+#PBEACON delay=450 every=${this.config.beacon.interval} symbol="${this.config.beacon.symbol}" lat=${this.config.location.lat} long=${this.config.location.lon} comment="${this.config.beacon.comment}"
 
 # Directorio de logs
 LOGDIR ${path.dirname(this.logPath)}
@@ -67,9 +66,9 @@ PERSIST 63
 TXDELAY 30
 TXTAIL 1
 
-# Sin filtros específicos
+# Sin filtros especificos
 
-# Configuración de red (comentado por defecto)
+# Configuracion de red (comentado por defecto)
 # IGSERVER noam.aprs2.net
 # IGLOGIN ${this.config.callsign} -1
 `;

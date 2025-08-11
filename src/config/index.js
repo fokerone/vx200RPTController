@@ -79,6 +79,11 @@ const Config = {
     get sms() { return getSection('sms'); },
     get smsEnabled() { return getValue('sms.enabled'); },
 
+    // APRS
+    get aprs() { return getSection('aprs'); },
+    get aprsEnabled() { return getValue('aprs.enabled'); },
+    get aprsCallsign() { return getValue('aprs.callsign'); },
+    get aprsLocation() { return getValue('aprs.location'); },
 
     // DTMF
     get dtmf() { return getSection('dtmf'); },
