@@ -452,7 +452,7 @@ class WebServer {
                 weatherAlerts: {
                     enabled: this.getModuleStatus('weatherAlerts') === 'enabled',
                     status: this.getModuleStatus('weatherAlerts'),
-                    activeAlerts: this.controller.modules?.weatherAlerts?.getActiveAlerts()?.length || 0
+                    activeAlerts: this.controller.modules?.weatherAlerts?.getStatus()?.activeAlerts || 0
                 },
                 rogerBeep: {
                     enabled: this.controller.audio?.getRogerBeepStatus()?.enabled || false,
