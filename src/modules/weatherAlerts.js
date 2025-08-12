@@ -16,10 +16,11 @@ const HybridVoiceManager = require('../audio/HybridVoiceManager');
  * - Comando DTMF *7 para consulta manual
  */
 class WeatherAlerts extends EventEmitter {
-    constructor(audioManager, aprsModule = null) {
+    constructor(audioManager, aprsModule = null, weatherModule = null) {
         super();
         this.audioManager = audioManager;
         this.aprsModule = aprsModule;
+        this.weatherModule = weatherModule;
         this.logger = createLogger('[WeatherAlerts]');
         this.state = MODULE_STATES.IDLE;
         
@@ -49,6 +50,7 @@ class WeatherAlerts extends EventEmitter {
             // Timers
             checkInterval: 90 * 60 * 1000,      // 1.5 horas
             repeatInterval: 105 * 60 * 1000,    // 1h 45min (evita colisión con baliza)
+            weatherUpdateInterval: 15 * 60 * 1000, // 15 minutos actualización clima APRS
             
             // TTS
             useGoogleTTS: true,
@@ -64,6 +66,7 @@ class WeatherAlerts extends EventEmitter {
         this.lastCheck = null;
         this.checkTimer = null;
         this.repeatTimer = null;
+        this.weatherUpdateTimer = null;
         
         // Cache
         this.feedCache = {
@@ -105,10 +108,15 @@ class WeatherAlerts extends EventEmitter {
         // Primera verificación inmediata
         await this.checkForAlerts();
         
-        // Configurar timer automático
+        // Primera actualización de clima APRS inmediata
+        await this.updateAPRSComment();
+        
+        // Configurar timers automáticos
         this.scheduleNextCheck();
+        this.scheduleWeatherUpdates();
         
         this.logger.info(`Monitoreo de alertas iniciado - cada ${this.config.checkInterval / 60000} minutos`);
+        this.logger.info(`Actualización clima APRS - cada ${this.config.weatherUpdateInterval / 60000} minutos`);
         this.emit('started');
     }
     
@@ -126,6 +134,11 @@ class WeatherAlerts extends EventEmitter {
         if (this.repeatTimer) {
             clearTimeout(this.repeatTimer);
             this.repeatTimer = null;
+        }
+        
+        if (this.weatherUpdateTimer) {
+            clearTimeout(this.weatherUpdateTimer);
+            this.weatherUpdateTimer = null;
         }
         
         this.logger.info('Monitoreo de alertas detenido');
@@ -160,7 +173,7 @@ class WeatherAlerts extends EventEmitter {
             if (newAlerts.length > 0) {
                 this.logger.info(`🚨 ${newAlerts.length} nueva(s) alerta(s) para Mendoza`);
                 await this.announceNewAlerts(newAlerts);
-                this.updateAPRSComment();
+                await this.updateAPRSComment();
                 this.scheduleRepeatAnnouncements();
             }
             
@@ -468,20 +481,66 @@ class WeatherAlerts extends EventEmitter {
     }
     
     /**
-     * Actualizar comment de APRS con alertas activas
+     * Actualizar comment de APRS con clima actual y alertas activas
      */
-    updateAPRSComment() {
+    async updateAPRSComment() {
         if (!this.aprsModule) return;
         
         const alertComment = this.getActiveAlertComment();
+        const weatherComment = await this.getCurrentWeatherComment();
         const baseComment = 'VX200 RPT';
-        const fullComment = alertComment ? `${baseComment} ${alertComment}` : baseComment;
+        
+        // Construir comment: Base + Clima + Alertas (máximo 43 caracteres APRS)
+        let fullComment = baseComment;
+        
+        if (weatherComment) {
+            fullComment += ` ${weatherComment}`;
+        }
+        
+        if (alertComment) {
+            const spaceLeft = 43 - fullComment.length;
+            if (spaceLeft > alertComment.length + 1) {
+                fullComment += ` ${alertComment}`;
+            } else {
+                // Priorizar alertas si no hay espacio suficiente
+                fullComment = `${baseComment} ${alertComment}`;
+            }
+        }
         
         try {
             this.aprsModule.config.beacon.comment = fullComment;
             this.logger.debug(`APRS comment actualizado: "${fullComment}"`);
         } catch (error) {
             this.logger.error('Error actualizando APRS comment:', error.message);
+        }
+    }
+    
+    /**
+     * Obtener comment de clima actual para APRS
+     */
+    async getCurrentWeatherComment() {
+        if (!this.weatherModule) return null;
+        
+        try {
+            // Obtener clima actual para Mendoza
+            const mendozaCity = {
+                name: 'Mendoza',
+                lat: -32.89,
+                lon: -68.84
+            };
+            
+            const weatherData = await this.weatherModule.getCurrentWeatherForCity(mendozaCity);
+            
+            // Formato compacto para APRS: T:23°C H:65% V:15km/h
+            const temp = Math.round(weatherData.temperature);
+            const humidity = Math.round(weatherData.humidity);
+            const windSpeed = Math.round(weatherData.wind_speed);
+            
+            return `${temp}°C ${humidity}% ${windSpeed}km/h`;
+            
+        } catch (error) {
+            this.logger.debug('Error obteniendo clima para APRS:', error.message);
+            return null;
         }
     }
     
@@ -543,6 +602,26 @@ class WeatherAlerts extends EventEmitter {
     }
     
     /**
+     * Programar actualizaciones periódicas del clima en APRS
+     */
+    scheduleWeatherUpdates() {
+        if (this.weatherUpdateTimer) {
+            clearTimeout(this.weatherUpdateTimer);
+        }
+        
+        this.weatherUpdateTimer = setTimeout(async () => {
+            try {
+                await this.updateAPRSComment();
+                this.logger.debug('🌤️ Clima APRS actualizado automáticamente');
+                this.scheduleWeatherUpdates(); // Reprogramar
+            } catch (error) {
+                this.logger.debug('Error actualizando clima APRS:', error.message);
+                this.scheduleWeatherUpdates(); // Reprogramar incluso si falla
+            }
+        }, this.config.weatherUpdateInterval);
+    }
+    
+    /**
      * Limpiar alertas expiradas
      */
     cleanExpiredAlerts() {
@@ -564,7 +643,10 @@ class WeatherAlerts extends EventEmitter {
             });
             
             this.logger.info(`Limpiadas ${expiredAlerts.length} alertas expiradas`);
-            this.updateAPRSComment();
+            // Actualizar comment APRS de forma asíncrona
+            this.updateAPRSComment().catch(error => 
+                this.logger.debug('Error actualizando APRS comment:', error.message)
+            );
         }
     }
     

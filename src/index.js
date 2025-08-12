@@ -132,9 +132,9 @@ class VX200Controller {
             this.initializationErrors.push('APRS');
         }
         
-        // Inicializar WeatherAlerts con referencia a APRS
+        // Inicializar WeatherAlerts con referencia a APRS y Weather
         try {
-            this.modules.weatherAlerts = new WeatherAlerts(this.audio, this.modules.aprs);
+            this.modules.weatherAlerts = new WeatherAlerts(this.audio, this.modules.aprs, this.modules.weather);
             this.logger.info('Módulo WeatherAlerts inicializado correctamente');
         } catch (error) {
             this.logger.error('Error inicializando WeatherAlerts:', error.message);
