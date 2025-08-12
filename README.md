@@ -1,10 +1,10 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.1.1
+## 📡 Sistema de Control para Repetidora Simplex v2.2.0
 
-Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa.
+Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa con alertas meteorológicas SMN Argentina.
 
-**🎉 Versión 2.1.1 - Panel Web Moderno y Optimizado**
+**🎉 Versión 2.2.0 - Sistema de Alertas Meteorológicas SMN Argentina**
 
 ---
 
@@ -40,6 +40,16 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **AI Chat**: Consultas con OpenAI GPT (`*2`)
 - **SMS**: Mensajería con Twilio (`*3`)
 - **Weather**: Información meteorológica (`*4` actual, `*5` voz)
+- **🌦️ Weather Alerts**: Sistema de alertas SMN Argentina (`*7` consultar, `*0` forzar verificación)
+
+### 🌦️ **Nuevo: Sistema de Alertas Meteorológicas SMN**
+- **Monitoreo automático** cada 90 minutos de alertas SMN Argentina
+- **Cobertura completa** de la provincia de Mendoza
+- **Filtrado geográfico inteligente** por coordenadas y polígonos CAP
+- **Anuncios automáticos** con Google TTS + fragmentación para textos largos
+- **Integración APRS** con comentarios dinámicos incluyendo clima actual
+- **Panel web actualizado** con estado en tiempo real de alertas activas
+- **Repetición automática** cada 105 minutos para alertas vigentes
 
 ---
 
@@ -153,6 +163,8 @@ TWILIO_AUTH_TOKEN=...
 | `*3` | SMS | Sistema de mensajes Twilio |
 | `*4` | Weather | Clima actual |
 | `*5` | Weather Voice | Clima con voz natural |
+| `*7` | **🌦️ Weather Alerts** | **Consultar alertas meteorológicas activas** |
+| `*0` | **🔄 Force Check** | **Forzar verificación manual de alertas SMN** |
 | `*9` | Baliza | Activa baliza manual |
 
 ---
@@ -284,36 +296,53 @@ ps aux | grep direwolf
 
 ---
 
-## 📋 Changelog v2.1.1
+## 📋 Changelog
 
-### ✅ Nuevas Características
+### v2.2.0 - Sistema de Alertas Meteorológicas ✨
+
+#### 🌦️ **Nuevas Características**
+- [x] **Sistema de Alertas Meteorológicas SMN** completo
+  - [x] Monitoreo automático cada 90 minutos
+  - [x] Cobertura completa provincia de Mendoza  
+  - [x] Filtrado geográfico por coordenadas y polígonos CAP
+  - [x] Anuncios automáticos con Google TTS + fragmentación
+  - [x] Comandos DTMF `*7` (consultar) y `*0` (forzar verificación)
+- [x] **Integración APRS mejorada**
+  - [x] Comentarios dinámicos con clima actual (temp, humedad, viento)
+  - [x] Indicadores de alertas activas en beacon
+  - [x] Actualización automática cada 15 minutos
+- [x] **Panel web actualizado**
+  - [x] Sección dedicada de alertas meteorológicas
+  - [x] Estado del sistema en tiempo real 
+  - [x] Contador de alertas activas
+  - [x] Información de próximas verificaciones
+
+#### 🐛 **Correcciones**
+- [x] **Panel web**: Estado del sistema mostraba "--" 
+- [x] **Panel web**: Próxima verificación mostraba "--"
+- [x] **Panel web**: Contador de alertas siempre mostraba "0"
+- [x] **Audio**: Reproductores timeout mejorados para alertas largas (45s)
+- [x] **TTS**: Fragmentación automática para textos >200 caracteres
+- [x] **Audio**: ffmpeg reemplazó sox para mejor compatibilidad MP3
+
+### v2.1.1 - Panel Web Moderno
+
+#### ✅ Características Anteriores
 - [x] **Panel web rediseñado** con navegación por pestañas
 - [x] **Monitor DTMF profesional** con estadísticas en tiempo real
 - [x] **Dashboard APRS completo** con mapa interactivo
 - [x] **Sistema de configuración dinámico**
 - [x] **Controles de sensibilidad DTMF**
 
-### 🐛 Correcciones
-- [x] **Mapeo DTMF** corregido para comandos *4 y *5
-- [x] **Optimización de rendimiento** del panel web
-- [x] **Limpieza de código** - eliminadas 181 líneas innecesarias
-- [x] **Interfaz simplificada** - removido indicador de canal
-
-### ⚡ Mejoras Técnicas
-- [x] **Cache de elementos DOM** para mejor performance
-- [x] **Socket.IO optimizado** para tiempo real
-- [x] **CSS responsive** completamente reescrito
-- [x] **Timeouts inteligentes** para actualizaciones
-
 ---
 
 ## 🎯 Próximas Versiones
 
-### v2.2 - Planificado
+### v2.3 - Planificado
 - [ ] **Métricas avanzadas** del sistema
 - [ ] **API REST completa** para integraciones
 - [ ] **Backup automático** de configuración
-- [ ] **Sistema de alertas** por email/SMS
+- [ ] **Alertas por múltiples provincias**
 
 ### v2.3 - Futuro
 - [ ] **App móvil nativa** con React Native
