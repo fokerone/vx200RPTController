@@ -220,45 +220,74 @@ class GoogleTTSManager {
     }
 
     /**
-     * Combinar múltiples archivos de audio usando sox
+     * Combinar múltiples archivos de audio usando ffmpeg (soporte MP3)
      * @param {Array<string>} audioFiles - Array de archivos de audio
      * @returns {Promise<string>} - Archivo combinado
      */
     combineAudioFiles(audioFiles) {
         return new Promise((resolve, reject) => {
             const timestamp = Date.now();
-            const combinedFile = path.join(this.tempDir, `combined_${timestamp}.wav`);
+            const combinedFile = path.join(this.tempDir, `combined_${timestamp}.mp3`);
             
-            // Verificar si sox está disponible
-            if (!this.checkCommand('sox')) {
-                console.warn('⚠️ Sox no disponible, usando primer fragmento solamente');
+            // Verificar si ffmpeg está disponible
+            if (!this.checkCommand('ffmpeg')) {
+                console.warn('⚠️ ffmpeg no disponible, usando primer fragmento solamente');
                 resolve(audioFiles[0]);
                 return;
             }
             
-            console.log(`🔗 Combinando ${audioFiles.length} fragmentos de audio...`);
+            console.log(`🔗 Combinando ${audioFiles.length} fragmentos de audio con ffmpeg...`);
             
-            const soxArgs = audioFiles.concat([combinedFile]);
-            const sox = spawn('sox', soxArgs);
+            // Crear archivo de lista temporal para ffmpeg
+            const listFile = path.join(this.tempDir, `filelist_${timestamp}.txt`);
+            const fileList = audioFiles.map(file => `file '${file}'`).join('\n');
             
-            sox.on('close', (code) => {
-                if (code === 0 && fs.existsSync(combinedFile)) {
-                    console.log(`✅ Audio combinado: ${combinedFile}`);
+            try {
+                fs.writeFileSync(listFile, fileList);
+                
+                // Usar ffmpeg para concatenar archivos MP3
+                const ffmpegArgs = [
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', listFile,
+                    '-c', 'copy',
+                    combinedFile
+                ];
+                
+                const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+                
+                ffmpeg.on('close', (code) => {
+                    // Limpiar archivo de lista temporal
+                    if (fs.existsSync(listFile)) {
+                        fs.unlinkSync(listFile);
+                    }
                     
-                    // Limpiar archivos individuales
-                    audioFiles.forEach(file => this.cleanupFile(file));
-                    
-                    resolve(combinedFile);
-                } else {
-                    console.error('❌ Error combinando audio con sox');
+                    if (code === 0 && fs.existsSync(combinedFile)) {
+                        console.log(`✅ Audio combinado con ffmpeg: ${combinedFile}`);
+                        
+                        // Limpiar archivos individuales
+                        audioFiles.forEach(file => this.cleanupFile(file));
+                        
+                        resolve(combinedFile);
+                    } else {
+                        console.error('❌ Error combinando audio con ffmpeg');
+                        resolve(audioFiles[0]); // Usar primer fragmento como fallback
+                    }
+                });
+                
+                ffmpeg.on('error', (error) => {
+                    console.error('❌ Error ejecutando ffmpeg:', error.message);
+                    // Limpiar archivo de lista temporal
+                    if (fs.existsSync(listFile)) {
+                        fs.unlinkSync(listFile);
+                    }
                     resolve(audioFiles[0]); // Usar primer fragmento como fallback
-                }
-            });
-            
-            sox.on('error', (error) => {
-                console.error('❌ Error ejecutando sox:', error.message);
+                });
+                
+            } catch (writeError) {
+                console.error('❌ Error creando lista de archivos:', writeError.message);
                 resolve(audioFiles[0]); // Usar primer fragmento como fallback
-            });
+            }
         });
     }
 

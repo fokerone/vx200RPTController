@@ -29,10 +29,21 @@ class WeatherAlerts extends EventEmitter {
             mainFeedUrl: 'https://ssl.smn.gob.ar/CAP/AR.php',
             shortTermFeedUrl: 'https://ssl.smn.gob.ar/feeds/avisocorto_GeoRSS.xml',
             
-            // Coordenadas de Mendoza para filtrado geográfico
+            // Coordenadas de Mendoza para filtrado geográfico - Cobertura completa provincial
             mendozaRegion: {
-                center: { lat: -32.8895, lon: -68.8458 },
-                radius: 100 // km de radio de cobertura
+                // Límites completos de la provincia de Mendoza:
+                // Latitud: 32°00' a 37°35' Sur
+                // Longitud: 66°30' a 70°35' Oeste
+                bounds: {
+                    north: -32.0,    // 32° Sur (límite norte)
+                    south: -37.6,    // 37°35' Sur (límite sur) 
+                    west: -70.6,     // 70°35' Oeste (límite oeste)
+                    east: -66.5      // 66°30' Oeste (límite este)
+                },
+                // Centro geográfico aproximado de la provincia
+                center: { lat: -34.8, lon: -68.5 },
+                // Radio de seguridad (no usado con bounds, pero mantenido para compatibilidad)
+                radius: 200 // km de radio de cobertura total
             },
             
             // Timers
@@ -301,13 +312,44 @@ class WeatherAlerts extends EventEmitter {
                 return { lat, lon };
             });
             
-            // Verificar si Mendoza está dentro del polígono usando algoritmo simple
-            return this.pointInPolygon(this.config.mendozaRegion.center, coords);
+            // Verificar si el polígono de la alerta intersecta con los límites de Mendoza
+            return this.polygonIntersectsMendoza(coords);
             
         } catch (error) {
             this.logger.debug('Error verificando polígono:', error.message);
             return false;
         }
+    }
+    
+    /**
+     * Verificar si un polígono intersecta con los límites de Mendoza
+     */
+    polygonIntersectsMendoza(coords) {
+        const bounds = this.config.mendozaRegion.bounds;
+        
+        // Verificar si algún punto del polígono está dentro de los límites de Mendoza
+        for (const coord of coords) {
+            if (coord.lat >= bounds.south && coord.lat <= bounds.north &&
+                coord.lon >= bounds.west && coord.lon <= bounds.east) {
+                return true;
+            }
+        }
+        
+        // Verificar si el polígono contiene alguna esquina de Mendoza
+        const mendozaCorners = [
+            { lat: bounds.north, lon: bounds.west },
+            { lat: bounds.north, lon: bounds.east },
+            { lat: bounds.south, lon: bounds.west },
+            { lat: bounds.south, lon: bounds.east }
+        ];
+        
+        for (const corner of mendozaCorners) {
+            if (this.pointInPolygon(corner, coords)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     /**
@@ -334,8 +376,16 @@ class WeatherAlerts extends EventEmitter {
     alertMentionsMendoza(alert) {
         const text = `${alert.title} ${alert.description}`.toLowerCase();
         const mendozaKeywords = [
+            // Términos específicos de Mendoza
             'mendoza', 'cuyo', 'precordillera', 'cordillera mendocina',
-            'alta montaña mendoza', 'valle de uco', 'región cuyo'
+            'alta montaña mendoza', 'valle de uco', 'región cuyo',
+            // Términos geográficos generales que afectan Mendoza
+            'zonda', 'cordillera', 'alta montaña', 'montaña',
+            // Departamentos principales de Mendoza
+            'godoy cruz', 'las heras', 'luján de cuyo', 'maipú',
+            'guaymallén', 'san rafael', 'general alvear', 'malargüe',
+            'tunuyán', 'tupungato', 'san martín', 'rivadavia',
+            'junín', 'santa rosa', 'la paz', 'lavalle'
         ];
         
         return mendozaKeywords.some(keyword => text.includes(keyword));
@@ -383,10 +433,10 @@ class WeatherAlerts extends EventEmitter {
             
             this.logger.info(`🔊 Anunciando alertas: ${cleanMessage.substring(0, 50)}...`);
             
-            // Usar Google TTS si está disponible
+            // Usar Google TTS si está disponible (con soporte para textos largos)
             if (this.voiceManager) {
-                const audioFile = await this.voiceManager.generateSpeech(cleanMessage);
-                await this.audioManager.playWithPaplay(audioFile);
+                const audioFile = await this.voiceManager.generateLongSpeech(cleanMessage);
+                await this.audioManager.playWeatherAlertWithPaplay(audioFile);
             } else {
                 await this.audioManager.speak(cleanMessage, { voice: 'es+f3' });
             }
@@ -547,8 +597,8 @@ class WeatherAlerts extends EventEmitter {
                 const cleanMessage = sanitizeTextForTTS(message);
                 
                 if (this.voiceManager) {
-                    const audioFile = await this.voiceManager.generateSpeech(cleanMessage);
-                    await this.audioManager.playWithPaplay(audioFile);
+                    const audioFile = await this.voiceManager.generateLongSpeech(cleanMessage);
+                    await this.audioManager.playWeatherAlertWithPaplay(audioFile);
                 } else {
                     await this.audioManager.speak(cleanMessage, { voice: 'es+f3' });
                 }

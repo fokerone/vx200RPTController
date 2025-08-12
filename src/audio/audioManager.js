@@ -685,6 +685,52 @@ class AudioManager extends EventEmitter {
         });
     }
 
+    /**
+     * Reproducir archivo de audio con paplay específicamente para alertas meteorológicas
+     * con timeout extendido para permitir mensajes largos
+     */
+    async playWeatherAlertWithPaplay(filePath) {
+        return new Promise((resolve, reject) => {
+            // Intentar con paplay sin especificar dispositivo para usar el default
+            const paplay = spawn('paplay', ['--volume=65536', filePath]);
+            let paplayTimeout = null;
+            let stderr = '';
+            
+            // Capturar stderr para diagnóstico
+            paplay.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+            
+            // Timeout extendido específicamente para alertas meteorológicas largas
+            paplayTimeout = setTimeout(() => {
+                if (!paplay.killed) {
+                    paplay.kill('SIGTERM');
+                    reject(new Error('paplay timeout para alerta meteorológica'));
+                }
+            }, 45000); // 45 segundos para alertas meteorológicas completas
+            
+            paplay.on('close', (code) => {
+                if (paplayTimeout) clearTimeout(paplayTimeout);
+                
+                if (code === 0) {
+                    this.logger.debug('paplay para alerta meteorológica completado exitosamente');
+                    resolve();
+                } else {
+                    let errorMsg = `paplay para alerta meteorológica falló con código ${code}`;
+                    if (stderr.trim()) {
+                        errorMsg += `: ${stderr.trim()}`;
+                    }
+                    reject(new Error(errorMsg));
+                }
+            });
+            
+            paplay.on('error', (err) => {
+                if (paplayTimeout) clearTimeout(paplayTimeout);
+                reject(err);
+            });
+        });
+    }
+
     async playToneWithBeep(frequency, duration) {
         return new Promise(async (resolve) => {
             try {
