@@ -12,6 +12,26 @@
             width: 100%;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .distance-widget {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 12px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-size: 0.85em;
+            font-weight: 500;
+            color: #495057;
+            border-left: 3px solid #007bff;
+            min-width: 140px;
+        }
+        .distance-widget .distance-value {
+            color: #007bff;
+            font-weight: bold;
         }
         .info-panel {
             background: white;
@@ -82,7 +102,11 @@
             <div class="col-md-8">
                 <div class="info-panel">
                     <h5>🗺️ Mapa de Posiciones APRS</h5>
-                    <div id="map"></div>
+                    <div id="map">
+                        <div class="distance-widget" id="distanceWidget">
+                            📏 Estación más lejana: <span class="distance-value" id="maxDistanceValue">0 km</span>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -145,6 +169,8 @@
         let markers = {};
         let repeaterMarker;
         let positions = [];
+        let coverageCircle = null;
+        let maxDistance = 0;
         
         // Configuración del repetidor (deberían venir del servidor)
         const REPEATER_CONFIG = {
@@ -154,6 +180,23 @@
             elevation: 775,
             name: 'VX200 RPT Controller - Guaymallén'
         };
+        
+        // Función para calcular distancia (Haversine)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Radio de la Tierra en km
+            const dLat = toRadians(lat2 - lat1);
+            const dLon = toRadians(lon2 - lon1);
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+        
+        function toRadians(degrees) {
+            return degrees * (Math.PI/180);
+        }
         
         // Inicializar aplicación
         document.addEventListener('DOMContentLoaded', function() {
@@ -229,6 +272,9 @@
                     if (positionsData.success) {
                         positions = positionsData.data;
                         renderPositions();
+                        // Actualizar marcadores de posiciones existentes
+                        positions.forEach(pos => updatePositionMarker(pos));
+                        updateCoverageCircle();
                     }
                 }
                 
@@ -272,6 +318,7 @@
             
             renderPositions();
             updatePositionMarker(position);
+            updateCoverageCircle();
         }
         
         // Renderizar lista de posiciones
@@ -293,10 +340,12 @@
             
             const html = sortedPositions.map(pos => {
                 const timeAgo = getTimeAgo(new Date(pos.timestamp));
+                const distance = pos.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, pos.lat, pos.lon);
                 return `
                     <div class="position-item" onclick="showStationDetails('${pos.callsign}')">
                         <div class="callsign">${pos.callsign}</div>
                         <div class="coordinates">${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)}</div>
+                        <div class="text-info" style="font-size: 0.85em;">📏 ${distance.toFixed(2)} km</div>
                         <div class="timestamp">${timeAgo}</div>
                         ${pos.comment ? `<div class="text-muted" style="font-size: 0.8em;">${pos.comment}</div>` : ''}
                     </div>
@@ -328,11 +377,14 @@
             }).addTo(map);
             
             const timeAgo = getTimeAgo(new Date(position.timestamp));
+            const distance = position.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, position.lat, position.lon);
             marker.bindPopup(`
                 <b>${position.callsign}</b><br>
                 ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)}<br>
+                <span style="color: #007bff;">📏 ${distance.toFixed(2)} km</span><br>
                 <small>${timeAgo}</small>
                 ${position.comment ? `<br><i>${position.comment}</i>` : ''}
+                ${position.symbol ? `<br><small>${position.symbol}</small>` : ''}
             `);
             
             markers[key] = marker;
@@ -347,11 +399,13 @@
             const detailsContainer = document.getElementById('stationDetails');
             
             const timeAgo = getTimeAgo(new Date(position.timestamp));
+            const distance = position.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, position.lat, position.lon);
             
             detailsContainer.innerHTML = `
                 <div class="station-info">
                     <h6>${position.callsign}</h6>
                     <div><strong>Ubicación:</strong> ${position.lat.toFixed(6)}, ${position.lon.toFixed(6)}</div>
+                    <div><strong>Distancia:</strong> <span style="color: #007bff;">📏 ${distance.toFixed(2)} km</span></div>
                     <div><strong>Última actualización:</strong> ${timeAgo}</div>
                     <div><strong>Timestamp:</strong> ${new Date(position.timestamp).toLocaleString()}</div>
                     ${position.comment ? `<div><strong>Comentario:</strong> ${position.comment}</div>` : ''}
@@ -403,6 +457,77 @@
             loadInitialData();
         }
         
+        // Actualizar círculo de cobertura basado en estaciones más lejanas
+        function updateCoverageCircle() {
+            if (positions.length === 0) {
+                // Si no hay posiciones, remover el círculo
+                if (coverageCircle) {
+                    map.removeLayer(coverageCircle);
+                    coverageCircle = null;
+                }
+                maxDistance = 0;
+                updateDistanceWidget();
+                return;
+            }
+            
+            // Encontrar la distancia máxima considerando todas las posiciones históricas
+            let newMaxDistance = 0;
+            positions.forEach(pos => {
+                const distance = pos.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, pos.lat, pos.lon);
+                if (distance > newMaxDistance) {
+                    newMaxDistance = distance;
+                }
+            });
+            
+            // Solo actualizar si la distancia cambió significativamente
+            if (Math.abs(newMaxDistance - maxDistance) > 0.1 || maxDistance === 0) {
+                maxDistance = newMaxDistance;
+                
+                // Remover círculo anterior
+                if (coverageCircle) {
+                    map.removeLayer(coverageCircle);
+                }
+                
+                // Crear nuevo círculo con margen del 10%
+                const radiusKm = maxDistance * 1.1;
+                const radiusMeters = radiusKm * 1000;
+                
+                coverageCircle = L.circle([REPEATER_CONFIG.lat, REPEATER_CONFIG.lon], {
+                    color: '#007bff',
+                    fillColor: '#007bff',
+                    fillOpacity: 0.1,
+                    radius: radiusMeters,
+                    weight: 2,
+                    dashArray: '5, 5'
+                }).addTo(map);
+                
+                coverageCircle.bindPopup(`
+                    <b>📡 Rango de Recepción</b><br>
+                    Radio: <span style="color: #007bff;">${radiusKm.toFixed(2)} km</span><br>
+                    Estación más lejana: <span style="color: #007bff;">${maxDistance.toFixed(2)} km</span><br>
+                    <small>Basado en ${positions.length} estacion${positions.length > 1 ? 'es' : ''} recibida${positions.length > 1 ? 's' : ''}</small>
+                `);
+                
+                console.log(`Círculo de cobertura actualizado: ${radiusKm.toFixed(2)} km`);
+            }
+            
+            // Actualizar widget de distancia
+            updateDistanceWidget();
+        }
+        
+        // Actualizar widget de distancia máxima
+        function updateDistanceWidget() {
+            const distanceWidget = document.getElementById('maxDistanceValue');
+            if (distanceWidget) {
+                if (maxDistance > 0) {
+                    distanceWidget.textContent = `${maxDistance.toFixed(2)} km`;
+                    document.getElementById('distanceWidget').style.display = 'block';
+                } else {
+                    document.getElementById('distanceWidget').style.display = 'none';
+                }
+            }
+        }
+
         // Utilidad para calcular tiempo transcurrido
         function getTimeAgo(date) {
             const now = new Date();

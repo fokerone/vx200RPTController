@@ -40,7 +40,7 @@ class APRS extends EventEmitter {
             }
         };
         
-        // Base de datos de posiciones recibidas
+        // Base de datos de posiciones recibidas (callsign -> array de posiciones históricas)
         this.receivedPositions = new Map();
         this.logFile = path.join(__dirname, '../../logs/aprs-positions.json');
         
@@ -203,7 +203,285 @@ class APRS extends EventEmitter {
     }
 
     /**
-     * Parser básico AX.25 para debugging 
+     * Limpiar y mejorar comentario APRS
+     */
+    cleanComment(rawInfo) {
+        if (!rawInfo) return 'APRS Station';
+        
+        // Remover caracteres de control y no imprimibles, preservando espacios
+        let cleaned = rawInfo.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
+        
+        // Buscar patrones comunes de radio al final del mensaje
+        const radioPatterns = [
+            { pattern: /Yaesu\s+FT\w*\d*\w*/gi, name: 'Yaesu FTM/FT5D' },
+            { pattern: /Kenwood\s+TH?\w*\d*\w*/gi, name: 'Kenwood TH/TM' },
+            { pattern: /Icom\s+IC\w*\d*\w*/gi, name: 'Icom IC' },
+            { pattern: /Baofeng\s+UV\w*\d*\w*/gi, name: 'Baofeng UV' },
+            { pattern: /Motorola\s+\w+/gi, name: 'Motorola' }
+        ];
+        
+        for (const radio of radioPatterns) {
+            const matches = cleaned.match(radio.pattern);
+            if (matches) {
+                // Usar la última coincidencia (usualmente al final)
+                return matches[matches.length - 1].trim();
+            }
+        }
+        
+        // Si no encontramos radio específica, buscar otros patrones
+        // Patrón para texto después de "}"
+        const afterBrace = cleaned.split('}').pop();
+        if (afterBrace && afterBrace.length > 2) {
+            const trimmed = afterBrace.trim();
+            if (trimmed.length < 50 && !/[^\w\s\-\.]/g.test(trimmed)) {
+                return trimmed;
+            }
+        }
+        
+        // Buscar palabras reconocibles al final
+        const words = cleaned.split(/\s+/).filter(w => w.length > 2);
+        const lastWords = words.slice(-3).join(' ');
+        
+        if (lastWords && lastWords.length < 30) {
+            return lastWords;
+        }
+        
+        return 'APRS Mobile';
+    }
+
+    /**
+     * Obtener símbolo APRS mejorado con emoji
+     */
+    getAPRSSymbol(symbolCode) {
+        // Mapeo completo de símbolos APRS basado en especificación oficial
+        const symbolMap = {
+            // Tabla primaria (/)
+            '/!': '👮 Policía/Sheriff',
+            '/"': '📋 Reservado', 
+            '/#': '🔄 DIGI (centro blanco)',
+            '/$': '☎️ Teléfono',
+            '/%': '📡 DX Cluster',
+            '/&': '⚡ Gateway HF',
+            '/\'': '🛩️ Avión pequeño',
+            '/(': '📡 Estación satelital móvil',
+            '/)': '♿ Silla de ruedas',
+            '/*': '🛷 Moto de nieve',
+            '/+': '❤️ Cruz Roja',
+            '/,': '👦 Boy Scouts',
+            '/-': '🏠 Casa QTH (VHF)',
+            '/.': '❌ X',
+            '//': '🔴 Punto rojo',
+            '/0': '⭕ Círculo',
+            '/1': '1️⃣ Uno',
+            '/2': '2️⃣ Dos', 
+            '/3': '3️⃣ Tres',
+            '/4': '4️⃣ Cuatro',
+            '/5': '5️⃣ Cinco',
+            '/6': '6️⃣ Seis',
+            '/7': '7️⃣ Siete',
+            '/8': '8️⃣ Ocho',
+            '/9': '9️⃣ Nueve',
+            '/:': '🔥 Fuego',
+            '/;': '⛺ Campamento',
+            '/<': '🏍️ Motocicleta',
+            '/=': '🚂 Tren',
+            '/>': '🚗 Auto',
+            '/?': '📡 Servidor',
+            '/@': '🚁 Helicóptero',
+            '/A': '📦 Caja',
+            '/B': '💨 BBS',
+            '/C': '⛵ Canoa',
+            '/D': '🔧 Herramienta',
+            '/E': '👁️ Ojo (eventos)',
+            '/F': '🚒 Camión de bomberos',
+            '/G': '🛩️ Planeador',
+            '/H': '🏥 Hospital',
+            '/I': '🌐 TCP-IP',
+            '/J': '📡 Node',
+            '/K': '🏫 Escuela',
+            '/L': '💡 Laptop/PC',
+            '/M': '📍 Mic-E Repetidor',
+            '/N': '📡 NTS Station',
+            '/O': '🎈 Globo',
+            '/P': '👮 Policía',
+            '/Q': '🔺 TBD',
+            '/R': '🚁 RV',
+            '/S': '🚢 Barco',
+            '/T': '📞 Camión',
+            '/U': '🚌 Bus',
+            '/V': '🚐 Van',
+            '/W': '🌐 Estación de agua',
+            '/X': '🚁 Helicóptero',
+            '/Y': '⛵ Velero',
+            '/Z': '📱 Casa móvil',
+            '/[': '👤 Humano/Persona',
+            '/\\': '🔺 Triángulo DF',
+            '/]': '📮 Oficina de correos',
+            '/^': '✈️ Avión',
+            '/_': '🌡️ Estación meteorológica',
+            '/`': '🚁 Plato satelital',
+            '/a': '🚑 Ambulancia',
+            '/b': '🚲 Bicicleta',
+            '/c': '🏠 Incidente command post',
+            '/d': '🔥 Departamento de bomberos',
+            '/e': '🏠 Casa (HF)',
+            '/f': '🚒 Camión de bomberos',
+            '/g': '🛩️ Planeador',
+            '/h': '🏥 Hospital',
+            '/i': 'ℹ️ Información',
+            '/j': '🚙 Jeep',
+            '/k': '🚗 Camión',
+            '/l': '💻 Laptop',
+            '/m': '📍 Mic-E Repetidor',
+            '/n': '🏭 Estación NTS',
+            '/o': '🚗 EOC',
+            '/p': '👤 Perro',
+            '/q': '🏠 Grid Square',
+            '/r': '📻 Repetidor',
+            '/s': '⛵ Barco',
+            '/t': '📞 Camión',
+            '/u': '🚌 Bus',
+            '/v': '🚐 Van',
+            '/w': '💧 Estación de agua',
+            '/x': '🚁 Helicóptero',
+            '/y': '⛵ Velero',
+            '/z': '📱 Reservado',
+            '/|': '🏠 Estación TNC Stream',
+            '/~': '🏠 Estación TNC Stream Switch',
+            '/`': '📡 Mic-E (Kenwood, Yaesu, etc.)',
+
+            // Tabla alternativa (\)
+            '\\!': '🚨 Emergencia',
+            '\\"': '📋 Reservado',
+            '\\#': '🔄 DIGI (overlaid)',
+            '\\$': '💰 Banco',
+            '\\%': '📡 DX Cluster',
+            '\\&': '💎 Diamante',
+            '\\\'': '🚁 Avión (pequeño)',
+            '\\(': '☁️ Nube',
+            '\\)': '♿ Accesible',
+            '\\*': '❄️ Nieve',
+            '\\+': '⛪ Iglesia',
+            '\\,': '👦 Scout',
+            '\\-': '🏛️ Casa (HF)',
+            '\\.': '🔴 Punto',
+            '\\/': '🔺 Triángulo',
+            '\\0': '⭕ Círculo (alt)',
+            '\\1': '1️⃣ Uno (alt)',
+            '\\2': '2️⃣ Dos (alt)',
+            '\\3': '3️⃣ Tres (alt)',
+            '\\4': '4️⃣ Cuatro (alt)',
+            '\\5': '5️⃣ Cinco (alt)',
+            '\\6': '6️⃣ Seis (alt)',
+            '\\7': '7️⃣ Siete (alt)',
+            '\\8': '8️⃣ Ocho (alt)',
+            '\\9': '9️⃣ Nueve (alt)',
+            '\\:': '🔥 Fuego (alt)',
+            '\\;': '⛺ Campamento (alt)',
+            '\\<': '🏍️ Motocicleta (alt)',
+            '\\=': '🚂 Tren (alt)',
+            '\\>': '🚗 Auto (alt)',
+            '\\?': '📡 Servidor (alt)',
+            '\\@': '🌀 Huracán',
+            '\\A': '📦 Caja (alt)',
+            '\\B': '📡 Blizzard',
+            '\\C': '☁️ Costa Guard',
+            '\\D': '🌪️ Tornado',
+            '\\E': '🚨 Humo',
+            '\\F': '🌫️ Niebla',
+            '\\G': '❄️ Nieve',
+            '\\H': '🌩️ Tormenta',
+            '\\I': '⛈️ Lluvia',
+            '\\J': '⚡ Rayos',
+            '\\K': '🌨️ Granizo',
+            '\\L': '🌟 Sol',
+            '\\M': '📍 MARS',
+            '\\N': '📻 Red',
+            '\\O': '🌊 Tsunami',
+            '\\P': '📞 Teléfono',
+            '\\Q': '❓ Pregunta',
+            '\\R': '📻 Repetidor (alt)',
+            '\\S': '⛰️ Skyline',
+            '\\T': '📞 Teléfono (alt)',
+            '\\U': '🚌 Bus (alt)',
+            '\\V': '🚐 Van (alt)',
+            '\\W': '🌊 Inundación',
+            '\\X': '⚠️ Peligroso',
+            '\\Y': '⛵ Velero (alt)',
+            '\\Z': '🏠 Shelter',
+            '\\[': '📦 Caja humana',
+            '\\\\': '🔺 DF Triángulo',
+            '\\]': '📮 Correo (alt)',
+            '\\^': '✈️ Jet',
+            '\\_': '🌡️ WX Station',
+            '\\`': '📡 Antena'
+        };
+        
+        // Buscar símbolo exacto primero
+        if (symbolMap[symbolCode]) {
+            return symbolMap[symbolCode];
+        }
+        
+        // Buscar por segundo carácter (símbolo principal)
+        const secondChar = symbolCode ? symbolCode[1] : '';
+        for (const [code, description] of Object.entries(symbolMap)) {
+            if (code[1] === secondChar) {
+                return description;
+            }
+        }
+        
+        // Mapeo por caracteres individuales como fallback
+        const charMap = {
+            'h': '🏠 Casa',
+            '-': '🏠 Casa',
+            '>': '🚗 Auto',
+            'k': '🚗 Auto', 
+            'j': '🚙 Jeep',
+            's': '⛵ Barco',
+            '^': '✈️ Avión',
+            '[': '👤 Persona',
+            'b': '🚲 Bici',
+            'f': '🚒 Bomberos',
+            'a': '🚑 Ambulancia',
+            'r': '📻 Radio'
+        };
+        
+        if (charMap[secondChar]) {
+            return charMap[secondChar];
+        }
+        
+        return `📍 ${symbolCode || 'Desconocido'}`;
+    }
+
+    /**
+     * Calcular distancia entre dos coordenadas (fórmula Haversine)
+     * @param {number} lat1 - Latitud punto 1
+     * @param {number} lon1 - Longitud punto 1  
+     * @param {number} lat2 - Latitud punto 2
+     * @param {number} lon2 - Longitud punto 2
+     * @returns {number} Distancia en kilómetros
+     */
+    calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Radio de la Tierra en km
+        const dLat = this.toRadians(lat2 - lat1);
+        const dLon = this.toRadians(lon2 - lon1);
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
+
+    /**
+     * Convertir grados a radianes
+     */
+    toRadians(degrees) {
+        return degrees * (Math.PI/180);
+    }
+
+    /**
+     * Parser básico AX.25 mejorado para comentarios y símbolos
      */
     parseBasicAX25(frame) {
         try {
@@ -228,10 +506,25 @@ class APRS extends EventEmitter {
             
             if (infoStart === -1) return null;
             
-            const info = frame.slice(infoStart).toString('ascii');
-            this.logger.info('📊 Callsign:', callsign, 'Info:', info.substring(0, 50));
+            // Extraer información completa del packet
+            const infoBuffer = frame.slice(infoStart);
+            const info = infoBuffer.toString('ascii', 0, Math.min(100, infoBuffer.length));
             
-            // Crear estructura básica simulando APRS con coordenadas dummy
+            // Extraer comentario limpio
+            const cleanedComment = this.cleanComment(info);
+            
+            // Determinar símbolo APRS (por defecto casa móvil)
+            let symbolCode = '/>'; // Vehículo por defecto para móviles
+            
+            // Buscar símbolo en el packet APRS (generalmente después de coordenadas)
+            const symbolMatch = info.match(/[\/\\](.)/);
+            if (symbolMatch) {
+                symbolCode = symbolMatch[0];
+            }
+            
+            this.logger.info('📊 Callsign:', callsign, 'Comentario limpio:', cleanedComment, 'Símbolo:', symbolCode);
+            
+            // Crear estructura APRS mejorada
             return {
                 source: callsign,
                 aprs: {
@@ -239,8 +532,9 @@ class APRS extends EventEmitter {
                         lat: -32.908, // Coordenada fija para testing
                         lon: -68.817
                     },
-                    comment: 'Parsed from AX.25 - ' + info.substring(0, 20),
-                    symbol: '/h'
+                    comment: cleanedComment,
+                    symbol: this.getAPRSSymbol(symbolCode),
+                    rawSymbol: symbolCode
                 }
             };
             
@@ -268,9 +562,27 @@ class APRS extends EventEmitter {
             }
             
             if (parsed && parsed.aprs && parsed.aprs.position) {
-                const existingPos = this.receivedPositions.get(parsed.source);
-                const isNewStation = !existingPos;
+                const existingPositions = this.receivedPositions.get(parsed.source) || [];
+                const isNewStation = existingPositions.length === 0;
                 
+                // Calcular distancia desde la repetidora
+                const distanceKm = this.calculateDistance(
+                    this.config.location.lat,
+                    this.config.location.lon,
+                    parsed.aprs.position.lat,
+                    parsed.aprs.position.lon
+                );
+
+                // Verificar si es una nueva ubicación (diferencia > 100 metros)
+                const isNewLocation = existingPositions.length === 0 || 
+                    !existingPositions.some(pos => {
+                        const locDistance = this.calculateDistance(
+                            pos.lat, pos.lon,
+                            parsed.aprs.position.lat, parsed.aprs.position.lon
+                        );
+                        return locDistance < 0.1; // 100 metros
+                    });
+
                 const position = {
                     callsign: parsed.source,
                     lat: parsed.aprs.position.lat,
@@ -279,21 +591,44 @@ class APRS extends EventEmitter {
                     comment: parsed.aprs.comment || '',
                     symbol: parsed.aprs.symbol || '/',
                     lastHeard: new Date(),
-                    count: isNewStation ? 1 : (existingPos.count || 1) + 1,
-                    firstHeard: isNewStation ? new Date() : (existingPos.firstHeard || existingPos.timestamp),
+                    count: existingPositions.length + 1,
+                    firstHeard: isNewStation ? new Date() : existingPositions[0].firstHeard,
+                    distance: Math.round(distanceKm * 100) / 100,
+                    locationId: Date.now(), // ID único para esta ubicación
                     raw: frame
                 };
                 
-                // Guardar posición (actualizar o crear nueva)
-                this.receivedPositions.set(parsed.source, position);
+                if (isNewLocation) {
+                    // Agregar nueva posición al historial
+                    existingPositions.push(position);
+                    this.receivedPositions.set(parsed.source, existingPositions);
+                } else {
+                    // Actualizar la posición existente más cercana
+                    let closestIndex = 0;
+                    let minDistance = Infinity;
+                    existingPositions.forEach((pos, index) => {
+                        const locDistance = this.calculateDistance(
+                            pos.lat, pos.lon,
+                            parsed.aprs.position.lat, parsed.aprs.position.lon
+                        );
+                        if (locDistance < minDistance) {
+                            minDistance = locDistance;
+                            closestIndex = index;
+                        }
+                    });
+                    existingPositions[closestIndex] = position;
+                    this.receivedPositions.set(parsed.source, existingPositions);
+                }
                 this.stats.positionsReceived++;
                 this.stats.lastPosition = position;
                 
-                // Log diferenciado para estaciones nuevas vs conocidas
+                // Log diferenciado para estaciones nuevas vs ubicaciones nuevas
                 if (isNewStation) {
-                    this.logger.info(`🆕 Nueva estación APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} - ${position.comment}`);
+                    this.logger.info(`🆕 Nueva estación APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} - ${position.distance}km - ${position.comment}`);
+                } else if (isNewLocation) {
+                    this.logger.info(`📍 Nueva ubicación APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} - ${position.distance}km (ubicación #${existingPositions.length})`);
                 } else {
-                    this.logger.info(`📍 Actualización APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} (#${position.count})`);
+                    this.logger.info(`🔄 Actualización APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} - ${position.distance}km`);
                 }
                 
                 // Guardar a archivo
@@ -338,6 +673,8 @@ class APRS extends EventEmitter {
                     return;
                 }
                 
+                // Agrupar posiciones por callsign para mantener historial
+                const positionsByCallsign = new Map();
                 positions.forEach(pos => {
                     // Convertir timestamp string de vuelta a Date
                     if (pos.timestamp) pos.timestamp = new Date(pos.timestamp);
@@ -346,8 +683,15 @@ class APRS extends EventEmitter {
                     // Inicializar contador si no existe
                     if (!pos.count) pos.count = 1;
                     
-                    this.receivedPositions.set(pos.callsign, pos);
+                    // Agrupar por callsign
+                    if (!positionsByCallsign.has(pos.callsign)) {
+                        positionsByCallsign.set(pos.callsign, []);
+                    }
+                    positionsByCallsign.get(pos.callsign).push(pos);
                 });
+                
+                // Guardar en el formato nuevo (arrays de posiciones por callsign)
+                this.receivedPositions = positionsByCallsign;
                 
                 this.logger.info(`Cargadas ${positions.length} posiciones APRS desde archivo`);
                 
@@ -372,16 +716,24 @@ class APRS extends EventEmitter {
                 await this.createBackup();
             }
 
-            const positions = Array.from(this.receivedPositions.values()).map(pos => ({
-                callsign: pos.callsign,
-                lat: pos.lat,
-                lon: pos.lon,
-                timestamp: pos.timestamp,
-                comment: pos.comment || '',
-                symbol: pos.symbol || '/',
-                lastHeard: pos.timestamp,
-                count: pos.count || 1 // Contador de beacons recibidos
-            }));
+            // Aplanar todas las posiciones de todos los callsigns
+            const positions = [];
+            for (const [callsign, positionArray] of this.receivedPositions.entries()) {
+                positionArray.forEach(pos => {
+                    positions.push({
+                        callsign: pos.callsign,
+                        lat: pos.lat,
+                        lon: pos.lon,
+                        timestamp: pos.timestamp,
+                        comment: pos.comment || '',
+                        symbol: pos.symbol || '/',
+                        lastHeard: pos.lastHeard,
+                        distance: pos.distance,
+                        count: pos.count || 1,
+                        locationId: pos.locationId
+                    });
+                });
+            }
 
             // Guardar de forma asíncrona para no bloquear
             fs.writeFileSync(this.logFile, JSON.stringify({
@@ -721,21 +1073,32 @@ class APRS extends EventEmitter {
      * Obtener todas las posiciones para el mapa (solo activas)
      */
     getAllPositions() {
-        return Array.from(this.receivedPositions.values())
-            .filter(pos => !pos.archived)
-            .sort((a, b) => (b.lastHeard || b.timestamp) - (a.lastHeard || a.timestamp));
+        const allPositions = [];
+        // Aplanar todas las posiciones de todos los callsigns
+        for (const [callsign, positionArray] of this.receivedPositions.entries()) {
+            positionArray.forEach(pos => {
+                if (!pos.archived) {
+                    allPositions.push(pos);
+                }
+            });
+        }
+        return allPositions.sort((a, b) => (b.lastHeard || b.timestamp) - (a.lastHeard || a.timestamp));
     }
 
     /**
      * Obtener estadísticas detalladas
      */
     getDetailedStats() {
-        const positions = Array.from(this.receivedPositions.values());
-        const active = positions.filter(pos => !pos.archived);
-        const archived = positions.filter(pos => pos.archived);
+        // Usar el mismo método que getAllPositions para obtener todas las posiciones
+        const allPositions = [];
+        for (const [callsign, positionArray] of this.receivedPositions.entries()) {
+            positionArray.forEach(pos => allPositions.push(pos));
+        }
+        const active = allPositions.filter(pos => !pos.archived);
+        const archived = allPositions.filter(pos => pos.archived);
         
         return {
-            total: positions.length,
+            total: allPositions.length,
             active: active.length,
             archived: archived.length,
             beacons: {
