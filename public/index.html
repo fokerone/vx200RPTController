@@ -32,6 +32,7 @@
         <!-- Navigation Tabs -->
         <nav class="tabs">
             <button class="tab-button active" data-tab="status">Estado del Sistema</button>
+            <button class="tab-button" data-tab="health">🧹 Sistema 24/7</button>
             <button class="tab-button" data-tab="dtmf">Monitor DTMF</button>
             <button class="tab-button" data-tab="aprs">📡 APRS</button>
             <button class="tab-button" data-tab="config">Configuración</button>
@@ -249,6 +250,138 @@
                         <button class="btn btn-danger" onclick="systemAction('shutdown')">
                             <span>⏻</span> Apagar Sistema
                         </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Health Tab -->
+        <div class="tab-content hidden" id="healthTab">
+            <!-- System Health Overview -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>🏥 Estado de Salud del Sistema</h2>
+                    <div class="health-actions">
+                        <button class="btn btn-primary" id="refreshHealth">🔄 Actualizar</button>
+                        <button class="btn btn-warning" id="forceCleanup">🧹 Limpiar Ahora</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="health-grid">
+                        <div class="health-metric" id="tempFilesMetric">
+                            <div class="metric-header">
+                                <span class="metric-icon">📁</span>
+                                <span class="metric-label">Archivos Temporales</span>
+                                <span class="metric-status" id="tempFilesStatus">✅</span>
+                            </div>
+                            <div class="metric-value" id="tempFilesValue">-- archivos</div>
+                            <div class="metric-details" id="tempFilesDetails">--</div>
+                        </div>
+
+                        <div class="health-metric" id="tempSizeMetric">
+                            <div class="metric-header">
+                                <span class="metric-icon">💾</span>
+                                <span class="metric-label">Espacio Temporal</span>
+                                <span class="metric-status" id="tempSizeStatus">✅</span>
+                            </div>
+                            <div class="metric-value" id="tempSizeValue">-- MB</div>
+                            <div class="metric-details" id="tempSizeDetails">--</div>
+                        </div>
+
+                        <div class="health-metric" id="memoryMetric">
+                            <div class="metric-header">
+                                <span class="metric-icon">🧠</span>
+                                <span class="metric-label">Uso de Memoria</span>
+                                <span class="metric-status" id="memoryStatus">✅</span>
+                            </div>
+                            <div class="metric-value" id="memoryValue">-- MB</div>
+                            <div class="metric-details" id="memoryDetails">--</div>
+                        </div>
+
+                        <div class="health-metric" id="uptimeMetric">
+                            <div class="metric-header">
+                                <span class="metric-icon">⏱️</span>
+                                <span class="metric-label">Tiempo Activo</span>
+                                <span class="metric-status" id="uptimeStatus">✅</span>
+                            </div>
+                            <div class="metric-value" id="uptimeValue">-- horas</div>
+                            <div class="metric-details" id="uptimeDetails">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Alerts -->
+            <div class="card" id="systemAlerts" style="display: none;">
+                <div class="card-header">
+                    <h2>🚨 Alertas del Sistema</h2>
+                </div>
+                <div class="card-body">
+                    <div class="alerts-container" id="alertsList">
+                        <!-- Alerts will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cleanup Configuration -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>⚙️ Configuración de Limpieza 24/7</h2>
+                    <small style="color: #666;">Optimizado para funcionamiento continuo</small>
+                </div>
+                <div class="card-body">
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">Intervalo de Limpieza</label>
+                            <div class="config-value" id="cleanupInterval">-- horas</div>
+                            <small class="config-description">Frecuencia de limpieza automática</small>
+                        </div>
+
+                        <div class="config-item">
+                            <label class="config-label">Edad Máxima de Archivos</label>
+                            <div class="config-value" id="maxFileAge">-- horas</div>
+                            <small class="config-description">Archivos más antiguos son eliminados</small>
+                        </div>
+
+                        <div class="config-item">
+                            <label class="config-label">Tamaño Máximo Temporal</label>
+                            <div class="config-value" id="maxTempSize">-- MB</div>
+                            <small class="config-description">Límite de espacio para archivos temporales</small>
+                        </div>
+
+                        <div class="config-item">
+                            <label class="config-label">Próxima Limpieza</label>
+                            <div class="config-value" id="nextCleanup">--</div>
+                            <small class="config-description">Estimación basada en intervalo configurado</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Directory Statistics -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>📊 Estadísticas de Directorios</h2>
+                </div>
+                <div class="card-body">
+                    <div class="directories-container" id="directoriesList">
+                        <!-- Directory stats will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cleanup History -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>📋 Historial de Limpieza</h2>
+                    <small style="color: #666;">Últimas operaciones de limpieza automática</small>
+                </div>
+                <div class="card-body">
+                    <div class="cleanup-log" id="cleanupLog">
+                        <div class="log-item">
+                            <span class="log-time">--:--:--</span>
+                            <span class="log-message">Sistema de limpieza inicializando...</span>
+                        </div>
                     </div>
                 </div>
             </div>

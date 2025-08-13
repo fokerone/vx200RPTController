@@ -380,6 +380,59 @@ class WebServer {
                 res.status(500).json({ success: false, message: error.message });
             }
         });
+
+        // === RUTAS SISTEMA DE CLEANUP ===
+        
+        this.app.get('/api/system/health', (req, res) => {
+            try {
+                const health = this.controller.getSystemHealth();
+                res.json({ success: true, data: health });
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.get('/api/system/temp-stats', (req, res) => {
+            try {
+                if (this.controller.audio && typeof this.controller.audio.getTempSpaceStats === 'function') {
+                    const stats = this.controller.audio.getTempSpaceStats();
+                    res.json({ success: true, data: stats });
+                } else {
+                    res.json({ success: false, message: 'Función de estadísticas temporales no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.post('/api/system/cleanup', async (req, res) => {
+            try {
+                const result = await this.controller.forceCleanup();
+                res.json(result);
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.get('/api/system/cleanup-config', (req, res) => {
+            try {
+                if (this.controller.audio && this.controller.audio.cleanupConfig) {
+                    const config = this.controller.audio.cleanupConfig;
+                    res.json({ 
+                        success: true, 
+                        data: {
+                            intervalHours: config.interval / (60 * 60 * 1000),
+                            maxFileAgeHours: config.maxFileAge / (60 * 60 * 1000),
+                            maxTempSizeMB: config.maxTempSize / (1024 * 1024)
+                        }
+                    });
+                } else {
+                    res.json({ success: false, message: 'Configuración de cleanup no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
         
         this.app.use((req, res) => {
             res.status(404).json({ success: false, message: 'Endpoint not found' });
@@ -748,6 +801,27 @@ class WebServer {
     broadcastConfigurationUpdate(updates) {
         if (this.connectedClients.size > 0) {
             this.io.emit('configuration_updated', { updates });
+        }
+    }
+
+    // Eventos Sistema de Salud 24/7
+    broadcastCleanupCompleted(data) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('cleanup_completed', {
+                filesDeleted: data.filesDeleted || 0,
+                sizeFreedMB: data.sizeFreedMB || 0,
+                timestamp: new Date().toISOString(),
+                ...data
+            });
+        }
+    }
+
+    broadcastSystemHealthUpdate(healthData) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('system_health_update', {
+                ...healthData,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 

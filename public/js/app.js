@@ -103,6 +103,17 @@ class VX200Panel {
         this.socket.on('weather_alert_expired', (data) => {
             this.handleExpiredWeatherAlert(data);
         });
+
+        // Eventos WebSocket para Sistema de Salud 24/7
+        this.socket.on('cleanup_completed', (data) => {
+            this.handleCleanupCompleted(data);
+        });
+
+        this.socket.on('system_health_update', (data) => {
+            if (this.currentTab === 'health') {
+                this.updateSystemHealth(data);
+            }
+        });
     }
 
 
@@ -122,6 +133,18 @@ class VX200Panel {
                 volumeValue.textContent = e.target.value;
             });
         }
+
+        // Event listeners para Sistema de Salud 24/7
+        document.getElementById('refreshHealth')?.addEventListener('click', () => {
+            refreshSystemHealth();
+            refreshTempStats();
+            loadCleanupConfig();
+            this.addCleanupLogEntry('Datos actualizados manualmente');
+        });
+
+        document.getElementById('forceCleanup')?.addEventListener('click', () => {
+            forceSystemCleanup();
+        });
     }
 
     setupTabs() {
@@ -151,6 +174,12 @@ class VX200Panel {
                 } else if (tabName === 'aprs') {
                     this.refreshAPRSStats();
                     this.loadAPRSStations();
+                } else if (tabName === 'health') {
+                    // Cargar datos del sistema de salud
+                    refreshSystemHealth();
+                    refreshTempStats();
+                    loadCleanupConfig();
+                    this.addCleanupLogEntry('Sistema de salud inicializado');
                 }
             });
         });
@@ -781,6 +810,212 @@ class VX200Panel {
         }
     }
 
+    // === MÉTODOS SISTEMA DE SALUD 24/7 ===
+    
+    updateSystemHealth(data) {
+        // Actualizar métricas de salud
+        this.updateHealthMetric('tempFiles', data.tempFiles.total.files, `${data.tempFiles.total.files} archivos`, 'Directorios temporales');
+        this.updateHealthMetric('tempSize', parseFloat(data.tempFiles.total.sizeMB), `${data.tempFiles.total.sizeMB} MB`, 'Espacio usado');
+        
+        if (data.system && data.system.memory) {
+            const memoryMB = Math.round(data.system.memory.heapUsed / (1024 * 1024));
+            this.updateHealthMetric('memory', memoryMB, `${memoryMB} MB`, `${Math.round(data.system.memory.rss / (1024 * 1024))} MB RSS`);
+        }
+        
+        if (data.system && data.system.uptime) {
+            const uptimeHours = Math.round(data.system.uptime / 3600);
+            this.updateHealthMetric('uptime', uptimeHours, `${uptimeHours} horas`, `${Math.round(data.uptime / (60 * 60 * 1000))} horas proceso`);
+        }
+        
+        // Actualizar alertas del sistema
+        this.updateSystemAlerts(data.alerts || []);
+        
+        // Actualizar estadísticas de directorios
+        this.updateDirectoriesStats(data.tempFiles.directories);
+    }
+    
+    updateHealthMetric(metricType, value, displayValue, details) {
+        const statusElement = document.getElementById(`${metricType}Status`);
+        const valueElement = document.getElementById(`${metricType}Value`);
+        const detailsElement = document.getElementById(`${metricType}Details`);
+        
+        if (statusElement) {
+            // Determinar estado basado en umbrales
+            let status = '✅';
+            if (metricType === 'tempFiles' && value > 100) status = '🚨';
+            else if (metricType === 'tempFiles' && value > 50) status = '⚠️';
+            else if (metricType === 'tempSize' && value > 200) status = '🚨';
+            else if (metricType === 'tempSize' && value > 100) status = '⚠️';
+            else if (metricType === 'memory' && value > 200) status = '⚠️';
+            else if (metricType === 'uptime' && value < 1) status = '🔄';
+            
+            statusElement.textContent = status;
+        }
+        
+        if (valueElement) {
+            valueElement.textContent = displayValue;
+        }
+        
+        if (detailsElement) {
+            detailsElement.textContent = details;
+        }
+    }
+    
+    updateSystemAlerts(alerts) {
+        const alertsContainer = document.getElementById('systemAlerts');
+        const alertsList = document.getElementById('alertsList');
+        
+        if (!alertsList) return;
+        
+        if (alerts.length === 0) {
+            alertsContainer.style.display = 'none';
+            return;
+        }
+        
+        alertsContainer.style.display = 'block';
+        alertsList.innerHTML = '';
+        
+        alerts.forEach(alert => {
+            const alertElement = document.createElement('div');
+            alertElement.className = `alert-item ${alert.level}`;
+            
+            const icon = alert.level === 'warning' ? '⚠️' : alert.level === 'info' ? 'ℹ️' : '🚨';
+            
+            alertElement.innerHTML = `
+                <span class="alert-icon">${icon}</span>
+                <div class="alert-content">
+                    <div class="alert-type">${alert.type}</div>
+                    <div class="alert-message">${alert.message}</div>
+                </div>
+            `;
+            
+            alertsList.appendChild(alertElement);
+        });
+    }
+    
+    updateTempStats(data) {
+        // Actualizar estadísticas específicas de archivos temporales
+        const tempFilesValue = document.getElementById('tempFilesValue');
+        const tempSizeValue = document.getElementById('tempSizeValue');
+        
+        if (tempFilesValue) {
+            tempFilesValue.textContent = `${data.total.files} archivos`;
+        }
+        
+        if (tempSizeValue) {
+            tempSizeValue.textContent = `${data.total.sizeMB} MB`;
+        }
+        
+        // Actualizar directorios
+        this.updateDirectoriesStats(data.directories);
+    }
+    
+    updateDirectoriesStats(directories) {
+        const directoriesContainer = document.getElementById('directoriesList');
+        
+        if (!directoriesContainer) return;
+        
+        directoriesContainer.innerHTML = '';
+        
+        Object.entries(directories).forEach(([dirName, stats]) => {
+            const directoryElement = document.createElement('div');
+            directoryElement.className = 'directory-item';
+            
+            let status = '✅';
+            if (stats.error) status = '❌';
+            else if (stats.files > 50 || parseFloat(stats.sizeMB) > 50) status = '⚠️';
+            
+            directoryElement.innerHTML = `
+                <div class="directory-info">
+                    <div class="directory-name">${dirName}</div>
+                    <div class="directory-stats">${stats.files} archivos • ${stats.sizeMB}MB</div>
+                </div>
+                <div class="directory-status">${status}</div>
+            `;
+            
+            directoriesContainer.appendChild(directoryElement);
+        });
+    }
+    
+    updateCleanupConfig(config) {
+        // Actualizar configuración de limpieza
+        const intervalElement = document.getElementById('cleanupInterval');
+        const maxAgeElement = document.getElementById('maxFileAge');
+        const maxSizeElement = document.getElementById('maxTempSize');
+        const nextCleanupElement = document.getElementById('nextCleanup');
+        
+        if (intervalElement) {
+            intervalElement.textContent = `${config.intervalHours} horas`;
+        }
+        
+        if (maxAgeElement) {
+            maxAgeElement.textContent = `${config.maxFileAgeHours} horas`;
+        }
+        
+        if (maxSizeElement) {
+            maxSizeElement.textContent = `${config.maxTempSizeMB} MB`;
+        }
+        
+        if (nextCleanupElement) {
+            // Calcular próxima limpieza aproximada
+            const nextTime = new Date(Date.now() + (config.intervalHours * 60 * 60 * 1000));
+            nextCleanupElement.textContent = nextTime.toLocaleString('es-AR');
+        }
+    }
+    
+    addCleanupLogEntry(message) {
+        const cleanupLog = document.getElementById('cleanupLog');
+        
+        if (!cleanupLog) return;
+        
+        const logEntry = document.createElement('div');
+        logEntry.className = 'log-item';
+        
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('es-AR');
+        
+        logEntry.innerHTML = `
+            <span class="log-time">${timeStr}</span>
+            <span class="log-message">${message}</span>
+        `;
+        
+        // Agregar al inicio del log
+        const firstChild = cleanupLog.firstChild;
+        if (firstChild) {
+            cleanupLog.insertBefore(logEntry, firstChild);
+        } else {
+            cleanupLog.appendChild(logEntry);
+        }
+        
+        // Mantener solo los últimos 20 entries
+        const entries = cleanupLog.children;
+        if (entries.length > 20) {
+            cleanupLog.removeChild(entries[entries.length - 1]);
+        }
+    }
+    
+    handleCleanupCompleted(data) {
+        // Agregar entrada al log
+        const message = data.filesDeleted > 0 
+            ? `Cleanup automático: ${data.filesDeleted} archivos eliminados (${data.sizeFreedMB}MB)`
+            : 'Cleanup automático: directorio temp limpio';
+            
+        this.addCleanupLogEntry(message);
+        
+        // Actualizar estadísticas si estamos en la tab de salud
+        if (this.currentTab === 'health') {
+            setTimeout(() => {
+                refreshSystemHealth();
+                refreshTempStats();
+            }, 1000);
+        }
+        
+        // Mostrar notificación
+        if (data.filesDeleted > 0) {
+            this.showNotification(`Cleanup: ${data.filesDeleted} archivos limpiados`, 'success');
+        }
+    }
+
     async updateWeatherAlertsDisplay() {
         try {
             const response = await fetch('/api/weather-alerts/active');
@@ -1148,5 +1383,78 @@ async function checkWeatherAlerts() {
     } catch (error) {
         console.error('Error checking weather alerts:', error);
         panel.showNotification('Error verificando alertas', 'error');
+    }
+}
+
+// === FUNCIONES SISTEMA DE SALUD 24/7 ===
+
+async function refreshSystemHealth() {
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/system/health');
+        const result = await response.json();
+
+        if (result.success) {
+            panel.updateSystemHealth(result.data);
+        }
+    } catch (error) {
+        console.error('Error refreshing system health:', error);
+    }
+}
+
+async function refreshTempStats() {
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/system/temp-stats');
+        const result = await response.json();
+
+        if (result.success) {
+            panel.updateTempStats(result.data);
+        }
+    } catch (error) {
+        console.error('Error refreshing temp stats:', error);
+    }
+}
+
+async function forceSystemCleanup() {
+    if (!panel) return;
+
+    try {
+        panel.showNotification('Iniciando limpieza de archivos temporales...', 'info');
+        
+        const response = await fetch('/api/system/cleanup', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            panel.showNotification('Limpieza ejecutada exitosamente', 'success');
+            // Refresh health data after cleanup
+            setTimeout(refreshSystemHealth, 1000);
+            setTimeout(refreshTempStats, 1000);
+        } else {
+            panel.showNotification(result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error forcing cleanup:', error);
+        panel.showNotification('Error ejecutando limpieza', 'error');
+    }
+}
+
+async function loadCleanupConfig() {
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/system/cleanup-config');
+        const result = await response.json();
+
+        if (result.success) {
+            panel.updateCleanupConfig(result.data);
+        }
+    } catch (error) {
+        console.error('Error loading cleanup config:', error);
     }
 }

@@ -1103,6 +1103,236 @@ body {
 }
 
 
+/* === ESTILOS SISTEMA DE SALUD 24/7 === */
+
+.health-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.health-metric {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+}
+
+.health-metric:hover {
+    border-color: rgba(59, 130, 246, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.metric-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.metric-icon {
+    font-size: 1.5rem;
+    margin-right: 0.75rem;
+}
+
+.metric-label {
+    font-weight: 500;
+    color: #e2e8f0;
+    flex: 1;
+}
+
+.metric-status {
+    font-size: 1.2rem;
+}
+
+.metric-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #3b82f6;
+    margin-bottom: 0.5rem;
+}
+
+.metric-details {
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+.config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.config-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.config-label {
+    font-weight: 500;
+    color: #e2e8f0;
+    font-size: 0.875rem;
+}
+
+.config-value {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #10b981;
+}
+
+.config-description {
+    color: #94a3b8;
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.alerts-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.alert-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 0.5rem;
+}
+
+.alert-item.warning {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.2);
+}
+
+.alert-item.info {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.alert-icon {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.alert-content {
+    flex: 1;
+}
+
+.alert-type {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.alert-message {
+    color: #e2e8f0;
+    font-weight: 500;
+}
+
+.directories-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.directory-item {
+    display: flex;
+    align-items: center;
+    justify-content: between;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 0.5rem;
+}
+
+.directory-info {
+    flex: 1;
+}
+
+.directory-name {
+    font-weight: 500;
+    color: #e2e8f0;
+    margin-bottom: 0.25rem;
+}
+
+.directory-stats {
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+.directory-status {
+    font-size: 1.5rem;
+}
+
+.cleanup-log {
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.log-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    font-size: 0.875rem;
+}
+
+.log-item:last-child {
+    border-bottom: none;
+}
+
+.log-time {
+    color: #10b981;
+    font-weight: 500;
+    flex-shrink: 0;
+    min-width: 80px;
+}
+
+.log-message {
+    color: #e2e8f0;
+    flex: 1;
+}
+
+/* Responsividad para móviles */
+@media (max-width: 768px) {
+    .health-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .config-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .health-actions {
+        flex-direction: column;
+    }
+    
+    .directory-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+}
+
 /* Utilidades */
 .text-center { text-align: center; }
 .text-left { text-align: left; }

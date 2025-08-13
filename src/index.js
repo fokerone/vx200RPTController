@@ -60,6 +60,9 @@ class VX200Controller {
             this.logger.debug('Configurando desde archivo...');
             this.configureFromFile();
             
+            this.logger.debug('Ejecutando cleanup inicial...');
+            this.performInitialCleanup();
+            
             if (this.initializationErrors.length > 0) {
                 this.logger.warn(`Sistema inicializado con ${this.initializationErrors.length} errores: ${this.initializationErrors.join(', ')}`);
                 this.state = MODULE_STATES.ERROR;
@@ -166,6 +169,23 @@ class VX200Controller {
             this.modules.baliza.configure(Config.baliza);
         }
         
+    }
+
+    /**
+     * Ejecutar cleanup inicial al arranque para sistemas 24/7
+     */
+    performInitialCleanup() {
+        // Ejecutar cleanup en background para no bloquear el arranque
+        setTimeout(async () => {
+            try {
+                if (this.audio && typeof this.audio.performCleanup === 'function') {
+                    await this.audio.performCleanup();
+                    this.logger.info('✅ Cleanup inicial completado');
+                }
+            } catch (error) {
+                this.logger.warn('Error en cleanup inicial:', error.message);
+            }
+        }, 5000); // Esperar 5 segundos después del arranque completo
     }
 
     setupEventHandlers() {
@@ -708,6 +728,20 @@ class VX200Controller {
         this.logger.info(`  Roger Beep: ${status.rogerBeep.enabled ? 'ENABLED' : 'DISABLED'}`);
         this.logger.info(`  Web Server: ${this.isRunning ? 'RUNNING' : 'STOPPED'}`);
         
+        // Verificar estado de archivos temporales
+        if (this.audio && typeof this.audio.getTempSpaceStats === 'function') {
+            const tempStats = this.audio.getTempSpaceStats();
+            this.logger.info(`  Archivos temp: ${tempStats.total.files} archivos (${tempStats.total.sizeMB}MB)`);
+            
+            // Alertar si hay demasiados archivos temporales
+            if (tempStats.total.files > 50) {
+                this.logger.warn(`  ⚠️  Muchos archivos temporales: ${tempStats.total.files}`);
+            }
+            if (parseFloat(tempStats.total.sizeMB) > 50) {
+                this.logger.warn(`  ⚠️  Uso alto de espacio temp: ${tempStats.total.sizeMB}MB`);
+            }
+        }
+        
         if (status.audio.status === 'active') {
             try {
                 await this.audio.healthCheck();
@@ -717,6 +751,98 @@ class VX200Controller {
         }
         
         return status;
+    }
+
+    /**
+     * Obtener estadísticas detalladas del sistema para funcionamiento 24/7
+     */
+    getSystemHealth() {
+        const baseStatus = this.getSystemStatus();
+        const detailedStatus = this.getDetailedStatus();
+        
+        // Agregar estadísticas de archivos temporales
+        let tempStats = { total: { files: 0, size: 0, sizeMB: '0.00' }, directories: {} };
+        if (this.audio && typeof this.audio.getTempSpaceStats === 'function') {
+            tempStats = this.audio.getTempSpaceStats();
+        }
+        
+        return {
+            ...baseStatus,
+            system: detailedStatus.system,
+            tempFiles: tempStats,
+            alerts: this.generateSystemAlerts(tempStats, detailedStatus)
+        };
+    }
+
+    /**
+     * Generar alertas del sistema para monitoreo 24/7
+     */
+    generateSystemAlerts(tempStats, systemStatus) {
+        const alerts = [];
+        
+        // Alertas de archivos temporales
+        if (tempStats.total.files > 100) {
+            alerts.push({
+                level: 'warning',
+                type: 'temp_files',
+                message: `Muchos archivos temporales: ${tempStats.total.files}`,
+                value: tempStats.total.files,
+                threshold: 100
+            });
+        }
+        
+        if (parseFloat(tempStats.total.sizeMB) > 100) {
+            alerts.push({
+                level: 'warning', 
+                type: 'temp_size',
+                message: `Alto uso de espacio temporal: ${tempStats.total.sizeMB}MB`,
+                value: parseFloat(tempStats.total.sizeMB),
+                threshold: 100
+            });
+        }
+        
+        // Alertas de memoria
+        if (systemStatus.system.memory.heapUsed > 200 * 1024 * 1024) { // > 200MB
+            alerts.push({
+                level: 'warning',
+                type: 'memory',
+                message: `Alto uso de memoria: ${Math.round(systemStatus.system.memory.heapUsed / (1024 * 1024))}MB`,
+                value: systemStatus.system.memory.heapUsed,
+                threshold: 200 * 1024 * 1024
+            });
+        }
+        
+        // Alertas de uptime (verificar reinicio reciente)
+        if (systemStatus.system.uptime < 300) { // < 5 minutos
+            alerts.push({
+                level: 'info',
+                type: 'recent_restart',
+                message: `Sistema reiniciado recientemente: ${Math.round(systemStatus.system.uptime / 60)} min`,
+                value: systemStatus.system.uptime,
+                threshold: 300
+            });
+        }
+        
+        return alerts;
+    }
+
+    /**
+     * Forzar cleanup manual de archivos temporales
+     */
+    async forceCleanup() {
+        this.logger.info('Ejecutando cleanup manual de archivos temporales...');
+        
+        if (this.audio && typeof this.audio.performCleanup === 'function') {
+            try {
+                await this.audio.performCleanup();
+                return { success: true, message: 'Cleanup ejecutado exitosamente' };
+            } catch (error) {
+                this.logger.error('Error en cleanup manual:', error.message);
+                return { success: false, message: `Error: ${error.message}` };
+            }
+        } else {
+            return { success: false, message: 'Función de cleanup no disponible' };
+        }
     }
 }
 

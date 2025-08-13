@@ -65,8 +65,17 @@ class AudioManager extends EventEmitter {
             this.emit('signal_level', data);
         }, 100); // 100ms throttle
         
+        // Sistema de cleanup automático para funcionamiento 24/7
+        this.cleanupTimer = null;
+        this.cleanupConfig = {
+            interval: 6 * 60 * 60 * 1000,  // 6 horas
+            maxFileAge: 2 * 60 * 60 * 1000, // 2 horas
+            maxTempSize: 100 * 1024 * 1024  // 100MB máximo en temp
+        };
+        
         this.initializeDirectories();
-        this.logger.info('AudioManager inicializado');
+        this.startCleanupTimer();
+        this.logger.info('AudioManager inicializado con cleanup automático 24/7');
     }
 
     /**
@@ -1321,6 +1330,254 @@ class AudioManager extends EventEmitter {
         return status;
     }
 
+    // ===== CLEANUP AUTOMÁTICO 24/7 =====
+    
+    /**
+     * Iniciar timer de cleanup automático
+     */
+    startCleanupTimer() {
+        this.cleanupTimer = setInterval(() => {
+            this.performCleanup().catch(error => {
+                this.logger.warn('Error en cleanup automático:', error.message);
+            });
+        }, this.cleanupConfig.interval);
+        
+        // Cleanup inicial después de 30 segundos del arranque
+        setTimeout(() => {
+            this.performCleanup().catch(error => {
+                this.logger.debug('Error en cleanup inicial:', error.message);
+            });
+        }, 30000);
+        
+        this.logger.info(`Cleanup automático programado cada ${this.cleanupConfig.interval / (60 * 60 * 1000)} horas`);
+    }
+    
+    /**
+     * Ejecutar limpieza completa de archivos temporales
+     */
+    async performCleanup() {
+        try {
+            const startTime = Date.now();
+            let totalCleaned = 0;
+            let totalSize = 0;
+            
+            this.logger.info('🧹 Iniciando cleanup automático de archivos temporales...');
+            
+            // 1. Limpiar directorio temp principal
+            const tempCleaned = await this.cleanupDirectory(this.tempDir, 'temp');
+            totalCleaned += tempCleaned.count;
+            totalSize += tempCleaned.size;
+            
+            // 2. Limpiar directorio de sounds/temp si existe
+            const soundsTempDir = path.join(this.soundsDir, 'temp');
+            if (fs.existsSync(soundsTempDir)) {
+                const soundsCleaned = await this.cleanupDirectory(soundsTempDir, 'sounds/temp');
+                totalCleaned += soundsCleaned.count;
+                totalSize += soundsCleaned.size;
+            }
+            
+            // 3. Limpiar archivos .tmp del sistema
+            const tmpCleaned = await this.cleanupSystemTmpFiles();
+            totalCleaned += tmpCleaned.count;
+            totalSize += tmpCleaned.size;
+            
+            const duration = Date.now() - startTime;
+            const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+            
+            if (totalCleaned > 0) {
+                this.logger.info(`✅ Cleanup completado: ${totalCleaned} archivos eliminados (${sizeMB}MB) en ${duration}ms`);
+            } else {
+                this.logger.debug(`✅ Cleanup completado: directorio temp limpio en ${duration}ms`);
+            }
+            
+        } catch (error) {
+            this.logger.error('Error en cleanup automático:', error.message);
+        }
+    }
+    
+    /**
+     * Limpiar un directorio específico
+     */
+    async cleanupDirectory(directory, name) {
+        let cleaned = 0;
+        let freedSize = 0;
+        
+        if (!fs.existsSync(directory)) {
+            return { count: cleaned, size: freedSize };
+        }
+        
+        try {
+            const files = fs.readdirSync(directory);
+            const now = Date.now();
+            
+            for (const file of files) {
+                const filePath = path.join(directory, file);
+                
+                try {
+                    const stats = fs.statSync(filePath);
+                    const age = now - stats.mtimeMs;
+                    
+                    // Eliminar archivos temporales antiguos
+                    if (this.shouldCleanFile(file, age, stats.size)) {
+                        const fileSize = stats.size;
+                        fs.unlinkSync(filePath);
+                        cleaned++;
+                        freedSize += fileSize;
+                        
+                        this.logger.debug(`🗑️  ${name}: ${file} (${(fileSize / 1024).toFixed(1)}KB, ${Math.round(age / (60 * 1000))} min)`);
+                    }
+                } catch (fileError) {
+                    this.logger.debug(`Error procesando ${filePath}:`, fileError.message);
+                }
+            }
+            
+        } catch (error) {
+            this.logger.warn(`Error limpiando directorio ${name}:`, error.message);
+        }
+        
+        return { count: cleaned, size: freedSize };
+    }
+    
+    /**
+     * Determinar si un archivo debe ser limpiado
+     */
+    shouldCleanFile(filename, age, size) {
+        // Archivos temporales de audio
+        const tempAudioPatterns = [
+            /^combined_\d+\.mp3$/,      // combined_timestamp.mp3
+            /^temp_\d+\.(wav|mp3)$/,    // temp_timestamp.wav/mp3
+            /^tts_\d+\.(wav|mp3)$/,     // tts_timestamp.wav/mp3
+            /^tone_\d+\.wav$/,          // tone_timestamp.wav
+            /^record_\d+\.wav$/,        // record_timestamp.wav
+            /^speech_\d+\.wav$/,        // speech_timestamp.wav
+            /^google_tts_\d+\.mp3$/,    // google_tts_timestamp.mp3
+            /^espeak_\d+\.wav$/         // espeak_timestamp.wav
+        ];
+        
+        const isTemporaryFile = tempAudioPatterns.some(pattern => pattern.test(filename));
+        
+        if (isTemporaryFile) {
+            // Eliminar archivos temporales de audio > 2 horas
+            return age > this.cleanupConfig.maxFileAge;
+        }
+        
+        // Archivos .tmp del sistema
+        if (filename.endsWith('.tmp')) {
+            // Eliminar archivos .tmp > 30 minutos
+            return age > (30 * 60 * 1000);
+        }
+        
+        // Archivos muy antiguos (> 24 horas) sin importar el tipo
+        if (age > (24 * 60 * 60 * 1000)) {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Limpiar archivos .tmp del sistema operativo
+     */
+    async cleanupSystemTmpFiles() {
+        let cleaned = 0;
+        let freedSize = 0;
+        
+        const systemTmpDirs = ['/tmp', '/var/tmp'].filter(dir => {
+            try {
+                return fs.existsSync(dir) && fs.accessSync(dir, fs.constants.R_OK | fs.constants.W_OK) === undefined;
+            } catch {
+                return false;
+            }
+        });
+        
+        for (const tmpDir of systemTmpDirs) {
+            try {
+                const files = fs.readdirSync(tmpDir);
+                const now = Date.now();
+                
+                for (const file of files) {
+                    // Solo procesar archivos relacionados con nuestro proceso
+                    if (file.includes('vx200') || file.includes('nodejs') || file.includes('espeak') || file.includes('sox')) {
+                        const filePath = path.join(tmpDir, file);
+                        
+                        try {
+                            const stats = fs.statSync(filePath);
+                            const age = now - stats.mtimeMs;
+                            
+                            // Limpiar archivos temporales del sistema > 1 hora
+                            if (age > (60 * 60 * 1000) && stats.isFile()) {
+                                const fileSize = stats.size;
+                                fs.unlinkSync(filePath);
+                                cleaned++;
+                                freedSize += fileSize;
+                                
+                                this.logger.debug(`🗑️  sistema: ${file} (${(fileSize / 1024).toFixed(1)}KB)`);
+                            }
+                        } catch (fileError) {
+                            // Ignorar errores de permisos
+                        }
+                    }
+                }
+            } catch (error) {
+                // Ignorar errores de acceso a directorios del sistema
+            }
+        }
+        
+        return { count: cleaned, size: freedSize };
+    }
+    
+    /**
+     * Obtener estadísticas de uso de espacio temporal
+     */
+    getTempSpaceStats() {
+        const stats = {
+            directories: {},
+            total: { files: 0, size: 0 }
+        };
+        
+        const dirsToCheck = [
+            { path: this.tempDir, name: 'temp' },
+            { path: path.join(this.soundsDir, 'temp'), name: 'sounds/temp' }
+        ];
+        
+        dirsToCheck.forEach(({ path: dirPath, name }) => {
+            if (fs.existsSync(dirPath)) {
+                try {
+                    const files = fs.readdirSync(dirPath);
+                    let dirSize = 0;
+                    let fileCount = 0;
+                    
+                    files.forEach(file => {
+                        try {
+                            const filePath = path.join(dirPath, file);
+                            const fileStats = fs.statSync(filePath);
+                            if (fileStats.isFile()) {
+                                dirSize += fileStats.size;
+                                fileCount++;
+                            }
+                        } catch (error) {
+                            // Ignorar errores de archivos individuales
+                        }
+                    });
+                    
+                    stats.directories[name] = {
+                        files: fileCount,
+                        size: dirSize,
+                        sizeMB: (dirSize / (1024 * 1024)).toFixed(2)
+                    };
+                    
+                    stats.total.files += fileCount;
+                    stats.total.size += dirSize;
+                } catch (error) {
+                    stats.directories[name] = { files: 0, size: 0, sizeMB: '0.00', error: error.message };
+                }
+            }
+        });
+        
+        stats.total.sizeMB = (stats.total.size / (1024 * 1024)).toFixed(2);
+        return stats;
+    }
+
     // ===== CIERRE =====
 
     stop() {
@@ -1340,7 +1597,7 @@ class AudioManager extends EventEmitter {
             this.isRecording = false;
         }
         
-        // Limpiar timeouts
+        // Limpiar timeouts y timers
         if (this.dtmfTimeout) {
             clearTimeout(this.dtmfTimeout);
             this.dtmfTimeout = null;
@@ -1351,6 +1608,12 @@ class AudioManager extends EventEmitter {
             clearTimeout(this.channelActivity.activityTimer);
             this.channelActivity.activityTimer = null;
             this.logger.debug('Timer de actividad de canal limpiado');
+        }
+        
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+            this.logger.debug('Timer de cleanup automático limpiado');
         }
         
         // Limpiar cola de audio
