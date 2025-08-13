@@ -105,53 +105,53 @@ class APRS extends EventEmitter {
     }
 
     /**
-     * Inicializar conexión KISS TNC con utils-for-aprs
+     * Inicializar conexión KISS TNC con TCP directo (temporal debug)
      */
     async initializeKISSConnection() {
         try {
-            const { SocketKISSFrameEndpoint } = require('utils-for-aprs');
+            const net = require('net');
             
-            // Crear endpoint KISS TCP
-            this.kissEndpoint = new SocketKISSFrameEndpoint({
-                host: 'localhost',
-                port: this.config.direwolf.kissPort
-            });
+            // Crear conexión TCP directa al puerto KISS
+            this.kissSocket = new net.Socket();
+            this.kissSocket.setTimeout(0); // Sin timeout
             
-            // Configurar eventos
-            this.kissEndpoint.on('open', () => {
-                this.logger.info('Conectado a Direwolf KISS TNC');
+            this.kissSocket.on('connect', () => {
+                this.logger.info('🔗 Conectado a Direwolf KISS TNC (TCP directo)');
                 this.tncConnection = true;
                 this.emit('tnc_connected');
             });
             
-            this.kissEndpoint.on('close', () => {
-                this.logger.warn('Desconectado de Direwolf KISS TNC');
+            this.kissSocket.on('close', () => {
+                this.logger.warn('❌ Desconectado de Direwolf KISS TNC');
                 this.tncConnection = false;
                 this.emit('tnc_disconnected');
             });
             
-            this.kissEndpoint.on('data', (frame) => {
+            this.kissSocket.on('data', (data) => {
+                // DEBUG: Log cuando recibimos datos KISS
+                this.logger.info('📡 Datos KISS recibidos:', data.length, 'bytes, hex:', data.toString('hex').substring(0, 100));
+                
                 // Si recibimos datos, significa que estamos conectados
                 if (!this.tncConnection) {
                     this.logger.info('Conexión TNC detectada por recepción de datos');
                     this.tncConnection = true;
                     this.emit('tnc_connected');
                 }
-                this.handleReceivedFrame(frame);
+                
+                // Procesar frame KISS (remover header KISS y procesar AX.25)
+                this.handleKISSFrame(data);
             });
             
-            this.kissEndpoint.on('error', (error) => {
-                this.logger.error('Error en conexión KISS:', error.message);
+            this.kissSocket.on('error', (error) => {
+                this.logger.error('Error en conexión KISS TCP:', error.message);
                 this.tncConnection = false;
                 this.emit('tnc_disconnected');
             });
             
-            // Probar conexión inmediata
-            setTimeout(() => {
-                this.testTNCConnection();
-            }, 2000);
+            // Conectar al puerto KISS
+            this.kissSocket.connect(this.config.direwolf.kissPort, 'localhost');
             
-            this.logger.info('Endpoint KISS configurado');
+            this.logger.info('Socket KISS TCP configurado para puerto', this.config.direwolf.kissPort);
             
         } catch (error) {
             this.logger.error('Error configurando conexión KISS:', error.message);
@@ -160,14 +160,112 @@ class APRS extends EventEmitter {
     }
 
     /**
+     * Procesar frame KISS (temporal debug)
+     */
+    handleKISSFrame(kissData) {
+        try {
+            // Frame KISS formato: FEND CMD DATA FEND
+            // CMD: 0x00 = data frame canal 0
+            const FEND = 0xC0;
+            
+            // DEBUG: Mostrar datos KISS raw
+            this.logger.info('🔍 Frame KISS raw:', kissData.toString('hex'));
+            
+            // Buscar inicio de frame (FEND)
+            let start = -1;
+            let end = -1;
+            
+            for (let i = 0; i < kissData.length; i++) {
+                if (kissData[i] === FEND) {
+                    if (start === -1) {
+                        start = i;
+                    } else {
+                        end = i;
+                        break;
+                    }
+                }
+            }
+            
+            if (start !== -1 && end !== -1 && end > start + 2) {
+                // Extraer datos AX.25 (omitir FEND y CMD)
+                const ax25Data = kissData.slice(start + 2, end);
+                this.logger.info('📦 Datos AX.25 extraídos:', ax25Data.length, 'bytes');
+                
+                // Procesar frame AX.25
+                this.handleReceivedFrame(ax25Data);
+            } else {
+                this.logger.warn('⚠️ Frame KISS malformado o incompleto');
+            }
+            
+        } catch (error) {
+            this.logger.error('Error procesando frame KISS:', error.message);
+        }
+    }
+
+    /**
+     * Parser básico AX.25 para debugging 
+     */
+    parseBasicAX25(frame) {
+        try {
+            // Formato AX.25: DEST(7) + SOURCE(7) + PATH(0-56) + CONTROL(1) + PID(1) + INFO
+            if (frame.length < 16) return null; // Muy corto
+            
+            // Extraer callsign source (bytes 7-12, shifted left 1 bit)
+            let callsign = '';
+            for (let i = 7; i < 13; i++) {
+                const c = String.fromCharCode(frame[i] >> 1);
+                if (c !== ' ') callsign += c;
+            }
+            
+            // Buscar info field (después de 0x03 0xF0)
+            let infoStart = -1;
+            for (let i = 14; i < frame.length - 1; i++) {
+                if (frame[i] === 0x03 && frame[i + 1] === 0xF0) {
+                    infoStart = i + 2;
+                    break;
+                }
+            }
+            
+            if (infoStart === -1) return null;
+            
+            const info = frame.slice(infoStart).toString('ascii');
+            this.logger.info('📊 Callsign:', callsign, 'Info:', info.substring(0, 50));
+            
+            // Crear estructura básica simulando APRS con coordenadas dummy
+            return {
+                source: callsign,
+                aprs: {
+                    position: {
+                        lat: -32.908, // Coordenada fija para testing
+                        lon: -68.817
+                    },
+                    comment: 'Parsed from AX.25 - ' + info.substring(0, 20),
+                    symbol: '/h'
+                }
+            };
+            
+        } catch (error) {
+            this.logger.error('Error parsing AX.25:', error.message);
+            return null;
+        }
+    }
+
+    /**
      * Manejar frame APRS recibido
      */
     async handleReceivedFrame(frame) {
         try {
-            const { APRSInfoParser } = require('utils-for-aprs');
+            // DEBUG: Log el frame recibido
+            this.logger.info('🔍 Procesando frame APRS...');
             
-            // Parsear frame APRS
-            const parsed = APRSInfoParser(frame);
+            // Parser AX.25 básico manual para debugging
+            const parsed = this.parseBasicAX25(frame);
+            
+            // DEBUG: Log resultado del parsing
+            this.logger.info('📝 Frame parseado:', parsed ? 'ÉXITO' : 'FALLO');
+            if (parsed) {
+                this.logger.info('📋 Source:', parsed.source, 'APRS:', !!parsed.aprs, 'Position:', !!(parsed.aprs && parsed.aprs.position));
+            }
             
             if (parsed && parsed.aprs && parsed.aprs.position) {
                 const existingPos = this.receivedPositions.get(parsed.source);
@@ -569,9 +667,10 @@ class APRS extends EventEmitter {
         }
         
         try {
-            // Desconectar TNC
-            if (this.kissEndpoint && typeof this.kissEndpoint.close === 'function') {
-                this.kissEndpoint.close();
+            // Desconectar TNC (TCP directo)
+            if (this.kissSocket && !this.kissSocket.destroyed) {
+                this.kissSocket.end();
+                this.kissSocket.destroy();
             }
             
             // Limpiar timers

@@ -131,7 +131,7 @@ TXTAIL 1
             this.process.stdout.on('data', (data) => {
                 const output = data.toString().trim();
                 if (output) {
-                    this.logger.debug('Direwolf stdout:', output);
+                    this.logger.info('Direwolf stdout:', output);
                 }
             });
 
