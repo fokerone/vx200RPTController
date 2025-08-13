@@ -174,9 +174,25 @@ class VX200Panel {
                 this.updateDTMFRecentList();
             }
 
+            // Cargar estado inicial de alertas meteorológicas
+            await this.loadWeatherAlertsStatus();
+
         } catch (error) {
             console.error('Error cargando datos iniciales:', error);
             this.showNotification('Error cargando datos del sistema', 'error');
+        }
+    }
+
+    async loadWeatherAlertsStatus() {
+        try {
+            const response = await fetch('/api/weather-alerts/status');
+            const result = await response.json();
+            
+            if (result.success) {
+                this.updateWeatherAlertsStatus(result.data);
+            }
+        } catch (error) {
+            console.error('Error cargando estado de alertas meteorológicas:', error);
         }
     }
 

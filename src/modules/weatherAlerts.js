@@ -579,8 +579,9 @@ class WeatherAlerts extends EventEmitter {
             this.checkForAlerts();
         }, this.config.checkInterval);
         
-        const nextTime = new Date(Date.now() + this.config.checkInterval);
-        this.logger.debug(`Próxima verificación: ${nextTime.toLocaleTimeString('es-AR')}`);
+        // Guardar la fecha exacta del próximo check
+        this.nextCheckTime = new Date(Date.now() + this.config.checkInterval);
+        this.logger.debug(`Próxima verificación: ${this.nextCheckTime.toLocaleTimeString('es-AR')}`);
     }
     
     /**
@@ -722,8 +723,7 @@ class WeatherAlerts extends EventEmitter {
             state: this.state,
             activeAlerts: this.activeAlerts.size,
             lastCheck: this.lastCheck ? new Date(this.lastCheck).toISOString() : null,
-            nextCheck: this.checkTimer ? 
-                new Date(Date.now() + this.config.checkInterval).toISOString() : null,
+            nextCheck: this.nextCheckTime ? this.nextCheckTime.toISOString() : null,
             googleTTSAvailable: !!this.voiceManager,
             aprsIntegration: !!this.aprsModule
         };
