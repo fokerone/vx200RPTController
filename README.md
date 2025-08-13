@@ -1,10 +1,10 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.2.0
+## 📡 Sistema de Control para Repetidora Simplex v2.3.0
 
-Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa con alertas meteorológicas SMN Argentina.
+Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa con historial de posiciones y análisis de cobertura avanzado.
 
-**🎉 Versión 2.2.0 - Sistema de Alertas Meteorológicas SMN Argentina**
+**🚀 Versión 2.3.0 - Sistema APRS Completo con Historial de Posiciones**
 
 ---
 
@@ -18,11 +18,16 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - Modo debug para desarrollo y pruebas
 - Roger Beep estilo Kenwood configurable
 
-### 📡 **Integración APRS Completa**
+### 📡 **Sistema APRS Completo con Análisis de Cobertura**
 - **TNC Software** integrado con Direwolf
+- **Historial completo de posiciones** por estación con persistencia
+- **180+ símbolos APRS oficiales** con emojis descriptivos
+- **Cálculo de distancias** precisas desde repetidora (fórmula Haversine)
+- **Círculo de cobertura dinámico** en mapa web
+- **Widget en tiempo real** de estación más lejana recibida
+- **Detección automática** de nuevas ubicaciones (>100m)
+- **Mapa APRS interactivo** con marcadores informativos
 - Transmisión de beacons automáticos y manuales
-- Recepción y tracking de estaciones
-- **Mapa APRS interactivo** en tiempo real
 - Configuración dinámica desde panel web
 - Estadísticas detalladas de tráfico APRS
 
@@ -42,7 +47,7 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **Weather**: Información meteorológica (`*4` actual, `*5` voz)
 - **🌦️ Weather Alerts**: Sistema de alertas SMN Argentina (`*7` consultar, `*0` forzar verificación)
 
-### 🌦️ **Nuevo: Sistema de Alertas Meteorológicas SMN**
+### 🌦️ **Sistema de Alertas Meteorológicas SMN**
 - **Monitoreo automático** cada 90 minutos de alertas SMN Argentina
 - **Cobertura completa** de la provincia de Mendoza
 - **Filtrado geográfico inteligente** por coordenadas y polígonos CAP
@@ -50,6 +55,43 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **Integración APRS** con comentarios dinámicos incluyendo clima actual
 - **Panel web actualizado** con estado en tiempo real de alertas activas
 - **Repetición automática** cada 105 minutos para alertas vigentes
+
+### 🗺️ **Nuevo v2.3.0: Análisis de Cobertura APRS Avanzado**
+
+#### **📍 Sistema de Historial de Posiciones**
+- **Múltiples ubicaciones por callsign** - Detecta automáticamente movimiento >100 metros
+- **Persistencia completa** - Guarda y carga historial entre reinicios del sistema
+- **Base de datos robusta** - Map<callsign, Array<posiciones>> para máximo rendimiento
+- **API optimizada** - Soporte completo para aplicaciones web y móviles
+
+#### **🎯 Mapeo de Símbolos APRS Oficial**
+- **180+ símbolos** de tablas primaria (/) y alternativa (\) completas
+- **Emojis descriptivos** - Mapeo visual intuitivo (🚗 Auto, 📡 Repetidor, ✈️ Avión)
+- **Basado en especificación oficial** - Compatible con http://www.aprs.org/symbols/
+- **Soporte completo MIC-E** - Kenwood, Yaesu y otros fabricantes
+
+#### **📏 Análisis de Distancias y Cobertura**
+- **Cálculo geodésico preciso** - Fórmula Haversine para distancias exactas
+- **Círculo de cobertura dinámico** - Visualización automática del rango real
+- **Widget en tiempo real** - Estación más lejana actualizada automáticamente
+- **Marcadores informativos** - Distancia, símbolo y comentario en cada posición
+
+#### **🎮 Casos de Uso Prácticos**
+```bash
+# Análisis de cobertura típico
+1. Emitir desde ubicación A → Primera posición (0.5km)
+2. Moverse >100m a ubicación B → Nueva ubicación detectada automáticamente  
+3. Emitir desde ubicación B → Historial expandido (1.2km)
+4. Círculo de cobertura se ajusta → Widget muestra "1.2 km"
+5. Repetir proceso → Mapa completo de cobertura real
+```
+
+**Ideal para:**
+- 🔬 **Pruebas de cobertura de repetidoras**
+- 📊 **Análisis de propagación VHF/UHF** 
+- 🚨 **Monitoreo de emergencias**
+- 🏃 **Seguimiento de eventos deportivos**
+- 📈 **Estadísticas de red APRS**
 
 ---
 
@@ -297,6 +339,42 @@ ps aux | grep direwolf
 ---
 
 ## 📋 Changelog
+
+### v2.3.0 - Sistema APRS Completo con Historial de Posiciones 🚀
+
+#### 📡 **Nuevas Características APRS**
+- [x] **Sistema de historial completo de posiciones**
+  - [x] Múltiples ubicaciones por callsign con detección automática >100m
+  - [x] Persistencia completa entre reinicios del sistema
+  - [x] Estructura Map<callsign, Array<posiciones>> optimizada
+  - [x] API mejorada para soporte de aplicaciones web
+- [x] **Mapeo completo de símbolos APRS**
+  - [x] 180+ símbolos oficiales de tablas primaria (/) y alternativa (\)
+  - [x] Emojis descriptivos para cada símbolo (🚗 📡 ✈️ 🏠)
+  - [x] Basado en especificación oficial http://www.aprs.org/symbols/
+  - [x] Soporte completo MIC-E para radios Kenwood/Yaesu
+- [x] **Análisis avanzado de cobertura**
+  - [x] Cálculo geodésico preciso con fórmula Haversine
+  - [x] Círculo de cobertura dinámico en mapa web
+  - [x] Widget flotante con estación más lejana en tiempo real
+  - [x] Marcadores con distancia, símbolo y comentario detallado
+- [x] **Mejoras en frontend**
+  - [x] Lista de estaciones con distancias calculadas
+  - [x] Información completa en popups de marcadores  
+  - [x] Widget de estación más lejana (esquina inferior izquierda)
+  - [x] Círculo visual de rango de recepción actualizado automáticamente
+
+#### 🔧 **Mejoras Técnicas**
+- [x] **Backend robusto**
+  - [x] Detección inteligente de nuevas ubicaciones
+  - [x] Sistema de logs diferenciados (nueva estación/ubicación/actualización)
+  - [x] API `getAllPositions()` optimizada para historial múltiple
+  - [x] Limpieza avanzada de comentarios APRS
+- [x] **Casos de uso prácticos**
+  - [x] Análisis profesional de cobertura de repetidoras
+  - [x] Monitoreo de eventos y emergencias
+  - [x] Seguimiento de estaciones móviles
+  - [x] Estadísticas de propagación VHF/UHF
 
 ### v2.2.0 - Sistema de Alertas Meteorológicas ✨
 
