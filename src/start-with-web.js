@@ -19,8 +19,6 @@ process.on('unhandledRejection', (reason) => {
     process.exit(1);
 });
 
-// Mensaje de ayuda - eliminado para reducir verbosidad
-
 // Inicializar controlador
 async function main() {
     try {
@@ -45,4 +43,3 @@ async function main() {
 
 // Ejecutar función principal
 main();
-

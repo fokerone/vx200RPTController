@@ -2,7 +2,6 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('../logging/Logger');
-const { delay } = require('../utils');
 
 /**
  * Módulo APRS para VX200 RPT Controller
@@ -43,7 +42,6 @@ class APRS extends EventEmitter {
         // Base de datos de posiciones recibidas (callsign -> array de posiciones históricas)
         this.receivedPositions = new Map();
         this.logFile = path.join(__dirname, '../../logs/aprs-positions.json');
-        this.direwolfLogFile = path.join(__dirname, '../../logs/2025-08-13.log'); // CSV log de Direwolf
         
         // Conexión TNC
         this.tncConnection = null;
@@ -691,12 +689,12 @@ class APRS extends EventEmitter {
     }
 
     /**
-     * Cargar posiciones desde log CSV de Direwolf
+     * Cargar posiciones desde log CSV más reciente de Direwolf
      */
     async loadFromDirewolfLog() {
         try {
             // Buscar archivo de log más reciente con datos APRS
-            const logsDir = path.dirname(this.direwolfLogFile);
+            const logsDir = path.join(__dirname, '../../logs');
             const logFiles = fs.readdirSync(logsDir)
                 .filter(f => f.endsWith('.log'))
                 .sort()
@@ -1277,49 +1275,6 @@ class APRS extends EventEmitter {
                 .slice(0, 5)
                 .map(pos => ({ callsign: pos.callsign, count: pos.count || 0 }))
         };
-    }
-
-    /**
-     * Probar conexión TNC
-     */
-    async testTNCConnection() {
-        if (!this.kissEndpoint) return;
-        
-        try {
-            const net = require('net');
-            const socket = new net.Socket();
-            socket.setTimeout(3000);
-            
-            const testPromise = new Promise((resolve) => {
-                socket.on('connect', () => {
-                    this.logger.info('Test de conexión TNC: ÉXITO');
-                    if (!this.tncConnection) {
-                        this.tncConnection = true;
-                        this.emit('tnc_connected');
-                    }
-                    socket.end();
-                    resolve(true);
-                });
-                
-                socket.on('timeout', () => {
-                    this.logger.warn('Test de conexión TNC: TIMEOUT');
-                    socket.destroy();
-                    resolve(false);
-                });
-                
-                socket.on('error', () => {
-                    this.logger.warn('Test de conexión TNC: ERROR');
-                    resolve(false);
-                });
-                
-                socket.connect(this.config.direwolf.kissPort, 'localhost');
-            });
-            
-            await testPromise;
-            
-        } catch (error) {
-            this.logger.error('Error probando conexión TNC:', error.message);
-        }
     }
 
     /**

@@ -39,28 +39,12 @@ const MODULE_STATES = {
     DISABLED: 'disabled'
 };
 
-// SMS States
-const SMS_STATES = {
-    IDLE: 'idle',
-    GETTING_NUMBER: 'getting_number',
-    RECORDING_MESSAGE: 'recording_message',
-    CONFIRMING: 'confirming'
-};
-
 // Time Constants
 const DELAYS = {
     SHORT: 100,
     MEDIUM: 500,
     LONG: 1000,
     VERY_LONG: 3000
-};
-
-// Network Constants
-const NETWORK = {
-    DEFAULT_PORT: 3000,
-    DEFAULT_HOST: '0.0.0.0',
-    MAX_LOG_ENTRIES: 100,
-    SIGNAL_BROADCAST_THROTTLE: 100
 };
 
 // Web Server Constants
@@ -82,20 +66,8 @@ const WEB_SERVER = {
 // Validation Constants
 const VALIDATION = {
     MIN_PHONE_LENGTH: 8,
-    MAX_SMS_LENGTH: 160,
     MAX_RECORDING_DURATION: 30,
     MIN_RECORDING_DURATION: 5
-};
-
-// Error Messages
-const ERROR_MESSAGES = {
-    AUDIO_MANAGER_NOT_AVAILABLE: 'AudioManager no está disponible',
-    API_KEY_NOT_CONFIGURED: 'API Key no configurada',
-    MODULE_DISABLED: 'Módulo deshabilitado',
-    INVALID_PHONE_NUMBER: 'Número de teléfono inválido',
-    RECORDING_ERROR: 'Error durante la grabación',
-    TRANSMISSION_ERROR: 'Error en la transmisión',
-    CHANNEL_BUSY: 'Canal ocupado - Esperando...'
 };
 
 module.exports = {
@@ -103,10 +75,7 @@ module.exports = {
     AUDIO,
     ROGER_BEEP,
     MODULE_STATES,
-    SMS_STATES,
     DELAYS,
-    NETWORK,
     WEB_SERVER,
-    VALIDATION,
-    ERROR_MESSAGES
+    VALIDATION
 };

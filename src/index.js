@@ -9,10 +9,7 @@ const WebServer = require('./web/server');
 const { Config } = require('./config');
 const { createLogger } = require('./logging/Logger');
 const { getSystemOutput } = require('./logging/SystemOutput');
-const { MODULE_STATES, DELAYS, ERROR_MESSAGES, WEB_SERVER } = require('./constants');
-const { delay, sanitizeTextForTTS } = require('./utils');
-const fs = require('fs');
-const path = require('path');
+const { MODULE_STATES } = require('./constants');
 
 class VX200Controller {
     constructor() {
@@ -29,12 +26,6 @@ class VX200Controller {
         this.isRunning = false;
         this.startTime = Date.now();
         this.initializationErrors = [];
-        this.stats = {
-            dtmfCount: 0,
-            commandsExecuted: 0,
-            errors: 0,
-            uptime: 0
-        };
         
         this.logger.debug('Constructor completado, inicialización pendiente...');
     }
