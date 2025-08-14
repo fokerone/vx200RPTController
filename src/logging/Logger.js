@@ -1,4 +1,5 @@
 // Config será importado dinámicamente para evitar dependencia circular
+const moment = require('moment-timezone');
 
 /**
  * Sistema de Logging Profesional para VX200
@@ -36,7 +37,7 @@ class Logger {
 
     formatMessage(level, message, ...args) {
         const timestamp = this.showTimestamp ? 
-            `${new Date().toISOString().replace('T', ' ').substr(0, 19)} ` : '';
+            `${moment().tz('America/Argentina/Mendoza').format('YYYY-MM-DD HH:mm:ss')} ` : '';
         
         const moduleStr = this.module ? `${this.module} ` : '';
         const levelStr = `[${level.toUpperCase()}]`;

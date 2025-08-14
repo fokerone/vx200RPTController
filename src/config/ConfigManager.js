@@ -110,7 +110,7 @@ class ConfigManager {
             datetime: {
                 enabled: true,
                 locale: 'es',
-                timezone: 'America/Argentina/Buenos_Aires',
+                timezone: 'America/Argentina/Mendoza',
                 format: {
                     date: 'dddd, DD [de] MMMM [de] YYYY',
                     time: 'HH:mm [horas]'

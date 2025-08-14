@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { ROGER_BEEP, MODULE_STATES, DELAYS } = require('../constants');
-const { delay, createLogger, validateVolume } = require('../utils');
+const { delay, validateVolume } = require('../utils');
+const { createLogger } = require('../logging/Logger');
 
 class RogerBeep {
     constructor(audioManager) {

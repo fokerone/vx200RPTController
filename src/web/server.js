@@ -183,18 +183,6 @@ class WebServer {
         });
 
         // Rutas APRS
-        this.app.get('/api/aprs/positions', (req, res) => {
-            try {
-                if (this.controller.modules.aprs) {
-                    const positions = this.controller.modules.aprs.getAllPositions();
-                    res.json({ success: true, data: positions });
-                } else {
-                    res.json({ success: false, message: 'Módulo APRS no disponible' });
-                }
-            } catch (error) {
-                res.status(500).json({ success: false, message: error.message });
-            }
-        });
 
         this.app.get('/api/aprs/status', (req, res) => {
             try {

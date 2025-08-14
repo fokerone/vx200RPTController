@@ -1,7 +1,8 @@
 const EventEmitter = require('events');
 const moment = require('moment');
 const { MODULE_STATES, DELAYS, VALIDATION } = require('../constants');
-const { delay, createLogger, validateVolume, sanitizeTextForTTS } = require('../utils');
+const { delay, validateVolume, sanitizeTextForTTS } = require('../utils');
+const { createLogger } = require('../logging/Logger');
 
 class Baliza extends EventEmitter {
     constructor(audioManager) {
@@ -117,9 +118,18 @@ class Baliza extends EventEmitter {
         this.isRunning = true;
         this.state = MODULE_STATES.ACTIVE;
         this.transmissionCount = 0;
-        this.scheduleNext();
         
-        this.logger.info(`Baliza iniciada - Cada ${this.config.interval} minutos`);
+        // COORDINACIÓN INICIAL: Delay de 5 minutos al arranque para evitar colisión inmediata
+        // Esto permite que APRS se establezca primero (7.5min) antes de la baliza
+        const initialDelay = 5 * 60 * 1000; // 5 minutos
+        
+        setTimeout(() => {
+            if (this.isRunning) {
+                this.scheduleNext();
+            }
+        }, initialDelay);
+        
+        this.logger.info(`Baliza iniciada - Cada ${this.config.interval} minutos (inicio en 5min para coordinación)`);
         this.emit('started', { interval: this.config.interval });
         return true;
     }
@@ -156,15 +166,20 @@ class Baliza extends EventEmitter {
 
         const intervalMs = this.config.interval * 60 * 1000; // minutos a ms
         
+        // OFFSET DE COORDINACIÓN: 2.5 minutos para evitar colisiones con APRS
+        // APRS transmite en X:07:30, X:22:30, X:37:30, X:52:30
+        // Baliza transmitirá en X:02:30 (evita colisión total)
+        const coordinationOffset = 2.5 * 60 * 1000; // 2.5 minutos
+        
         this.timer = setTimeout(() => {
             if (this.isRunning) { // Verificar que siga activa
                 this.transmit();
                 this.scheduleNext(); // Programar la siguiente
             }
-        }, intervalMs);
+        }, intervalMs + coordinationOffset);
 
-        const nextTime = moment().add(this.config.interval, 'minutes').format('HH:mm:ss');
-        this.logger.debug(`Próxima baliza programada para: ${nextTime}`);
+        const nextTime = moment().add(this.config.interval + 2.5, 'minutes').format('HH:mm:ss');
+        this.logger.debug(`Próxima baliza programada para: ${nextTime} (coord. +2.5min)`);
     }
 
     /**

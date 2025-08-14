@@ -48,9 +48,9 @@ class WeatherAlerts extends EventEmitter {
             },
             
             // Timers
-            checkInterval: 90 * 60 * 1000,      // 1.5 horas
-            repeatInterval: 105 * 60 * 1000,    // 1h 45min (evita colisión con baliza)
-            weatherUpdateInterval: 15 * 60 * 1000, // 15 minutos actualización clima APRS
+            checkInterval: 87 * 60 * 1000,      // 1h 27min (evita múltiples colisiones)  
+            repeatInterval: 101 * 60 * 1000,    // 1h 41min (evita colisión con baliza)
+            weatherUpdateInterval: 17 * 60 * 1000, // 17 minutos (evita solapamiento exacto con APRS)
             
             // TTS
             useGoogleTTS: true,

@@ -6,7 +6,8 @@ const recorder = require('node-record-lpcm16');
 const RogerBeep = require('./rogerBeep');
 const { Config, getValue } = require('../config');
 const { AUDIO, MODULE_STATES, DELAYS, DTMF } = require('../constants');
-const { delay, createLogger, validateVolume, throttle } = require('../utils');
+const { delay, validateVolume, throttle } = require('../utils');
+const { createLogger } = require('../logging/Logger');
 
 class AudioManager extends EventEmitter {
     constructor() {

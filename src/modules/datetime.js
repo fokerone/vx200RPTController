@@ -2,7 +2,8 @@ const moment = require('moment');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { delay, createLogger, sanitizeTextForTTS } = require('../utils');
+const { delay, sanitizeTextForTTS } = require('../utils');
+const { createLogger } = require('../logging/Logger');
 const { MODULE_STATES } = require('../constants');
 const HybridVoiceManager = require('../audio/HybridVoiceManager');
 

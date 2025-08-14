@@ -1,6 +1,6 @@
 const DTMFDetectionStream = require('dtmf-detection-stream');
 const { Readable, Transform } = require('stream');
-const { createLogger } = require('../utils');
+const { createLogger } = require('../logging/Logger');
 
 class DTMFDecoder {
     constructor(sampleRate = 48000) {

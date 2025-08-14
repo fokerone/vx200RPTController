@@ -306,7 +306,7 @@ class WeatherVoice {
                 'wind_speed_10m',
                 'wind_direction_10m'
             ].join(','),
-            timezone: 'America/Argentina/Buenos_Aires'
+            timezone: 'America/Argentina/Mendoza'
         };
 
         try {
@@ -408,7 +408,7 @@ class WeatherVoice {
                 'wind_speed_10m'
             ].join(','),
             forecast_days: 2,
-            timezone: 'America/Argentina/Buenos_Aires'
+            timezone: 'America/Argentina/Mendoza'
         };
 
         try {
