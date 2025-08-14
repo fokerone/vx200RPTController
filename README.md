@@ -1,10 +1,17 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.4.0
+## 📡 Sistema de Control para Repetidora Simplex v2.4.2
 
 Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa con historial de posiciones y análisis de cobertura avanzado.
 
-**🚀 Versión 2.4.0 - Optimización y Limpieza del Sistema**
+**🚀 Versión 2.4.2 - Zona Horaria Corregida y Coordinación de Timers Optimizada**
+
+### 📅 **Novedades v2.4.2** (Agosto 2025)
+- **🕐 Zona Horaria Corregida**: Cambio de Buenos Aires a Mendoza (GMT-3) 
+- **⚙️ Coordinación de Timers Optimizada**: Eliminadas colisiones entre APRS, Baliza y Alertas
+- **📊 Logs con Timestamp Correcto**: Uso de `moment-timezone` para hora local exacta
+- **🎯 Timers como Reloj Suizo**: APRS (15min+7.5min), Baliza (60min+2.5min+5min inicial), Alertas (87min/101min/17min)
+- **🔧 Refactor de Imports**: Logger centralizado para mejor organización del código
 
 ---
 
