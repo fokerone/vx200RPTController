@@ -83,6 +83,36 @@
             font-size: 0.9em;
             color: #495057;
         }
+        
+        /* Estilo para el scroll del panel de detalles */
+        #stationDetails::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #stationDetails::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        #stationDetails::-webkit-scrollbar-thumb {
+            background: #007bff;
+            border-radius: 4px;
+        }
+        
+        #stationDetails::-webkit-scrollbar-thumb:hover {
+            background: #0056b3;
+        }
+        
+        /* Mejorar espaciado en el panel de detalles */
+        .station-detail-header {
+            position: sticky;
+            top: 0;
+            background: white;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e9ecef;
+            margin-bottom: 15px;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
@@ -151,7 +181,7 @@
                 <!-- Información Detallada -->
                 <div class="info-panel" id="detailPanel" style="display: none;">
                     <h5>ℹ️ Información de Estación</h5>
-                    <div id="stationDetails"></div>
+                    <div id="stationDetails" style="max-height: 400px; overflow-y: auto; padding-right: 5px;"></div>
                 </div>
             </div>
         </div>
@@ -207,7 +237,7 @@
         
         // Inicializar mapa
         function initializeMap() {
-            map = L.map('map').setView([REPEATER_CONFIG.lat, REPEATER_CONFIG.lon], 10);
+            map = L.map('map').setView([REPEATER_CONFIG.lat, REPEATER_CONFIG.lon], 12); // Zoom inicial más cercano
             
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors'
@@ -333,18 +363,30 @@
                 return;
             }
             
-            // Ordenar por timestamp más reciente
-            const sortedPositions = [...positions].sort((a, b) => 
-                new Date(b.timestamp) - new Date(a.timestamp)
-            );
+            // Agrupar por callsign y mostrar la más reciente de cada uno primero
+            const groupedByCallsign = {};
+            positions.forEach(pos => {
+                if (!groupedByCallsign[pos.callsign]) {
+                    groupedByCallsign[pos.callsign] = [];
+                }
+                groupedByCallsign[pos.callsign].push(pos);
+            });
+            
+            // Ordenar cada grupo por timestamp y tomar la más reciente para el listado principal
+            const sortedPositions = Object.values(groupedByCallsign).map(group => {
+                const sorted = group.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                return sorted[0]; // Tomar la más reciente de cada callsign
+            }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
             const html = sortedPositions.map(pos => {
                 const timeAgo = getTimeAgo(new Date(pos.timestamp));
                 const distance = pos.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, pos.lat, pos.lon);
+                const allPositionsCount = groupedByCallsign[pos.callsign].length;
+                
                 return `
                     <div class="position-item" onclick="showStationDetails('${pos.callsign}')">
-                        <div class="callsign">${pos.callsign}</div>
-                        <div class="coordinates">${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)}</div>
+                        <div class="callsign">${pos.callsign}${allPositionsCount > 1 ? ` (${allPositionsCount} ubicaciones)` : ''}</div>
+                        <div class="coordinates">${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)} ${allPositionsCount > 1 ? '(más reciente)' : ''}</div>
                         <div class="text-info" style="font-size: 0.85em;">📏 ${distance.toFixed(2)} km</div>
                         <div class="timestamp">${timeAgo}</div>
                         ${pos.comment ? `<div class="text-muted" style="font-size: 0.8em;">${pos.comment}</div>` : ''}
@@ -357,12 +399,11 @@
         
         // Actualizar marcador en el mapa
         function updatePositionMarker(position) {
-            const key = position.callsign;
+            // Usar key única para cada ubicación diferente
+            const key = `${position.callsign}_${position.locationId || Date.now()}`;
             
-            // Remover marcador existente si existe
-            if (markers[key]) {
-                map.removeLayer(markers[key]);
-            }
+            // Solo remover si es exactamente la misma ubicación
+            // (No remover otras ubicaciones del mismo callsign)
             
             // Crear nuevo marcador
             const marker = L.marker([position.lat, position.lon], {
@@ -388,38 +429,87 @@
             `);
             
             markers[key] = marker;
+            
+            // Guardar referencia por callsign para navegación
+            if (!markers[position.callsign]) {
+                markers[position.callsign] = [];
+            }
+            if (Array.isArray(markers[position.callsign])) {
+                markers[position.callsign].push(marker);
+            } else {
+                // Convertir marcador único a array
+                const oldMarker = markers[position.callsign];
+                markers[position.callsign] = [oldMarker, marker];
+            }
         }
         
         // Mostrar detalles de estación
         function showStationDetails(callsign) {
-            const position = positions.find(p => p.callsign === callsign);
-            if (!position) return;
+            const stationPositions = positions.filter(p => p.callsign === callsign);
+            if (stationPositions.length === 0) return;
             
             const detailPanel = document.getElementById('detailPanel');
             const detailsContainer = document.getElementById('stationDetails');
             
-            const timeAgo = getTimeAgo(new Date(position.timestamp));
-            const distance = position.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, position.lat, position.lon);
+            // Mostrar información de todas las ubicaciones de esta estación
+            const positionsHtml = stationPositions.map((position, index) => {
+                const timeAgo = getTimeAgo(new Date(position.timestamp));
+                const distance = position.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, position.lat, position.lon);
+                
+                return `
+                    <div class="station-info" style="margin-bottom: 10px; ${index === 0 ? 'border: 2px solid #007bff;' : ''}">
+                        <h6>${position.callsign} ${index > 0 ? `(Ubicación #${index + 1})` : '(Más reciente)'}</h6>
+                        <div><strong>Ubicación:</strong> ${position.lat.toFixed(6)}, ${position.lon.toFixed(6)}</div>
+                        <div><strong>Distancia:</strong> <span style="color: #007bff;">📏 ${distance.toFixed(2)} km</span></div>
+                        <div><strong>Última actualización:</strong> ${timeAgo}</div>
+                        <div><strong>Timestamp:</strong> ${new Date(position.timestamp).toLocaleString()}</div>
+                        ${position.comment ? `<div><strong>Comentario:</strong> ${position.comment}</div>` : ''}
+                        ${position.symbol ? `<div><strong>Símbolo:</strong> ${position.symbol}</div>` : ''}
+                        <button onclick="focusOnPosition('${callsign}', ${position.lat}, ${position.lon})" class="btn btn-sm btn-outline-primary">
+                            📍 Ver en mapa
+                        </button>
+                    </div>
+                `;
+            }).join('');
             
             detailsContainer.innerHTML = `
-                <div class="station-info">
-                    <h6>${position.callsign}</h6>
-                    <div><strong>Ubicación:</strong> ${position.lat.toFixed(6)}, ${position.lon.toFixed(6)}</div>
-                    <div><strong>Distancia:</strong> <span style="color: #007bff;">📏 ${distance.toFixed(2)} km</span></div>
-                    <div><strong>Última actualización:</strong> ${timeAgo}</div>
-                    <div><strong>Timestamp:</strong> ${new Date(position.timestamp).toLocaleString()}</div>
-                    ${position.comment ? `<div><strong>Comentario:</strong> ${position.comment}</div>` : ''}
-                    ${position.symbol ? `<div><strong>Símbolo:</strong> ${position.symbol}</div>` : ''}
+                <div class="station-detail-header">
+                    <strong>📡 ${callsign}</strong> - ${stationPositions.length} ubicacion${stationPositions.length > 1 ? 'es' : ''} registrada${stationPositions.length > 1 ? 's' : ''}
+                    <div style="font-size: 0.9em; color: #6c757d; margin-top: 5px;">
+                        Haz clic en "📍 Ver en mapa" para navegar a cada ubicación
+                    </div>
+                </div>
+                <div style="padding-bottom: 10px;">
+                    ${positionsHtml}
                 </div>
             `;
             
             detailPanel.style.display = 'block';
             
-            // Centrar mapa en la posición
-            map.setView([position.lat, position.lon], 12);
-            if (markers[callsign]) {
-                markers[callsign].openPopup();
-            }
+            // Centrar en la posición más reciente y ajustar zoom para ver todas las ubicaciones
+            const mostRecent = stationPositions[0];
+            focusOnPosition(callsign, mostRecent.lat, mostRecent.lon);
+        }
+        
+        // Nueva función para enfocar en una posición específica
+        function focusOnPosition(callsign, lat, lon) {
+            // Centrar mapa en la posición con zoom cercano
+            map.setView([lat, lon], 15, {
+                animate: true,
+                duration: 1.0
+            });
+            
+            // Buscar y abrir popup del marcador correspondiente
+            Object.keys(markers).forEach(key => {
+                if (key.startsWith(callsign + '_')) {
+                    const marker = markers[key];
+                    const markerPos = marker.getLatLng();
+                    // Verificar si es la posición correcta (tolerancia de 0.0001 grados ~10m)
+                    if (Math.abs(markerPos.lat - lat) < 0.0001 && Math.abs(markerPos.lng - lon) < 0.0001) {
+                        marker.openPopup();
+                    }
+                }
+            });
         }
         
         // Actualizar estado APRS
@@ -474,10 +564,12 @@
             let newMaxDistance = 0;
             positions.forEach(pos => {
                 const distance = pos.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, pos.lat, pos.lon);
+                console.log(`DEBUG: ${pos.callsign} @ ${pos.lat.toFixed(6)}, ${pos.lon.toFixed(6)} = ${distance.toFixed(2)} km`);
                 if (distance > newMaxDistance) {
                     newMaxDistance = distance;
                 }
             });
+            console.log(`DEBUG: Distancia máxima encontrada: ${newMaxDistance.toFixed(2)} km`);
             
             // Solo actualizar si la distancia cambió significativamente
             if (Math.abs(newMaxDistance - maxDistance) > 0.1 || maxDistance === 0) {
@@ -509,6 +601,9 @@
                 `);
                 
                 console.log(`Círculo de cobertura actualizado: ${radiusKm.toFixed(2)} km`);
+                
+                // Ajustar zoom automáticamente basado en el radio del círculo
+                adjustMapZoom(radiusKm);
             }
             
             // Actualizar widget de distancia
@@ -526,6 +621,35 @@
                     document.getElementById('distanceWidget').style.display = 'none';
                 }
             }
+        }
+        
+        // Ajustar zoom del mapa basado en el radio del círculo de cobertura
+        function adjustMapZoom(radiusKm) {
+            // Calcular zoom apropiado basado en el radio
+            // Fórmula: zoom más alto para círculos pequeños, zoom más bajo para círculos grandes
+            let targetZoom;
+            
+            if (radiusKm <= 0.5) {
+                targetZoom = 15; // Muy cerca para círculos < 500m
+            } else if (radiusKm <= 1.0) {
+                targetZoom = 14; // Cerca para círculos < 1km
+            } else if (radiusKm <= 2.0) {
+                targetZoom = 13; // Medio para círculos < 2km
+            } else if (radiusKm <= 5.0) {
+                targetZoom = 12; // Moderado para círculos < 5km
+            } else if (radiusKm <= 10.0) {
+                targetZoom = 11; // Alejado para círculos < 10km
+            } else {
+                targetZoom = 10; // Muy alejado para círculos grandes
+            }
+            
+            console.log(`DEBUG: Ajustando zoom a ${targetZoom} para radio de ${radiusKm.toFixed(2)} km`);
+            
+            // Aplicar zoom suavemente
+            map.setView([REPEATER_CONFIG.lat, REPEATER_CONFIG.lon], targetZoom, {
+                animate: true,
+                duration: 1.0
+            });
         }
 
         // Utilidad para calcular tiempo transcurrido

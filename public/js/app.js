@@ -104,6 +104,11 @@ class VX200Panel {
             this.handleExpiredWeatherAlert(data);
         });
 
+        // MumbleBridge events
+        this.socket.on('mumble_status', (data) => {
+            this.updateMumbleBridgeStatus(data);
+        });
+
         // Eventos WebSocket para Sistema de Salud 24/7
         this.socket.on('cleanup_completed', (data) => {
             this.handleCleanupCompleted(data);
@@ -124,6 +129,9 @@ class VX200Panel {
 
         document.getElementById('rogerBeepToggle')?.addEventListener('click', () => {
             this.toggleModule('rogerBeep');
+        });
+        document.getElementById('mumbleBridgeToggle')?.addEventListener('click', () => {
+            this.toggleModule('mumbleBridge');
         });
 
         const volumeRange = document.getElementById('rogerBeepVolume');
@@ -810,6 +818,67 @@ class VX200Panel {
         }
     }
 
+    updateMumbleBridgeStatus(data) {
+        // Update MumbleBridge module status
+        const statusElement = document.getElementById('mumbleBridgeStatus');
+        const moduleItem = document.querySelector('[data-module="mumbleBridge"]');
+        const toggleButton = document.getElementById('mumbleBridgeToggle');
+        
+        if (statusElement) {
+            let statusText = '';
+            let statusClass = '';
+            
+            if (data.connected) {
+                statusText = 'CONECTADO';
+                statusClass = 'enabled';
+                if (moduleItem) moduleItem.classList.add('connected');
+            } else if (data.connecting) {
+                statusText = 'CONECTANDO...';
+                statusClass = 'connecting';
+                if (moduleItem) moduleItem.classList.add('connecting');
+            } else {
+                statusText = 'DESCONECTADO';
+                statusClass = 'disabled';
+                if (moduleItem) {
+                    moduleItem.classList.remove('connected', 'connecting');
+                }
+            }
+            
+            statusElement.textContent = statusText;
+            statusElement.className = `module-status ${statusClass}`;
+        }
+        
+        // Update server info
+        const serverInfoElement = document.getElementById('mumbleServerInfo');
+        if (serverInfoElement && data.server) {
+            serverInfoElement.textContent = `Servidor: ${data.server}`;
+        }
+        
+        // Update channel info
+        const channelInfoElement = document.getElementById('mumbleChannelInfo');
+        if (channelInfoElement && data.channel) {
+            channelInfoElement.textContent = `Canal: ${data.channel}`;
+        }
+        
+        // Update users info
+        const usersInfoElement = document.getElementById('mumbleUsersInfo');
+        if (usersInfoElement) {
+            const userCount = data.usersInChannel || 0;
+            usersInfoElement.textContent = `Usuarios: ${userCount}`;
+        }
+        
+        // Update toggle button
+        if (toggleButton) {
+            if (data.connected) {
+                toggleButton.textContent = 'Desconectar';
+                toggleButton.className = 'btn btn-toggle enabled';
+            } else {
+                toggleButton.textContent = 'Conectar';
+                toggleButton.className = 'btn btn-toggle disabled';
+            }
+        }
+    }
+
     // === MÉTODOS SISTEMA DE SALUD 24/7 ===
     
     updateSystemHealth(data) {
@@ -1456,5 +1525,38 @@ async function loadCleanupConfig() {
         }
     } catch (error) {
         console.error('Error loading cleanup config:', error);
+    }
+}
+
+// Funciones MumbleBridge
+function testMumbleConnection() {
+    if (panel && panel.socket) {
+        panel.socket.emit('execute_command', {
+            command: 'test_mumble_connection'
+        });
+    }
+}
+
+function configureMumbleBridge() {
+    if (panel && panel.socket) {
+        const server = prompt('Servidor Mumble (host:puerto):', 'localhost:64738');
+        const channel = prompt('Canal:', 'VX200_Repetidora');
+        const password = prompt('Clave del canal:', 'radio2025');
+        
+        if (server && channel) {
+            panel.socket.emit('configure_module', {
+                module: 'mumbleBridge',
+                config: {
+                    server: {
+                        host: server.split(':')[0],
+                        port: parseInt(server.split(':')[1]) || 64738
+                    },
+                    channel: {
+                        name: channel,
+                        password: password || ''
+                    }
+                }
+            });
+        }
     }
 }

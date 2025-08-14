@@ -510,6 +510,12 @@ class WebServer {
                 rogerBeep: {
                     enabled: this.controller.audio?.getRogerBeepStatus()?.enabled || false,
                     status: 'ready'
+                },
+                mumbleBridge: {
+                    enabled: this.controller.modules?.mumbleBridge?.isConnected || false,
+                    status: this.getModuleStatus('mumbleBridge'),
+                    server: this.controller.modules?.mumbleBridge?.config?.server?.host + ':' + this.controller.modules?.mumbleBridge?.config?.server?.port || 'N/A',
+                    channel: this.controller.modules?.mumbleBridge?.config?.channel?.name || 'N/A'
                 }
             }
         };
@@ -585,6 +591,27 @@ class WebServer {
                         }
                     }
                     return { success: false, message: 'Módulo Weather Alerts no disponible' };
+
+                case 'mumbleBridge':
+                    if (this.controller.modules.mumbleBridge) {
+                        if (this.controller.modules.mumbleBridge.isConnected) {
+                            this.controller.modules.mumbleBridge.stop();
+                            return { success: true, message: 'MumbleBridge desconectado', enabled: false };
+                        } else {
+                            // Habilitar el módulo si no está habilitado
+                            if (!this.controller.modules.mumbleBridge.config.enabled) {
+                                this.controller.modules.mumbleBridge.configure({ enabled: true });
+                            }
+                            
+                            const started = await this.controller.modules.mumbleBridge.start();
+                            return { 
+                                success: started, 
+                                message: started ? 'MumbleBridge conectado' : 'Error conectando MumbleBridge', 
+                                enabled: started 
+                            };
+                        }
+                    }
+                    return { success: false, message: 'Módulo MumbleBridge no disponible' };
 
                 default:
                     throw new Error(`Módulo ${moduleName} no soporta toggle`);
@@ -712,6 +739,17 @@ class WebServer {
                 throw new Error('Roger Beep no disponible');
             
 
+            case 'test_mumble_connection':
+                if (this.controller.modules?.mumbleBridge?.testConnection) {
+                    const result = await this.controller.modules.mumbleBridge.testConnection();
+                    return { 
+                        success: result.success, 
+                        message: result.message,
+                        data: result
+                    };
+                }
+                throw new Error('MumbleBridge no disponible');
+            
             default:
                 throw new Error(`Comando ${command} no reconocido`);
         }
@@ -883,6 +921,14 @@ class WebServer {
     broadcastWeatherAlertExpired(alertId) {
         if (this.connectedClients.size > 0) {
             this.io.emit('weather_alert_expired', { data: { id: alertId } });
+        }
+    }
+
+    // MumbleBridge broadcast methods
+    broadcastMumbleStatus(status) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('mumble_status', status);
+            this.logger.debug(`Estado de MumbleBridge transmitido: ${status.connected ? 'conectado' : 'desconectado'}`);
         }
     }
 

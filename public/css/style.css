@@ -1333,6 +1333,36 @@ body {
     }
 }
 
+/* Mumble Bridge Styles */
+.mumble-bridge {
+    border: 2px solid #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+.mumble-bridge .module-name {
+    color: #8b5cf6;
+    font-weight: 600;
+}
+.mumble-bridge .server-info,
+.mumble-bridge .channel-info,
+.mumble-bridge .users-info {
+    color: #a78bfa;
+    font-size: 0.85rem;
+}
+.mumble-bridge.connected {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+}
+.mumble-bridge.connected .module-name {
+    color: #10b981;
+}
+.mumble-bridge.connecting {
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+.mumble-bridge.connecting .module-name {
+    color: #f59e0b;
+}
+
 /* Utilidades */
 .text-center { text-align: center; }
 .text-left { text-align: left; }

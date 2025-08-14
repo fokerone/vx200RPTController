@@ -161,6 +161,21 @@
                             </div>
                         </div>
 
+                        <div class="module-item mumble-bridge" data-module="mumbleBridge">
+                            <div class="module-header">
+                                <span class="module-name">📻 Enlace Mumble</span>
+                                <div class="module-status" id="mumbleBridgeStatus">--</div>
+                            </div>
+                            <div class="module-info">
+                                <div class="server-info" id="mumbleServerInfo">Servidor: --</div>
+                                <div class="channel-info" id="mumbleChannelInfo">Canal: --</div>
+                                <div class="users-info" id="mumbleUsersInfo">Usuarios: --</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-toggle" id="mumbleBridgeToggle">Conectar</button>
+                                <button class="btn btn-test" onclick="testMumbleConnection()">Test</button>
+                            </div>
+                        </div>
                         <div class="module-item" data-module="rogerBeep">
                             <div class="module-header">
                                 <span class="module-name">Roger Beep</span>

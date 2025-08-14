@@ -43,6 +43,7 @@ class APRS extends EventEmitter {
         // Base de datos de posiciones recibidas (callsign -> array de posiciones históricas)
         this.receivedPositions = new Map();
         this.logFile = path.join(__dirname, '../../logs/aprs-positions.json');
+        this.direwolfLogFile = path.join(__dirname, '../../logs/2025-08-13.log'); // CSV log de Direwolf
         
         // Conexión TNC
         this.tncConnection = null;
@@ -88,6 +89,9 @@ class APRS extends EventEmitter {
             
             // Cargar posiciones guardadas
             await this.loadSavedPositions();
+            
+            // Cargar posiciones desde log CSV de Direwolf
+            await this.loadFromDirewolfLog();
             
             // Inicializar conexión KISS TNC
             await this.initializeKISSConnection();
@@ -481,6 +485,46 @@ class APRS extends EventEmitter {
     }
 
     /**
+     * Parser de coordenadas APRS desde el campo info
+     * Formato APRS estándar: !DDMM.hhN/DDDMM.hhW o =DDMM.hhN/DDDMM.hhW
+     */
+    parseAPRSCoordinates(info) {
+        try {
+            // Patrón para coordenadas APRS estándar
+            // Formato: [!=/]DDMM.hhN/DDDMM.hhW[símbolo]
+            const coordPattern = /[!=\/](\d{4}\.\d{2})([NS]).\s*(\d{5}\.\d{2})([EW])/;
+            const match = info.match(coordPattern);
+            
+            if (match) {
+                const [, latStr, latDir, lonStr, lonDir] = match;
+                
+                // Convertir DDMM.hh a decimal
+                const latDeg = parseInt(latStr.substring(0, 2));
+                const latMin = parseFloat(latStr.substring(2));
+                let lat = latDeg + (latMin / 60);
+                if (latDir === 'S') lat = -lat;
+                
+                const lonDeg = parseInt(lonStr.substring(0, 3));
+                const lonMin = parseFloat(lonStr.substring(3));
+                let lon = lonDeg + (lonMin / 60);
+                if (lonDir === 'W') lon = -lon;
+                
+                this.logger.info(`📍 Coordenadas parseadas: ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+                return { lat, lon };
+            }
+            
+            // Patrón alternativo para Mic-E y otros formatos comprimidos
+            // TODO: Implementar parser Mic-E si es necesario
+            
+            return null;
+            
+        } catch (error) {
+            this.logger.error('Error parseando coordenadas APRS:', error.message);
+            return null;
+        }
+    }
+
+    /**
      * Parser básico AX.25 mejorado para comentarios y símbolos
      */
     parseBasicAX25(frame) {
@@ -524,14 +568,18 @@ class APRS extends EventEmitter {
             
             this.logger.info('📊 Callsign:', callsign, 'Comentario limpio:', cleanedComment, 'Símbolo:', symbolCode);
             
-            // Crear estructura APRS mejorada
+            // Parser real de coordenadas APRS del campo info
+            const coordinates = this.parseAPRSCoordinates(info);
+            if (!coordinates) {
+                this.logger.warn(`No se pudieron extraer coordenadas de: ${info.substring(0, 50)}`);
+                return null;
+            }
+            
+            // Crear estructura APRS con coordenadas reales
             return {
                 source: callsign,
                 aprs: {
-                    position: {
-                        lat: -32.908, // Coordenada fija para testing
-                        lon: -68.817
-                    },
+                    position: coordinates,
                     comment: cleanedComment,
                     symbol: this.getAPRSSymbol(symbolCode),
                     rawSymbol: symbolCode
@@ -645,6 +693,128 @@ class APRS extends EventEmitter {
             
         } catch (error) {
             this.logger.error('Error procesando frame APRS:', error.message);
+        }
+    }
+
+    /**
+     * Cargar posiciones desde log CSV de Direwolf
+     */
+    async loadFromDirewolfLog() {
+        try {
+            // Buscar archivo de log más reciente con datos APRS
+            const logsDir = path.dirname(this.direwolfLogFile);
+            const logFiles = fs.readdirSync(logsDir)
+                .filter(f => f.endsWith('.log'))
+                .sort()
+                .reverse(); // Más reciente primero
+            
+            let currentLogFile = null;
+            for (const logFile of logFiles) {
+                const testFile = path.join(logsDir, logFile);
+                if (fs.existsSync(testFile) && fs.statSync(testFile).size > 0) {
+                    currentLogFile = testFile;
+                    this.logger.info(`📂 Usando log de Direwolf: ${logFile}`);
+                    break;
+                }
+            }
+            
+            if (!currentLogFile) {
+                this.logger.warn('No se encontraron logs de Direwolf con datos');
+                return;
+            }
+            
+            const csvData = fs.readFileSync(currentLogFile, 'utf8');
+            const lines = csvData.trim().split('\n');
+            
+            // Primera línea es header CSV
+            if (lines.length < 2) return;
+            
+            const header = lines[0].split(',');
+            const latIndex = header.indexOf('latitude');
+            const lonIndex = header.indexOf('longitude');
+            const sourceIndex = header.indexOf('source');
+            const timeIndex = header.indexOf('isotime');
+            const commentIndex = header.indexOf('comment');
+            const symbolIndex = header.indexOf('symbol');
+            
+            let positionsLoaded = 0;
+            
+            // Procesar cada línea del CSV
+            for (let i = 1; i < lines.length; i++) {
+                const fields = lines[i].split(',');
+                
+                // Verificar que tiene coordenadas válidas
+                const lat = parseFloat(fields[latIndex]);
+                const lon = parseFloat(fields[lonIndex]);
+                const callsign = fields[sourceIndex];
+                
+                if (isNaN(lat) || isNaN(lon) || !callsign) continue;
+                
+                const existingPositions = this.receivedPositions.get(callsign) || [];
+                
+                // Verificar si es una nueva ubicación (diferencia > 50 metros para capturar más posiciones)
+                const isNewLocation = existingPositions.length === 0 || 
+                    !existingPositions.some(pos => {
+                        const locDistance = this.calculateDistance(pos.lat, pos.lon, lat, lon);
+                        return locDistance < 0.05; // 50 metros para capturar más variaciones
+                    });
+                
+                if (isNewLocation) {
+                    const distanceKm = this.calculateDistance(
+                        this.config.location.lat,
+                        this.config.location.lon,
+                        lat, lon
+                    );
+                    
+                    const position = {
+                        callsign: callsign,
+                        lat: lat,
+                        lon: lon,
+                        timestamp: new Date(fields[timeIndex]),
+                        comment: fields[commentIndex] || 'APRS',
+                        symbol: fields[symbolIndex] || '/>',
+                        lastHeard: new Date(fields[timeIndex]),
+                        count: existingPositions.length + 1,
+                        firstHeard: existingPositions.length === 0 ? new Date(fields[timeIndex]) : existingPositions[0].firstHeard,
+                        distance: Math.round(distanceKm * 100) / 100,
+                        locationId: Date.now() + i
+                    };
+                    
+                    existingPositions.push(position);
+                    this.receivedPositions.set(callsign, existingPositions);
+                    positionsLoaded++;
+                }
+            }
+            
+            // Actualizar estadísticas basadas en todas las posiciones cargadas
+            let totalPositions = 0;
+            let latestPosition = null;
+            let latestTime = 0;
+            
+            for (const [callsign, positionArray] of this.receivedPositions.entries()) {
+                totalPositions += positionArray.length;
+                positionArray.forEach(pos => {
+                    if (pos.timestamp.getTime() > latestTime) {
+                        latestTime = pos.timestamp.getTime();
+                        latestPosition = pos;
+                    }
+                });
+            }
+            
+            this.stats.positionsReceived = totalPositions;
+            if (latestPosition) {
+                this.stats.lastPosition = latestPosition;
+            }
+            
+            if (positionsLoaded > 0) {
+                this.logger.info(`📊 Cargadas ${positionsLoaded} posiciones desde log CSV de Direwolf`);
+                await this.savePositionToLog(null); // Guardar en formato JSON
+            }
+            
+            this.logger.info(`📊 Total de posiciones APRS: ${totalPositions}`);
+            
+        } catch (error) {
+            this.logger.error('Error cargando desde log Direwolf:', error.message);
         }
     }
 

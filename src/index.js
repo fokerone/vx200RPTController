@@ -6,6 +6,7 @@ const SMS = require('./modules/sms');
 const Weather = require('./modules/weather-voice');
 const WeatherAlerts = require('./modules/weatherAlerts');
 const APRS = require('./modules/aprs');
+const MumbleBridge = require('./modules/mumbleBridge');
 const DirewolfManager = require('./utils/direwolfManager');
 const WebServer = require('./web/server');
 const { Config } = require('./config');
@@ -98,6 +99,7 @@ class VX200Controller {
         this.modules.aiChat = new AIChat(this.audio);
         this.modules.sms = new SMS(this.audio);
         this.modules.weather = new Weather(this.audio);
+        this.modules.mumbleBridge = new MumbleBridge(this.audio);
         
         // Inicializar WeatherAlerts después del módulo APRS
         this.modules.weatherAlerts = null; // Se inicializa después de APRS
@@ -253,6 +255,35 @@ class VX200Controller {
             if (this.webServer && typeof this.webServer.broadcastAPRSStatus === 'function') {
                 const status = this.modules.aprs.getStatus();
                 this.webServer.broadcastAPRSStatus(status);
+            }
+        });
+
+        // Eventos MumbleBridge
+        this.modules.mumbleBridge.on('started', (data) => {
+            if (this.webServer && typeof this.webServer.broadcastMumbleStatus === 'function') {
+                this.webServer.broadcastMumbleStatus({
+                    connected: true,
+                    server: data.server,
+                    channel: data.channel
+                });
+            }
+        });
+
+        this.modules.mumbleBridge.on('stopped', (data) => {
+            if (this.webServer && typeof this.webServer.broadcastMumbleStatus === 'function') {
+                this.webServer.broadcastMumbleStatus({
+                    connected: false,
+                    uptime: data.uptime
+                });
+            }
+        });
+
+        this.modules.mumbleBridge.on('disconnected', (data) => {
+            if (this.webServer && typeof this.webServer.broadcastMumbleStatus === 'function') {
+                this.webServer.broadcastMumbleStatus({
+                    connected: false,
+                    reason: data.reason
+                });
             }
         });
 
@@ -546,6 +577,12 @@ class VX200Controller {
                     `Callsign: ${this.modules.aprs.config.callsign}` : 
                     'TNC not connected'
             },
+            mumbleBridge: {
+                enabled: this.modules.mumbleBridge && this.modules.mumbleBridge.isConnected,
+                details: this.modules.mumbleBridge && this.modules.mumbleBridge.isConnected ? 
+                    `Server: ${this.modules.mumbleBridge.config.server.host}:${this.modules.mumbleBridge.config.server.port}` : 
+                    'Disconnected'
+            },
             webServer: { 
                 enabled: true,
                 details: `Port: ${Config.webPort}`
@@ -581,6 +618,10 @@ class VX200Controller {
             this.modules.weatherAlerts.stop();
         }
         
+        if (this.modules.mumbleBridge?.isConnected) {
+            this.modules.mumbleBridge.stop();
+        }
+        
         if (this.direwolf) {
             this.direwolf.stop();
         }
@@ -588,7 +629,7 @@ class VX200Controller {
         this.systemOutput.printStopped();
     }
 
-    toggleService(service) {
+    async toggleService(service) {
         let result = { success: false, message: '', enabled: false };
         
         try {
@@ -613,6 +654,19 @@ class VX200Controller {
                     }
                     break;
                     
+                case 'mumbleBridge':
+                    if (this.modules.mumbleBridge.isConnected) {
+                        this.modules.mumbleBridge.stop();
+                        result = { success: true, message: 'MumbleBridge desconectado', enabled: false };
+                    } else {
+                        const started = await this.modules.mumbleBridge.start();
+                        result = { 
+                            success: started, 
+                            message: started ? 'MumbleBridge conectado' : 'Error conectando MumbleBridge', 
+                            enabled: started 
+                        };
+                    }
+                    break;
                     
                 default:
                     result = { success: false, message: 'Servicio desconocido' };
@@ -644,6 +698,7 @@ class VX200Controller {
             weather: this.modules.weather.getStatus(),
             weatherAlerts: this.modules.weatherAlerts?.getStatus() || { enabled: false, state: 'not_initialized' },
             aprs: this.modules.aprs.getStatus(),
+            mumbleBridge: this.modules.mumbleBridge.getStatus(),
             rogerBeep: audioStatus.rogerBeep,
             dtmf: {
                 lastSequence: 'Esperando...',
