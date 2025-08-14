@@ -115,25 +115,6 @@
                             </div>
                         </div>
 
-                        <div class="module-item" data-module="aiChat">
-                            <div class="module-header">
-                                <span class="module-name">AI Chat</span>
-                                <div class="module-status" id="aiChatStatus">--</div>
-                            </div>
-                            <div class="module-controls">
-                                <button class="btn btn-execute" onclick="executeModule('aiChat', '2')">Ejecutar</button>
-                            </div>
-                        </div>
-
-                        <div class="module-item" data-module="sms">
-                            <div class="module-header">
-                                <span class="module-name">SMS</span>
-                                <div class="module-status" id="smsStatus">--</div>
-                            </div>
-                            <div class="module-controls">
-                                <button class="btn btn-execute" onclick="executeModule('sms', '3')">Ejecutar</button>
-                            </div>
-                        </div>
 
                         <div class="module-item" data-module="weather">
                             <div class="module-header">
@@ -161,21 +142,6 @@
                             </div>
                         </div>
 
-                        <div class="module-item mumble-bridge" data-module="mumbleBridge">
-                            <div class="module-header">
-                                <span class="module-name">📻 Enlace Mumble</span>
-                                <div class="module-status" id="mumbleBridgeStatus">--</div>
-                            </div>
-                            <div class="module-info">
-                                <div class="server-info" id="mumbleServerInfo">Servidor: --</div>
-                                <div class="channel-info" id="mumbleChannelInfo">Canal: --</div>
-                                <div class="users-info" id="mumbleUsersInfo">Usuarios: --</div>
-                            </div>
-                            <div class="module-controls">
-                                <button class="btn btn-toggle" id="mumbleBridgeToggle">Conectar</button>
-                                <button class="btn btn-test" onclick="testMumbleConnection()">Test</button>
-                            </div>
-                        </div>
                         <div class="module-item" data-module="rogerBeep">
                             <div class="module-header">
                                 <span class="module-name">Roger Beep</span>
@@ -693,22 +659,6 @@
                             </div>
                         </div>
 
-                        <!-- API Configuration -->
-                        <div class="config-section">
-                            <h3>APIs Externas</h3>
-                            <div class="config-group">
-                                <label for="aiChatApiKey">OpenAI API Key:</label>
-                                <input type="password" id="aiChatApiKey" name="aiChatApiKey" placeholder="sk-...">
-                            </div>
-                            <div class="config-group">
-                                <label for="twilioAccountSid">Twilio Account SID:</label>
-                                <input type="text" id="twilioAccountSid" name="twilioAccountSid" placeholder="AC...">
-                            </div>
-                            <div class="config-group">
-                                <label for="twilioAuthToken">Twilio Auth Token:</label>
-                                <input type="password" id="twilioAuthToken" name="twilioAuthToken" placeholder="***">
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -717,7 +667,7 @@
         <!-- Footer -->
         <footer class="footer">
             <div class="footer-content">
-                <span>VX200 Controller v2.0</span>
+                <span>VX200 Controller v2.4.0</span>
                 <span id="lastUpdate">Última actualización: --</span>
             </div>
         </footer>

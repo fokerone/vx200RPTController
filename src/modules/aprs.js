@@ -1,8 +1,8 @@
 const EventEmitter = require('events');
-const { createLogger } = require('../logging/Logger');
-const { delay } = require('../utils');
 const fs = require('fs');
 const path = require('path');
+const { createLogger } = require('../logging/Logger');
+const { delay } = require('../utils');
 
 /**
  * Módulo APRS para VX200 RPT Controller
@@ -60,8 +60,6 @@ class APRS extends EventEmitter {
             lastPosition: null,
             startTime: null
         };
-        
-        this.logger.info('Módulo APRS inicializado');
     }
 
     /**
@@ -74,7 +72,7 @@ class APRS extends EventEmitter {
         }
 
         try {
-            this.logger.info('Inicializando módulo APRS...');
+            // Inicializando módulo APRS silenciosamente
             
             // Verificar que existe el archivo de configuración de Direwolf
             if (!fs.existsSync(this.config.direwolf.configPath)) {
@@ -99,7 +97,7 @@ class APRS extends EventEmitter {
             this.isInitialized = true;
             this.stats.startTime = new Date();
             
-            this.logger.info('Módulo APRS inicializado correctamente');
+            this.logger.info('APRS iniciado - Beacon cada 15min, KISS puerto 8001');
             return true;
             
         } catch (error) {
@@ -132,7 +130,6 @@ class APRS extends EventEmitter {
             });
             
             this.kissSocket.on('data', (data) => {
-                // DEBUG: Log cuando recibimos datos KISS
                 this.logger.info('📡 Datos KISS recibidos:', data.length, 'bytes, hex:', data.toString('hex').substring(0, 100));
                 
                 // Si recibimos datos, significa que estamos conectados
@@ -172,7 +169,6 @@ class APRS extends EventEmitter {
             // CMD: 0x00 = data frame canal 0
             const FEND = 0xC0;
             
-            // DEBUG: Mostrar datos KISS raw
             this.logger.info('🔍 Frame KISS raw:', kissData.toString('hex'));
             
             // Buscar inicio de frame (FEND)
@@ -597,13 +593,11 @@ class APRS extends EventEmitter {
      */
     async handleReceivedFrame(frame) {
         try {
-            // DEBUG: Log el frame recibido
             this.logger.info('🔍 Procesando frame APRS...');
             
-            // Parser AX.25 básico manual para debugging
+            // Parser AX.25 básico
             const parsed = this.parseBasicAX25(frame);
             
-            // DEBUG: Log resultado del parsing
             this.logger.info('📝 Frame parseado:', parsed ? 'ÉXITO' : 'FALLO');
             if (parsed) {
                 this.logger.info('📋 Source:', parsed.source, 'APRS:', !!parsed.aprs, 'Position:', !!(parsed.aprs && parsed.aprs.position));

@@ -18,9 +18,24 @@ class SystemOutput {
         };
     }
 
+    // Obtener IP local del sistema
+    getLocalIP() {
+        const { networkInterfaces } = require('os');
+        const nets = networkInterfaces();
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name]) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    return net.address;
+                }
+            }
+        }
+        return '127.0.0.1';
+    }
+
     // Banner de inicio del sistema
     printStartupBanner() {
         const { Config } = require('../config');
+        const localIP = this.getLocalIP();
         const line = '='.repeat(60);
         console.log(`\n${this.colors.cyan}${line}${this.colors.reset}`);
         console.log(`${this.colors.bold}${this.colors.cyan}                    VX200 CONTROLLER                    ${this.colors.reset}`);
@@ -28,7 +43,7 @@ class SystemOutput {
         console.log(`${this.colors.cyan}${line}${this.colors.reset}`);
         console.log(`${this.colors.green}Callsign: ${Config.callsign}${this.colors.reset}`);
         console.log(`${this.colors.green}Version:  ${Config.version}${this.colors.reset}`);
-        console.log(`${this.colors.green}Web Panel: http://${Config.webHost}:${Config.webPort}${this.colors.reset}`);
+        console.log(`${this.colors.green}Web Panel: http://localhost:${Config.webPort} | http://${localIP}:${Config.webPort}${this.colors.reset}`);
         console.log(`${this.colors.cyan}${line}${this.colors.reset}\n`);
     }
 

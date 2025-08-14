@@ -22,7 +22,7 @@ class GoogleTTSManager {
         };
         
         this.ensureTemp();
-        console.log('🌐 Google TTS Manager inicializado');
+        // Google TTS Manager inicializado (log removido para evitar duplicados)
     }
 
     ensureTemp() {

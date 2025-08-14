@@ -1,12 +1,9 @@
 const AudioManager = require('./audio/audioManager');
 const Baliza = require('./modules/baliza');
 const DateTime = require('./modules/datetime');
-const AIChat = require('./modules/aiChat');
-const SMS = require('./modules/sms');
 const Weather = require('./modules/weather-voice');
 const WeatherAlerts = require('./modules/weatherAlerts');
 const APRS = require('./modules/aprs');
-const MumbleBridge = require('./modules/mumbleBridge');
 const DirewolfManager = require('./utils/direwolfManager');
 const WebServer = require('./web/server');
 const { Config } = require('./config');
@@ -68,7 +65,20 @@ class VX200Controller {
                 this.logger.warn(`Sistema inicializado con ${this.initializationErrors.length} errores: ${this.initializationErrors.join(', ')}`);
                 this.state = MODULE_STATES.ERROR;
             } else {
-                this.logger.info('Sistema inicializado correctamente');
+                const { networkInterfaces } = require('os');
+                const getLocalIP = () => {
+                    const nets = networkInterfaces();
+                    for (const name of Object.keys(nets)) {
+                        for (const net of nets[name]) {
+                            if (net.family === 'IPv4' && !net.internal) {
+                                return net.address;
+                            }
+                        }
+                    }
+                    return '127.0.0.1';
+                };
+                const localIP = getLocalIP();
+                this.logger.info(`🔥 VX200 REPETIDORA OPERATIVA - Audio: LISTO, APRS: ACTIVO, Web: http://localhost:3000 | http://${localIP}:3000`);
             }
             
         } catch (error) {
@@ -83,7 +93,7 @@ class VX200Controller {
             this.audio = new AudioManager();
             
             if (this.audio.start()) {
-                this.logger.info('AudioManager inicializado correctamente');
+                // AudioManager inicializado
             } else {
                 throw new Error('AudioManager no pudo iniciarse');
             }
@@ -96,10 +106,7 @@ class VX200Controller {
     async initializeModules() {
         this.modules.baliza = new Baliza(this.audio);
         this.modules.datetime = new DateTime(this.audio);
-        this.modules.aiChat = new AIChat(this.audio);
-        this.modules.sms = new SMS(this.audio);
         this.modules.weather = new Weather(this.audio);
-        this.modules.mumbleBridge = new MumbleBridge(this.audio);
         
         // Inicializar WeatherAlerts después del módulo APRS
         this.modules.weatherAlerts = null; // Se inicializa después de APRS
@@ -110,7 +117,7 @@ class VX200Controller {
             this.logger.info('Iniciando Direwolf TNC...');
             const direwolfStarted = await this.direwolf.start();
             if (direwolfStarted) {
-                this.logger.info('Direwolf TNC iniciado correctamente');
+                // Direwolf TNC iniciado
                 // Esperar un momento para que se establezca la conexión
                 await new Promise(resolve => setTimeout(resolve, 3000));
             } else {
@@ -127,7 +134,7 @@ class VX200Controller {
         try {
             const aprsInitialized = await this.modules.aprs.initialize();
             if (aprsInitialized) {
-                this.logger.info('Módulo APRS inicializado correctamente');
+                // APRS inicializado
             } else {
                 this.logger.warn('Error inicializando módulo APRS');
                 this.initializationErrors.push('APRS');
@@ -140,20 +147,20 @@ class VX200Controller {
         // Inicializar WeatherAlerts con referencia a APRS y Weather
         try {
             this.modules.weatherAlerts = new WeatherAlerts(this.audio, this.modules.aprs, this.modules.weather);
-            this.logger.info('Módulo WeatherAlerts inicializado correctamente');
+            // WeatherAlerts inicializado
         } catch (error) {
             this.logger.error('Error inicializando WeatherAlerts:', error.message);
             this.initializationErrors.push('WeatherAlerts');
         }
         
-        this.logger.info('Módulos inicializados');
+        // Todos los módulos procesados
     }
 
     async initializeWebServer() {
         try {
             this.logger.debug('Intentando inicializar WebServer...');
             this.webServer = new WebServer(this);
-            this.logger.info('WebServer inicializado correctamente');
+            // WebServer inicializado
         } catch (error) {
             this.logger.error('Error inicializando WebServer:', error.message);
             this.logger.error('Stack trace:', error.stack);
@@ -258,34 +265,6 @@ class VX200Controller {
             }
         });
 
-        // Eventos MumbleBridge
-        this.modules.mumbleBridge.on('started', (data) => {
-            if (this.webServer && typeof this.webServer.broadcastMumbleStatus === 'function') {
-                this.webServer.broadcastMumbleStatus({
-                    connected: true,
-                    server: data.server,
-                    channel: data.channel
-                });
-            }
-        });
-
-        this.modules.mumbleBridge.on('stopped', (data) => {
-            if (this.webServer && typeof this.webServer.broadcastMumbleStatus === 'function') {
-                this.webServer.broadcastMumbleStatus({
-                    connected: false,
-                    uptime: data.uptime
-                });
-            }
-        });
-
-        this.modules.mumbleBridge.on('disconnected', (data) => {
-            if (this.webServer && typeof this.webServer.broadcastMumbleStatus === 'function') {
-                this.webServer.broadcastMumbleStatus({
-                    connected: false,
-                    reason: data.reason
-                });
-            }
-        });
 
         this.interceptLogs();
     }
@@ -315,14 +294,8 @@ class VX200Controller {
     }
 
     async handleDTMF(sequence) {
-        if (this.modules.sms.sessionState !== 'idle') {
-            await this.handleSMSFlow(sequence);
-            return;
-        }
         const commands = {
             '*1': { module: 'datetime', handler: () => this.modules.datetime.execute(sequence) },
-            '*2': { module: 'aiChat', handler: () => this.modules.aiChat.execute(sequence) },
-            '*3': { module: 'sms', handler: () => this.modules.sms.execute(sequence) },
             '*4': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
             '*5': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
             '*7': { module: 'weatherAlerts', handler: () => this.modules.weatherAlerts?.execute(sequence) },
@@ -339,31 +312,11 @@ class VX200Controller {
         }
     }
 
-    async handleSMSFlow(sequence) {
-        const smsState = this.modules.sms.sessionState;
-        
-        if (smsState === 'getting_number') {
-            if (sequence.endsWith('*') || sequence.endsWith('#')) {
-                await this.modules.sms.processDTMF(sequence);
-            }
-            return;
-        }
-        
-        if (smsState === 'confirming') {
-            if (sequence === '1' || sequence === '2') {
-                await this.modules.sms.processDTMF(sequence);
-            }
-            return;
-        }
-    }
-
     async handleUnknownCommand(sequence) {
-        if (this.modules.sms.sessionState === 'idle') {
-            try {
-                await this.audio.playTone(400, 200, 0.5);
-            } catch (error) {
-                
-            }
+        try {
+            await this.audio.playTone(400, 200, 0.5);
+        } catch (error) {
+            
         }
     }
 
@@ -407,12 +360,6 @@ class VX200Controller {
                     break;
                 case 'datetime':
                     await this.modules.datetime.execute('*1');
-                    break;
-                case 'ai_chat':
-                    await this.modules.aiChat.execute('*2');
-                    break;
-                case 'sms':
-                    await this.modules.sms.execute('*3');
                     break;
                 case 'weather':
                     await this.modules.weather.execute('*4');
@@ -489,7 +436,7 @@ class VX200Controller {
             if (this.webServer) {
                 try {
                     await this.webServer.start();
-                    this.logger.info('WebServer iniciado exitosamente');
+                    // WebServer operativo
                 } catch (error) {
                     this.logger.error('Error iniciando WebServer:', error.message);
                     throw error;
@@ -502,7 +449,7 @@ class VX200Controller {
             if (Config.balizaEnabled && this.modules.baliza) {
                 const balizaStarted = this.modules.baliza.start();
                 if (balizaStarted) {
-                    this.logger.info('Baliza automática iniciada');
+                    // Baliza automática activa
                 } else {
                     this.logger.warn('No se pudo iniciar baliza automática');
                 }
@@ -513,7 +460,7 @@ class VX200Controller {
                 try {
                     const aprsStarted = await this.modules.aprs.start();
                     if (aprsStarted) {
-                        this.logger.info('Sistema APRS iniciado correctamente');
+                        this.logger.info('APRS operativo');
                     } else {
                         this.logger.warn('No se pudo iniciar sistema APRS');
                     }
@@ -526,7 +473,7 @@ class VX200Controller {
             if (this.modules.weatherAlerts) {
                 try {
                     await this.modules.weatherAlerts.start();
-                    this.logger.info('Sistema de alertas meteorológicas iniciado');
+                    this.logger.info('Alertas meteorológicas activas');
                 } catch (error) {
                     this.logger.warn('Error iniciando alertas meteorológicas:', error.message);
                 }
@@ -559,14 +506,6 @@ class VX200Controller {
                 enabled: Config.rogerBeepEnabled,
                 details: Config.rogerBeepEnabled ? Config.rogerBeepType : null
             },
-            aiChat: { 
-                enabled: Config.aiChatEnabled,
-                details: Config.aiChatEnabled ? `Model: ${Config.aiChatModel}` : 'No API key'
-            },
-            sms: { 
-                enabled: Config.smsEnabled,
-                details: Config.smsEnabled ? 'Twilio configured' : 'No credentials'
-            },
             weather: {
                 enabled: !!process.env.OPENWEATHER_API_KEY,
                 details: process.env.OPENWEATHER_API_KEY ? 'OpenWeather configured' : 'No API key'
@@ -576,12 +515,6 @@ class VX200Controller {
                 details: this.modules.aprs && this.modules.aprs.isRunning ? 
                     `Callsign: ${this.modules.aprs.config.callsign}` : 
                     'TNC not connected'
-            },
-            mumbleBridge: {
-                enabled: this.modules.mumbleBridge && this.modules.mumbleBridge.isConnected,
-                details: this.modules.mumbleBridge && this.modules.mumbleBridge.isConnected ? 
-                    `Server: ${this.modules.mumbleBridge.config.server.host}:${this.modules.mumbleBridge.config.server.port}` : 
-                    'Disconnected'
             },
             webServer: { 
                 enabled: true,
@@ -618,9 +551,6 @@ class VX200Controller {
             this.modules.weatherAlerts.stop();
         }
         
-        if (this.modules.mumbleBridge?.isConnected) {
-            this.modules.mumbleBridge.stop();
-        }
         
         if (this.direwolf) {
             this.direwolf.stop();
@@ -654,19 +584,6 @@ class VX200Controller {
                     }
                     break;
                     
-                case 'mumbleBridge':
-                    if (this.modules.mumbleBridge.isConnected) {
-                        this.modules.mumbleBridge.stop();
-                        result = { success: true, message: 'MumbleBridge desconectado', enabled: false };
-                    } else {
-                        const started = await this.modules.mumbleBridge.start();
-                        result = { 
-                            success: started, 
-                            message: started ? 'MumbleBridge conectado' : 'Error conectando MumbleBridge', 
-                            enabled: started 
-                        };
-                    }
-                    break;
                     
                 default:
                     result = { success: false, message: 'Servicio desconocido' };
@@ -693,16 +610,12 @@ class VX200Controller {
             channel: audioStatus.channel,
             baliza: this.modules.baliza.getStatus(),
             datetime: this.modules.datetime.getStatus(),
-            aiChat: this.modules.aiChat.getStatus(),
-            sms: this.modules.sms.getStatus(),
             weather: this.modules.weather.getStatus(),
             weatherAlerts: this.modules.weatherAlerts?.getStatus() || { enabled: false, state: 'not_initialized' },
             aprs: this.modules.aprs.getStatus(),
-            mumbleBridge: this.modules.mumbleBridge.getStatus(),
             rogerBeep: audioStatus.rogerBeep,
             dtmf: {
-                lastSequence: 'Esperando...',
-                activeSession: this.modules.sms.sessionState
+                lastSequence: 'Esperando...'
             }
         };
     }

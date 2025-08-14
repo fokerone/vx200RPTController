@@ -98,8 +98,6 @@ class MendozaCityMatcher {
                 variations: ['lavalle', 'laballe']
             }
         };
-
-        this.logger.info(`MendozaCityMatcher inicializado con ${Object.keys(this.cities).length} ciudades de Mendoza`);
     }
 
     /**

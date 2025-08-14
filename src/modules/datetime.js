@@ -29,8 +29,6 @@ class DateTime {
         
         // Inicializar sistema híbrido de voz
         this.voiceManager = new HybridVoiceManager();
-        
-        this.logger.info('Módulo DateTime inicializado con Google TTS híbrido');
     }
 
     /**

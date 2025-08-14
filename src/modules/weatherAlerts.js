@@ -90,8 +90,6 @@ class WeatherAlerts extends EventEmitter {
                 this.logger.warn('Google TTS no disponible, usando fallback:', error.message);
             }
         }
-        
-        this.logger.info('Módulo WeatherAlerts inicializado');
     }
     
     /**

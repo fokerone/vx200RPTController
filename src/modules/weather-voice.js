@@ -44,8 +44,6 @@ class WeatherVoice {
         
         // Inicializar sistema híbrido de voz
         this.voiceManager = new HybridVoiceManager();
-
-        this.logger.info('Módulo WeatherVoice inicializado con Claude speech-to-text y Google TTS híbrido');
     }
 
     /**

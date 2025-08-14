@@ -13,8 +13,6 @@ class ClaudeSpeechToText {
             maxFileSize: 10 * 1024 * 1024, // 10MB máximo
             supportedFormats: ['wav', 'mp3', 'ogg', 'flac']
         };
-
-        this.logger.info('Claude Speech-to-Text inicializado');
     }
 
     /**

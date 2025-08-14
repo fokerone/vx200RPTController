@@ -117,26 +117,6 @@ class ConfigManager {
                 }
             },
 
-            // ===== AI CHAT =====
-            aiChat: {
-                enabled: false, // Se habilita solo si hay API key
-                provider: 'openai',
-                model: 'gpt-3.5-turbo',
-                maxTokens: 150,
-                temperature: 0.7,
-                basePrompt: 'Eres un asistente de radio amateur. Responde de forma breve y clara en español latino.',
-                recordingDuration: 10000, // ms
-                timeout: 30000
-            },
-
-            // ===== SMS =====
-            sms: {
-                enabled: false, // Se habilita solo si hay credenciales
-                provider: 'twilio',
-                timeout: 30000,
-                maxLength: 160,
-                minPhoneLength: 8
-            },
 
             // ===== DTMF =====
             dtmf: {
@@ -156,8 +136,6 @@ class ConfigManager {
                 },
                 commands: {
                     '*1': 'datetime',
-                    '*2': 'aiChat', 
-                    '*3': 'sms',
                     '*9': 'baliza'
                 }
             },
@@ -313,23 +291,6 @@ class ConfigManager {
         if (process.env.BALIZA_TONE_DURATION) this.config.baliza.tone.duration = parseInt(process.env.BALIZA_TONE_DURATION);
         if (process.env.BALIZA_TONE_VOLUME) this.config.baliza.tone.volume = parseFloat(process.env.BALIZA_TONE_VOLUME);
 
-        // AI Chat
-        if (process.env.OPENAI_API_KEY) {
-            this.config.aiChat.enabled = true;
-            this.config.aiChat.apiKey = process.env.OPENAI_API_KEY;
-        }
-
-        if (process.env.OPENAI_MODEL) this.config.aiChat.model = process.env.OPENAI_MODEL;
-        if (process.env.OPENAI_MAX_TOKENS) this.config.aiChat.maxTokens = parseInt(process.env.OPENAI_MAX_TOKENS);
-        if (process.env.OPENAI_TEMPERATURE) this.config.aiChat.temperature = parseFloat(process.env.OPENAI_TEMPERATURE);
-
-        // SMS
-        if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-            this.config.sms.enabled = true;
-            this.config.sms.accountSid = process.env.TWILIO_ACCOUNT_SID;
-            this.config.sms.authToken = process.env.TWILIO_AUTH_TOKEN;
-            this.config.sms.fromNumber = process.env.TWILIO_FROM_NUMBER;
-        }
 
         // Logging
         if (process.env.LOG_LEVEL) this.config.logging.level = process.env.LOG_LEVEL;
@@ -497,9 +458,7 @@ class ConfigManager {
             },
             modules: {
                 rogerBeep: this.config.rogerBeep.enabled,
-                baliza: this.config.baliza.enabled,
-                aiChat: this.config.aiChat.enabled,
-                sms: this.config.sms.enabled
+                baliza: this.config.baliza.enabled
             }
         };
     }

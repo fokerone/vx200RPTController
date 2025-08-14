@@ -54,7 +54,7 @@ class HybridVoiceManager {
             maxLength: this.config.googleTTS.maxTextLength
         });
 
-        this.logger.info('HybridVoiceManager inicializado (Google TTS + Espeak fallback)');
+        this.logger.info('Sistema TTS híbrido iniciado');
     }
 
     /**

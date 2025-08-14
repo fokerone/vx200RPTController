@@ -24,8 +24,6 @@ class Weather {
             current: { data: null, timestamp: 0 },
             forecast: { data: null, timestamp: 0 }
         };
-
-        this.logger.info(`Módulo Weather inicializado ${this.config.apiKey ? '(API configurada)' : '(SIN API KEY)'}`);
     }
 
     /**

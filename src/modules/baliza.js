@@ -29,7 +29,6 @@ class Baliza extends EventEmitter {
         this.transmissionCount = 0;
         
         this.validateConfiguration();
-        this.logger.info('Módulo Baliza inicializado');
     }
 
     /**

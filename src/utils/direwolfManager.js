@@ -87,7 +87,7 @@ TXTAIL 1
             }
             
             fs.writeFileSync(this.configPath, config);
-            this.logger.info('Archivo de configuración Direwolf generado');
+            // Configuración Direwolf generada
             return true;
             
         } catch (error) {
@@ -159,7 +159,7 @@ TXTAIL 1
 
             if (this.process && !this.process.killed) {
                 this.isRunning = true;
-                this.logger.info('Direwolf TNC iniciado correctamente');
+                this.logger.info('📻 TNC Direwolf: 1200 baud AFSK, KISS:8001, Audio:default');
                 return true;
             } else {
                 throw new Error('Proceso Direwolf terminó inesperadamente');

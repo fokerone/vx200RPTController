@@ -564,12 +564,10 @@
             let newMaxDistance = 0;
             positions.forEach(pos => {
                 const distance = pos.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, pos.lat, pos.lon);
-                console.log(`DEBUG: ${pos.callsign} @ ${pos.lat.toFixed(6)}, ${pos.lon.toFixed(6)} = ${distance.toFixed(2)} km`);
                 if (distance > newMaxDistance) {
                     newMaxDistance = distance;
                 }
             });
-            console.log(`DEBUG: Distancia máxima encontrada: ${newMaxDistance.toFixed(2)} km`);
             
             // Solo actualizar si la distancia cambió significativamente
             if (Math.abs(newMaxDistance - maxDistance) > 0.1 || maxDistance === 0) {
@@ -643,7 +641,6 @@
                 targetZoom = 10; // Muy alejado para círculos grandes
             }
             
-            console.log(`DEBUG: Ajustando zoom a ${targetZoom} para radio de ${radiusKm.toFixed(2)} km`);
             
             // Aplicar zoom suavemente
             map.setView([REPEATER_CONFIG.lat, REPEATER_CONFIG.lon], targetZoom, {

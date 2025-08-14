@@ -1,10 +1,10 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.3.0
+## 📡 Sistema de Control para Repetidora Simplex v2.4.0
 
 Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa con historial de posiciones y análisis de cobertura avanzado.
 
-**🚀 Versión 2.3.0 - Sistema APRS Completo con Historial de Posiciones**
+**🚀 Versión 2.4.0 - Optimización y Limpieza del Sistema**
 
 ---
 
@@ -42,8 +42,6 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 ### 🔊 **Sistema de Módulos**
 - **Baliza Inteligente**: Transmisión automática/manual (`*9`)
 - **DateTime**: Anuncio de fecha y hora (`*1`)
-- **AI Chat**: Consultas con OpenAI GPT (`*2`)
-- **SMS**: Mensajería con Twilio (`*3`)
 - **Weather**: Información meteorológica (`*4` actual, `*5` voz)
 - **🌦️ Weather Alerts**: Sistema de alertas SMN Argentina (`*7` consultar, `*0` forzar verificación)
 
@@ -189,9 +187,6 @@ APRS_BEACON_INTERVAL=15
 
 # APIs Opcionales
 OPENWEATHER_API_KEY=tu_api_key
-OPENAI_API_KEY=sk-...
-TWILIO_ACCOUNT_SID=AC...
-TWILIO_AUTH_TOKEN=...
 ```
 
 ---
@@ -201,8 +196,6 @@ TWILIO_AUTH_TOKEN=...
 | Comando | Función | Descripción |
 |---------|---------|-------------|
 | `*1` | DateTime | Anuncia fecha y hora actual |
-| `*2` | AI Chat | Sistema de consultas con OpenAI |
-| `*3` | SMS | Sistema de mensajes Twilio |
 | `*4` | Weather | Clima actual |
 | `*5` | Weather Voice | Clima con voz natural |
 | `*7` | **🌦️ Weather Alerts** | **Consultar alertas meteorológicas activas** |
@@ -227,9 +220,9 @@ vx200RPTController/
 │   ├── modules/
 │   │   ├── baliza.js            # Módulo de baliza
 │   │   ├── datetime.js          # Módulo fecha/hora
-│   │   ├── aiChat.js            # Módulo IA con OpenAI
-│   │   ├── sms.js               # Módulo SMS con Twilio
 │   │   ├── weather.js           # Módulo meteorológico
+│   │   ├── weather-voice.js     # Módulo clima con voz
+│   │   ├── weatherAlerts.js     # Módulo alertas meteorológicas
 │   │   └── aprs.js              # Módulo APRS con Direwolf
 │   └── web/
 │       └── server.js            # Servidor web con Socket.IO
@@ -339,6 +332,42 @@ ps aux | grep direwolf
 ---
 
 ## 📋 Changelog
+
+### v2.4.0 - Optimización y Limpieza del Sistema 🧹
+
+#### 🔧 **Optimizaciones y Mejoras**
+- [x] **Limpieza completa de dependencias**
+  - [x] Eliminadas 13 dependencias no utilizadas (fs-extra, ejs, fft-js, multer, etc.)
+  - [x] Reducción significativa del tamaño de node_modules (184 packages removidos)
+  - [x] Sistema más ligero y eficiente
+- [x] **Eliminación de módulos obsoletos**
+  - [x] Removido completamente módulo AI Chat (*2) - Sin uso activo
+  - [x] Removido completamente módulo SMS (*3) - Sin uso activo  
+  - [x] Removido completamente módulo Mumble Bridge - Sin uso activo
+  - [x] Limpieza de configuración y variables de entorno asociadas
+- [x] **Mejoras en panel web**
+  - [x] Interfaz más limpia sin módulos no utilizados
+  - [x] Banner de inicio mejorado con localhost + IP local
+  - [x] Eliminadas secciones de configuración innecesarias (OpenAI, Twilio)
+- [x] **Correcciones y estabilidad**
+  - [x] Corregida visualización de alertas meteorológicas en panel web
+  - [x] Implementado sistema de cleanup automático 24/7
+  - [x] Mejorado mapa APRS con datos reales y mejor UX
+  - [x] Sistema más estable y enfocado en funcionalidades principales
+
+#### 📡 **Comandos DTMF Actuales**
+- [x] `*1` → DateTime (Fecha y hora)
+- [x] `*4` → Weather (Clima actual)
+- [x] `*5` → Weather Voice (Clima con voz)
+- [x] `*7` → Weather Alerts (Alertas meteorológicas)
+- [x] `*0` → Force Check (Verificación manual alertas)
+- [x] `*9` → Baliza (Baliza manual)
+
+#### 🎯 **Enfoque del Sistema**
+El sistema ahora está **completamente enfocado** en las funcionalidades principales:
+- **Radio Amateur**: DTMF, Baliza, APRS
+- **Meteorología**: Clima actual, pronósticos, alertas SMN
+- **Panel Web**: Monitoreo en tiempo real, configuración, estadísticas
 
 ### v2.3.0 - Sistema APRS Completo con Historial de Posiciones 🚀
 

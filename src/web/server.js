@@ -1,9 +1,9 @@
 const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const path = require('path');
 const cors = require('cors');
+const socketIo = require('socket.io');
 const { WEB_SERVER, MODULE_STATES } = require('../constants');
 const { createLogger } = require('../logging/Logger');
 
@@ -490,14 +490,6 @@ class WebServer {
                     enabled: true,
                     status: 'ready'
                 },
-                aiChat: {
-                    enabled: this.getModuleStatus('aiChat') === 'enabled',
-                    status: this.getModuleStatus('aiChat')
-                },
-                sms: {
-                    enabled: this.getModuleStatus('sms') === 'enabled',
-                    status: this.getModuleStatus('sms')
-                },
                 weather: {
                     enabled: this.getModuleStatus('weather') === 'enabled',
                     status: this.getModuleStatus('weather')
@@ -510,12 +502,6 @@ class WebServer {
                 rogerBeep: {
                     enabled: this.controller.audio?.getRogerBeepStatus()?.enabled || false,
                     status: 'ready'
-                },
-                mumbleBridge: {
-                    enabled: this.controller.modules?.mumbleBridge?.isConnected || false,
-                    status: this.getModuleStatus('mumbleBridge'),
-                    server: this.controller.modules?.mumbleBridge?.config?.server?.host + ':' + this.controller.modules?.mumbleBridge?.config?.server?.port || 'N/A',
-                    channel: this.controller.modules?.mumbleBridge?.config?.channel?.name || 'N/A'
                 }
             }
         };
@@ -534,15 +520,6 @@ class WebServer {
                 return status.enabled ? 'enabled' : 'disabled';
             }
 
-            if (moduleName === 'aiChat') {
-                const { Config } = require('../config');
-                return Config.aiChatEnabled ? 'enabled' : 'disabled';
-            }
-
-            if (moduleName === 'sms') {
-                const { Config } = require('../config');
-                return Config.smsEnabled ? 'enabled' : 'disabled';
-            }
 
             if (moduleName === 'weather') {
                 return process.env.OPENWEATHER_API_KEY ? 'enabled' : 'disabled';
@@ -591,27 +568,6 @@ class WebServer {
                         }
                     }
                     return { success: false, message: 'Módulo Weather Alerts no disponible' };
-
-                case 'mumbleBridge':
-                    if (this.controller.modules.mumbleBridge) {
-                        if (this.controller.modules.mumbleBridge.isConnected) {
-                            this.controller.modules.mumbleBridge.stop();
-                            return { success: true, message: 'MumbleBridge desconectado', enabled: false };
-                        } else {
-                            // Habilitar el módulo si no está habilitado
-                            if (!this.controller.modules.mumbleBridge.config.enabled) {
-                                this.controller.modules.mumbleBridge.configure({ enabled: true });
-                            }
-                            
-                            const started = await this.controller.modules.mumbleBridge.start();
-                            return { 
-                                success: started, 
-                                message: started ? 'MumbleBridge conectado' : 'Error conectando MumbleBridge', 
-                                enabled: started 
-                            };
-                        }
-                    }
-                    return { success: false, message: 'Módulo MumbleBridge no disponible' };
 
                 default:
                     throw new Error(`Módulo ${moduleName} no soporta toggle`);
@@ -690,15 +646,6 @@ class WebServer {
                 configUpdates['tts.speed'] = parseInt(newConfig.ttsSpeed);
             }
             
-            if (newConfig.aiChatApiKey) {
-                configUpdates['aiChat.apiKey'] = newConfig.aiChatApiKey;
-            }
-            if (newConfig.twilioAccountSid) {
-                configUpdates['twilio.accountSid'] = newConfig.twilioAccountSid;
-            }
-            if (newConfig.twilioAuthToken) {
-                configUpdates['twilio.authToken'] = newConfig.twilioAuthToken;
-            }
             
             Object.entries(configUpdates).forEach(([path, value]) => {
                 configManager.setValue(path, value);
@@ -739,16 +686,6 @@ class WebServer {
                 throw new Error('Roger Beep no disponible');
             
 
-            case 'test_mumble_connection':
-                if (this.controller.modules?.mumbleBridge?.testConnection) {
-                    const result = await this.controller.modules.mumbleBridge.testConnection();
-                    return { 
-                        success: result.success, 
-                        message: result.message,
-                        data: result
-                    };
-                }
-                throw new Error('MumbleBridge no disponible');
             
             default:
                 throw new Error(`Comando ${command} no reconocido`);
@@ -924,20 +861,11 @@ class WebServer {
         }
     }
 
-    // MumbleBridge broadcast methods
-    broadcastMumbleStatus(status) {
-        if (this.connectedClients.size > 0) {
-            this.io.emit('mumble_status', status);
-            this.logger.debug(`Estado de MumbleBridge transmitido: ${status.connected ? 'conectado' : 'desconectado'}`);
-        }
-    }
 
 
     getDTMFTargetModule(sequence) {
         const commands = {
             '*1': 'DateTime',
-            '*2': 'AI Chat',
-            '*3': 'SMS',
             '*4': 'Clima',
             '*5': 'Clima Voz',
             '*7': 'Alertas Meteo',

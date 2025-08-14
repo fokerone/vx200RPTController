@@ -1,8 +1,8 @@
+const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process'); 
 const recorder = require('node-record-lpcm16');
-const EventEmitter = require('events');
 const RogerBeep = require('./rogerBeep');
 const { Config, getValue } = require('../config');
 const { AUDIO, MODULE_STATES, DELAYS, DTMF } = require('../constants');

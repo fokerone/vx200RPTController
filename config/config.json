@@ -1,7 +1,7 @@
 {
   "system": {
     "callsign": "LU5MCD",
-    "version": "2.0",
+    "version": "2.4.0",
     "name": "VX200 Controller",
     "description": "Sistema de Control para Repetidora Simplex",
     "environment": "production"
@@ -86,24 +86,6 @@
       "time": "HH:mm [horas]"
     }
   },
-  "aiChat": {
-    "enabled": true,
-    "provider": "openai",
-    "model": "gpt-3.5-turbo",
-    "maxTokens": 150,
-    "temperature": 0.7,
-    "basePrompt": "Eres un asistente de radio amateur. Responde de forma breve y clara en español latino.",
-    "recordingDuration": 10000,
-    "timeout": 30000,
-    "apiKey": "90be0f2a39b3165077dc142bac8fb296"
-  },
-  "sms": {
-    "enabled": false,
-    "provider": "twilio",
-    "timeout": 30000,
-    "maxLength": 160,
-    "minPhoneLength": 8
-  },
   "dtmf": {
     "timeout": 2000,
     "bufferTimeout": 1000,
@@ -134,8 +116,6 @@
     },
     "commands": {
       "*1": "datetime",
-      "*2": "aiChat",
-      "*3": "sms",
       "*4": "weather",
       "*5": "weather-voice",
       "*7": "weather-alerts",
