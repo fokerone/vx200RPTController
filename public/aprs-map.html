@@ -170,7 +170,7 @@
 
                 <!-- Lista de Estaciones -->
                 <div class="info-panel">
-                    <h5>📋 Estaciones Recibidas (<span id="stationCount">0</span>)</h5>
+                    <h5>📋 Estaciones Recibidas</h5>
                     <div class="position-list" id="positionsList">
                         <div class="text-center text-muted p-3">
                             No hay posiciones recibidas
@@ -304,6 +304,7 @@
                         renderPositions();
                         // Actualizar marcadores de posiciones existentes
                         positions.forEach(pos => updatePositionMarker(pos));
+                        // Actualizar círculo de cobertura después de cargar las posiciones
                         updateCoverageCircle();
                     }
                 }
@@ -337,26 +338,30 @@
         
         // Agregar nueva posición
         function addPosition(position) {
+            console.log('📡 Nueva posición recibida:', position);
+            
             // Buscar si ya existe
             const existingIndex = positions.findIndex(p => p.callsign === position.callsign);
             
             if (existingIndex >= 0) {
+                console.log(`🔄 Actualizando posición existente: ${position.callsign}`);
                 positions[existingIndex] = position;
             } else {
+                console.log(`🆕 Nueva estación: ${position.callsign}`);
                 positions.push(position);
             }
             
+            // Actualizar toda la vista
             renderPositions();
             updatePositionMarker(position);
             updateCoverageCircle();
+            
+            console.log(`📊 Total posiciones: ${positions.length}`);
         }
         
         // Renderizar lista de posiciones
         function renderPositions() {
             const listContainer = document.getElementById('positionsList');
-            const countElement = document.getElementById('stationCount');
-            
-            countElement.textContent = positions.length;
             
             if (positions.length === 0) {
                 listContainer.innerHTML = '<div class="text-center text-muted p-3">No hay posiciones recibidas</div>';
@@ -400,10 +405,14 @@
         // Actualizar marcador en el mapa
         function updatePositionMarker(position) {
             // Usar key única para cada ubicación diferente
-            const key = `${position.callsign}_${position.locationId || Date.now()}`;
+            const locationId = position.locationId || `${position.lat}_${position.lon}`;
+            const key = `${position.callsign}_${locationId}`;
             
-            // Solo remover si es exactamente la misma ubicación
-            // (No remover otras ubicaciones del mismo callsign)
+            // Verificar si el marcador ya existe para evitar duplicados
+            if (markers[key]) {
+                console.log(`Marcador ya existe para ${key}, omitiendo creación`);
+                return;
+            }
             
             // Crear nuevo marcador
             const marker = L.marker([position.lat, position.lon], {
@@ -428,19 +437,10 @@
                 ${position.symbol ? `<br><small>${position.symbol}</small>` : ''}
             `);
             
+            // Guardar marcador con key única
             markers[key] = marker;
             
-            // Guardar referencia por callsign para navegación
-            if (!markers[position.callsign]) {
-                markers[position.callsign] = [];
-            }
-            if (Array.isArray(markers[position.callsign])) {
-                markers[position.callsign].push(marker);
-            } else {
-                // Convertir marcador único a array
-                const oldMarker = markers[position.callsign];
-                markers[position.callsign] = [oldMarker, marker];
-            }
+            console.log(`Marcador creado: ${key} en ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)}`);
         }
         
         // Mostrar detalles de estación
@@ -500,16 +500,24 @@
             });
             
             // Buscar y abrir popup del marcador correspondiente
-            Object.keys(markers).forEach(key => {
-                if (key.startsWith(callsign + '_')) {
-                    const marker = markers[key];
-                    const markerPos = marker.getLatLng();
-                    // Verificar si es la posición correcta (tolerancia de 0.0001 grados ~10m)
-                    if (Math.abs(markerPos.lat - lat) < 0.0001 && Math.abs(markerPos.lng - lon) < 0.0001) {
-                        marker.openPopup();
+            const locationId = `${lat}_${lon}`;
+            const key = `${callsign}_${locationId}`;
+            
+            if (markers[key]) {
+                markers[key].openPopup();
+            } else {
+                // Buscar por proximidad si no hay coincidencia exacta
+                Object.keys(markers).forEach(markerKey => {
+                    if (markerKey.startsWith(callsign + '_')) {
+                        const marker = markers[markerKey];
+                        const markerPos = marker.getLatLng();
+                        // Verificar si es la posición correcta (tolerancia de 0.0001 grados ~10m)
+                        if (Math.abs(markerPos.lat - lat) < 0.0001 && Math.abs(markerPos.lng - lon) < 0.0001) {
+                            marker.openPopup();
+                        }
                     }
-                }
-            });
+                });
+            }
         }
         
         // Actualizar estado APRS
@@ -518,6 +526,8 @@
             document.getElementById('callsign').textContent = status.config.callsign || '-';
             document.getElementById('beaconsSent').textContent = status.stats.beaconsSent || 0;
             document.getElementById('positionsReceived').textContent = status.stats.positionsReceived || 0;
+            
+            // Estado actualizado correctamente
             
             const tncElement = document.getElementById('tncStatus');
             tncElement.className = status.tncConnected ? 'text-success' : 'text-danger';
@@ -542,8 +552,35 @@
             }
         }
         
+        // Limpiar todos los marcadores del mapa
+        function clearAllMarkers() {
+            // Limpiar todos los marcadores excepto el repetidor
+            Object.keys(markers).forEach(key => {
+                if (key !== 'repeater') {
+                    const marker = markers[key];
+                    if (Array.isArray(marker)) {
+                        marker.forEach(m => map.removeLayer(m));
+                    } else {
+                        map.removeLayer(marker);
+                    }
+                    delete markers[key];
+                }
+            });
+            
+            // Limpiar círculo de cobertura (se recrea automáticamente)
+            if (coverageCircle) {
+                map.removeLayer(coverageCircle);
+                coverageCircle = null;
+                maxDistance = 0; // Reset distancia máxima
+            }
+            
+            console.log('Marcadores limpiados del mapa');
+        }
+        
         // Actualizar mapa
         function refreshMap() {
+            console.log('Actualizando mapa - limpiando marcadores existentes...');
+            clearAllMarkers();
             loadInitialData();
         }
         

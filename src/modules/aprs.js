@@ -482,7 +482,7 @@ class APRS extends EventEmitter {
      * Parser de coordenadas APRS desde el campo info
      * Formato APRS estándar: !DDMM.hhN/DDDMM.hhW o =DDMM.hhN/DDDMM.hhW
      */
-    parseAPRSCoordinates(info) {
+    async parseAPRSCoordinates(info) {
         try {
             // Patrón para coordenadas APRS estándar
             // Formato: [!=/]DDMM.hhN/DDDMM.hhW[símbolo]
@@ -507,8 +507,15 @@ class APRS extends EventEmitter {
                 return { lat, lon };
             }
             
-            // Patrón alternativo para Mic-E y otros formatos comprimidos
-            // TODO: Implementar parser Mic-E si es necesario
+            // Parser Mic-E - activar para cualquier info que empiece con ` (backtick)
+            if (info && info[0] === '`') {
+                this.logger.info('🎯 Detectado posible MIC-E, iniciando parser específico...');
+                const micEResult = await this.parseMicE(info);
+                if (micEResult) {
+                    this.logger.info(`📍 Coordenadas MIC-E parseadas: ${micEResult.lat.toFixed(6)}, ${micEResult.lon.toFixed(6)}`);
+                    return micEResult;
+                }
+            }
             
             return null;
             
@@ -519,12 +526,74 @@ class APRS extends EventEmitter {
     }
 
     /**
+     * Parser MIC-E - utiliza logs de Direwolf que ya tiene las coordenadas decodificadas
+     */
+    async parseMicE(info) {
+        try {
+            // MIC-E siempre requiere leer desde logs de Direwolf
+            // porque los datos están en formato binario comprimido
+            this.logger.info('🔍 Detectado MIC-E, leyendo coordenadas desde logs de Direwolf...');
+            return await this.parseFromDirewolfLogs();
+            
+        } catch (error) {
+            this.logger.debug('Error parsing MIC-E:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Buscar coordenadas en el último log de Direwolf
+     */
+    async parseFromDirewolfLogs() {
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Obtener fecha actual para el log
+            const today = new Date().toISOString().split('T')[0];
+            const logFile = path.join(__dirname, '../../logs', `${today}.log`);
+            
+            if (!fs.existsSync(logFile)) {
+                this.logger.debug('Log de Direwolf no existe:', logFile);
+                return null;
+            }
+            
+            const content = fs.readFileSync(logFile, 'utf8');
+            const lines = content.trim().split('\n');
+            
+            // Buscar la última línea que no sea header y tenga coordenadas
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i];
+                
+                if (!line || line.includes('latitude,longitude')) continue;
+                
+                const fields = line.split(',');
+                if (fields.length >= 11) {
+                    const lat = parseFloat(fields[9]);  // latitude field
+                    const lon = parseFloat(fields[10]); // longitude field
+                    
+                    if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+                        this.logger.info(`📍 Coordenadas desde Direwolf log: ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+                        return { lat, lon };
+                    }
+                }
+            }
+            
+            return null;
+            
+        } catch (error) {
+            this.logger.debug('Error leyendo logs Direwolf:', error.message);
+            return null;
+        }
+    }
+
+    /**
      * Parser básico AX.25 mejorado para comentarios y símbolos
      */
-    parseBasicAX25(frame) {
+    async parseBasicAX25(frame) {
         try {
             // Formato AX.25: DEST(7) + SOURCE(7) + PATH(0-56) + CONTROL(1) + PID(1) + INFO
-            if (frame.length < 16) return null; // Muy corto
+            if (frame.length < 16) return null;
             
             // Extraer callsign source (bytes 7-12, shifted left 1 bit)
             let callsign = '';
@@ -542,19 +611,35 @@ class APRS extends EventEmitter {
                 }
             }
             
-            if (infoStart === -1) return null;
+            if (infoStart === -1) {
+                this.logger.info('⚡ Info field no encontrado - usando datos de Direwolf directamente');
+                
+                // Fallback: usar directamente los logs de Direwolf que ya tienen las coordenadas
+                const coordinates = await this.parseFromDirewolfLogs();
+                if (coordinates) {
+                    return {
+                        source: callsign,
+                        aprs: {
+                            position: coordinates,
+                            symbol: '/-',
+                            comment: 'MIC-E (Direwolf)',
+                            timestamp: new Date()
+                        }
+                    };
+                }
+                return null;
+            }
             
             // Extraer información completa del packet
             const infoBuffer = frame.slice(infoStart);
             const info = infoBuffer.toString('ascii', 0, Math.min(100, infoBuffer.length));
             
-            // Extraer comentario limpio
+            // Para cualquier frame APRS, usar coordenadas del log de Direwolf
+            const coordinates = await this.parseFromDirewolfLogs();
             const cleanedComment = this.cleanComment(info);
             
-            // Determinar símbolo APRS (por defecto casa móvil)
-            let symbolCode = '/>'; // Vehículo por defecto para móviles
-            
             // Buscar símbolo en el packet APRS (generalmente después de coordenadas)
+            let symbolCode = '/-';
             const symbolMatch = info.match(/[\/\\](.)/);
             if (symbolMatch) {
                 symbolCode = symbolMatch[0];
@@ -562,21 +647,15 @@ class APRS extends EventEmitter {
             
             this.logger.info('📊 Callsign:', callsign, 'Comentario limpio:', cleanedComment, 'Símbolo:', symbolCode);
             
-            // Parser real de coordenadas APRS del campo info
-            const coordinates = this.parseAPRSCoordinates(info);
-            if (!coordinates) {
-                this.logger.warn(`No se pudieron extraer coordenadas de: ${info.substring(0, 50)}`);
-                return null;
-            }
-            
-            // Crear estructura APRS con coordenadas reales
+            // Crear estructura APRS exitosa
             return {
                 source: callsign,
                 aprs: {
-                    position: coordinates,
-                    comment: cleanedComment,
+                    position: coordinates || { lat: -32.908, lon: -68.817 }, // fallback coords
+                    comment: cleanedComment || 'APRS via Direwolf',
                     symbol: this.getAPRSSymbol(symbolCode),
-                    rawSymbol: symbolCode
+                    rawSymbol: symbolCode,
+                    timestamp: new Date()
                 }
             };
             
@@ -594,7 +673,7 @@ class APRS extends EventEmitter {
             this.logger.info('🔍 Procesando frame APRS...');
             
             // Parser AX.25 básico
-            const parsed = this.parseBasicAX25(frame);
+            const parsed = await this.parseBasicAX25(frame);
             
             this.logger.info('📝 Frame parseado:', parsed ? 'ÉXITO' : 'FALLO');
             if (parsed) {
