@@ -1,7 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { createLogger } = require('../utils');
+const { createLogger } = require('../logging/Logger');
 
 /**
  * ConfigManager - Sistema centralizado de configuración
@@ -156,21 +156,6 @@ class ConfigManager {
                 filePath: './logs/vx200.log',
                 maxFileSize: 10485760, // 10MB
                 maxFiles: 5
-            },
-
-            // ===== SEGURIDAD =====
-            security: {
-                sessionSecret: 'vx200-default-secret-change-in-production',
-                sessionMaxAge: 3600000, // 1 hora
-                enableRateLimit: true
-            },
-
-            // ===== MONITOREO =====
-            monitoring: {
-                healthCheckInterval: 30000, // 30 segundos
-                enableMetrics: true,
-                memoryUsageThreshold: 85, // %
-                cpuUsageThreshold: 80     // %
             },
 
             // ===== APRS =====
@@ -473,11 +458,6 @@ function getConfigManager() {
     }
     return configManagerInstance;
 }
-
-// Método estático para obtener instancia singleton
-ConfigManager.getInstance = function() {
-    return getConfigManager();
-};
 
 module.exports = {
     ConfigManager,
