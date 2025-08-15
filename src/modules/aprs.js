@@ -865,7 +865,7 @@ class APRS extends EventEmitter {
             for (const [callsign, positionArray] of this.receivedPositions.entries()) {
                 totalPositions += positionArray.length;
                 positionArray.forEach(pos => {
-                    if (pos.timestamp.getTime() > latestTime) {
+                    if (pos.timestamp && typeof pos.timestamp.getTime === 'function' && pos.timestamp.getTime() > latestTime) {
                         latestTime = pos.timestamp.getTime();
                         latestPosition = pos;
                     }
@@ -1173,8 +1173,13 @@ class APRS extends EventEmitter {
      * Obtener tiempo desde último beacon en minutos
      */
     getTimeSinceLastBeacon() {
-        if (!this.stats.lastBeacon) return 'nunca';
-        return Math.floor((Date.now() - this.stats.lastBeacon.getTime()) / 1000 / 60);
+        if (!this.stats.lastBeacon || typeof this.stats.lastBeacon.getTime !== 'function') return 'nunca';
+        try {
+            return Math.floor((Date.now() - this.stats.lastBeacon.getTime()) / 1000 / 60);
+        } catch (error) {
+            this.logger.warn('Error calculando tiempo desde último beacon:', error.message);
+            return 'error';
+        }
     }
 
     /**
@@ -1348,7 +1353,8 @@ class APRS extends EventEmitter {
                 lastSent: this.stats.lastBeacon,
                 lastReceived: this.stats.lastPosition?.timestamp
             },
-            uptime: this.stats.startTime ? Math.floor((Date.now() - this.stats.startTime.getTime()) / 1000 / 60) : 0,
+            uptime: (this.stats.startTime && typeof this.stats.startTime.getTime === 'function') ? 
+                Math.floor((Date.now() - this.stats.startTime.getTime()) / 1000 / 60) : 0,
             mostActive: active
                 .sort((a, b) => (b.count || 0) - (a.count || 0))
                 .slice(0, 5)
@@ -1408,7 +1414,7 @@ class APRS extends EventEmitter {
         for (const [callsign, position] of this.receivedPositions.entries()) {
             const lastHeard = position.lastHeard || position.timestamp;
             
-            if (lastHeard.getTime() < cutoff) {
+            if (lastHeard && typeof lastHeard.getTime === 'function' && lastHeard.getTime() < cutoff) {
                 // Archivar posiciones muy antiguas pero importantes
                 if (position.count >= 5) { // Estaciones frecuentes
                     position.archived = true;

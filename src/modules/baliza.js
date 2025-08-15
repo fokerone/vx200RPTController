@@ -291,7 +291,8 @@ class Baliza extends EventEmitter {
      */
     getStats() {
         const now = Date.now();
-        const startTime = this.lastTransmission ? this.lastTransmission.getTime() : now;
+        const startTime = (this.lastTransmission && typeof this.lastTransmission.getTime === 'function') ? 
+            this.lastTransmission.getTime() : now;
         
         return {
             totalTransmissions: this.transmissionCount,
