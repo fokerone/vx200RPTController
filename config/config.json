@@ -116,6 +116,7 @@
     },
     "commands": {
       "*1": "datetime",
+      "*3": "inpres",
       "*4": "weather",
       "*5": "weather-voice",
       "*7": "weather-alerts",

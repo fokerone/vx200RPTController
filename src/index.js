@@ -3,6 +3,7 @@ const Baliza = require('./modules/baliza');
 const DateTime = require('./modules/datetime');
 const Weather = require('./modules/weather-voice');
 const WeatherAlerts = require('./modules/weatherAlerts');
+const InpresSismic = require('./modules/inpres');
 const APRS = require('./modules/aprs');
 const DirewolfManager = require('./utils/direwolfManager');
 const WebServer = require('./web/server');
@@ -144,6 +145,15 @@ class VX200Controller {
             this.initializationErrors.push('WeatherAlerts');
         }
         
+        // Inicializar INPRES - Monitoreo Sísmico
+        try {
+            this.modules.inpres = new InpresSismic(this.audio);
+            // INPRES inicializado
+        } catch (error) {
+            this.logger.error('Error inicializando INPRES:', error.message);
+            this.initializationErrors.push('INPRES');
+        }
+        
         // Todos los módulos procesados
     }
 
@@ -255,7 +265,19 @@ class VX200Controller {
                 this.webServer.broadcastAPRSStatus(status);
             }
         });
-
+        
+        // Eventos INPRES
+        this.modules.inpres.on('seism_detected', (seism) => {
+            if (this.webServer && typeof this.webServer.broadcastSeismDetected === 'function') {
+                this.webServer.broadcastSeismDetected(seism);
+            }
+        });
+        
+        this.modules.inpres.on('seism_announced', (seism) => {
+            if (this.webServer && typeof this.webServer.broadcastSeismAnnounced === 'function') {
+                this.webServer.broadcastSeismAnnounced(seism);
+            }
+        });
 
         this.interceptLogs();
     }
@@ -287,6 +309,7 @@ class VX200Controller {
     async handleDTMF(sequence) {
         const commands = {
             '*1': { module: 'datetime', handler: () => this.modules.datetime.execute(sequence) },
+            '*3': { module: 'inpres', handler: () => this.modules.inpres?.execute(sequence) },
             '*4': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
             '*5': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
             '*7': { module: 'weatherAlerts', handler: () => this.modules.weatherAlerts?.execute(sequence) },
@@ -470,6 +493,16 @@ class VX200Controller {
                 }
             }
             
+            // Iniciar módulo INPRES - Monitoreo Sísmico
+            if (this.modules.inpres) {
+                try {
+                    await this.modules.inpres.start();
+                    this.logger.info('Monitoreo sísmico INPRES activo');
+                } catch (error) {
+                    this.logger.warn('Error iniciando monitoreo INPRES:', error.message);
+                }
+            }
+            
             this.isRunning = true;
             this.state = MODULE_STATES.ACTIVE;
             
@@ -507,6 +540,11 @@ class VX200Controller {
                     `Callsign: ${this.modules.aprs.config.callsign}` : 
                     'TNC not connected'
             },
+            inpres: {
+                enabled: this.modules.inpres && this.modules.inpres.state === MODULE_STATES.ACTIVE,
+                details: this.modules.inpres && this.modules.inpres.state === MODULE_STATES.ACTIVE ? 
+                    'Seismic monitoring active' : 'Monitoring stopped'
+            },
             webServer: { 
                 enabled: true,
                 details: `Port: ${Config.webPort}`
@@ -542,6 +580,9 @@ class VX200Controller {
             this.modules.weatherAlerts.stop();
         }
         
+        if (this.modules.inpres) {
+            this.modules.inpres.stop();
+        }
         
         if (this.direwolf) {
             this.direwolf.stop();
@@ -603,6 +644,7 @@ class VX200Controller {
             datetime: this.modules.datetime.getStatus(),
             weather: this.modules.weather.getStatus(),
             weatherAlerts: this.modules.weatherAlerts?.getStatus() || { enabled: false, state: 'not_initialized' },
+            inpres: this.modules.inpres?.getStatus() || { enabled: false, state: 'not_initialized' },
             aprs: this.modules.aprs.getStatus(),
             rogerBeep: audioStatus.rogerBeep,
             dtmf: {
