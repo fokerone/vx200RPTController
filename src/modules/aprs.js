@@ -595,11 +595,18 @@ class APRS extends EventEmitter {
             // Formato AX.25: DEST(7) + SOURCE(7) + PATH(0-56) + CONTROL(1) + PID(1) + INFO
             if (frame.length < 16) return null;
             
-            // Extraer callsign source (bytes 7-12, shifted left 1 bit)
+            // Extraer callsign source (bytes 7-12, shifted left 1 bit) + SSID
             let callsign = '';
             for (let i = 7; i < 13; i++) {
                 const c = String.fromCharCode(frame[i] >> 1);
                 if (c !== ' ') callsign += c;
+            }
+            
+            // Extraer SSID desde el byte 13 (bits 7-1, shifted right 1)
+            const ssidByte = frame[13];
+            const ssid = (ssidByte >> 1) & 0x0F; // Bits 4-1 contienen el SSID
+            if (ssid > 0) {
+                callsign += `-${ssid}`;
             }
             
             // Buscar info field (después de 0x03 0xF0)
@@ -772,33 +779,45 @@ class APRS extends EventEmitter {
      */
     async loadFromDirewolfLog() {
         try {
-            // Buscar archivo de log más reciente con datos APRS
+            // Buscar TODOS los archivos de log con datos APRS (historial completo)
             const logsDir = path.join(__dirname, '../../logs');
             const logFiles = fs.readdirSync(logsDir)
                 .filter(f => f.endsWith('.log'))
-                .sort()
-                .reverse(); // Más reciente primero
+                .sort(); // Orden cronológico (más antiguo primero)
             
-            let currentLogFile = null;
+            let processedFiles = 0;
             for (const logFile of logFiles) {
-                const testFile = path.join(logsDir, logFile);
-                if (fs.existsSync(testFile) && fs.statSync(testFile).size > 0) {
-                    currentLogFile = testFile;
-                    this.logger.info(`📂 Usando log de Direwolf: ${logFile}`);
-                    break;
+                const logFilePath = path.join(logsDir, logFile);
+                if (fs.existsSync(logFilePath) && fs.statSync(logFilePath).size > 0) {
+                    await this.loadPositionsFromFile(logFilePath, logFile);
+                    processedFiles++;
                 }
             }
             
-            if (!currentLogFile) {
+            if (processedFiles === 0) {
                 this.logger.warn('No se encontraron logs de Direwolf con datos');
                 return;
             }
             
-            const csvData = fs.readFileSync(currentLogFile, 'utf8');
+            // Actualizar estadísticas basadas en todas las posiciones cargadas
+            this.updateStatsFromLoadedPositions();
+            this.logger.info(`📚 Historial APRS cargado desde ${processedFiles} archivos de log`);
+            
+        } catch (error) {
+            this.logger.error('Error cargando historial de Direwolf:', error.message);
+        }
+    }
+
+    /**
+     * Cargar posiciones desde un archivo específico de log
+     */
+    async loadPositionsFromFile(filePath, fileName) {
+        try {
+            const csvData = fs.readFileSync(filePath, 'utf8');
             const lines = csvData.trim().split('\n');
             
             // Primera línea es header CSV
-            if (lines.length < 2) return;
+            if (lines.length < 2) return 0;
             
             const header = lines[0].split(',');
             const latIndex = header.indexOf('latitude');
@@ -848,7 +867,7 @@ class APRS extends EventEmitter {
                         count: existingPositions.length + 1,
                         firstHeard: existingPositions.length === 0 ? new Date(fields[timeIndex]) : existingPositions[0].firstHeard,
                         distance: Math.round(distanceKm * 100) / 100,
-                        locationId: Date.now() + i
+                        locationId: Date.now() + i + Math.random() * 1000 // ID único
                     };
                     
                     existingPositions.push(position);
@@ -857,36 +876,39 @@ class APRS extends EventEmitter {
                 }
             }
             
-            // Actualizar estadísticas basadas en todas las posiciones cargadas
-            let totalPositions = 0;
-            let latestPosition = null;
-            let latestTime = 0;
-            
-            for (const [callsign, positionArray] of this.receivedPositions.entries()) {
-                totalPositions += positionArray.length;
-                positionArray.forEach(pos => {
-                    if (pos.timestamp && typeof pos.timestamp.getTime === 'function' && pos.timestamp.getTime() > latestTime) {
-                        latestTime = pos.timestamp.getTime();
-                        latestPosition = pos;
-                    }
-                });
-            }
-            
-            this.stats.positionsReceived = totalPositions;
-            if (latestPosition) {
-                this.stats.lastPosition = latestPosition;
-            }
-            
-            if (positionsLoaded > 0) {
-                this.logger.info(`📊 Cargadas ${positionsLoaded} posiciones desde log CSV de Direwolf`);
-                await this.savePositionToLog(null); // Guardar en formato JSON
-            }
-            
-            this.logger.info(`📊 Total de posiciones APRS: ${totalPositions}`);
+            this.logger.debug(`📂 ${fileName}: ${positionsLoaded} posiciones cargadas`);
+            return positionsLoaded;
             
         } catch (error) {
-            this.logger.error('Error cargando desde log Direwolf:', error.message);
+            this.logger.error(`Error procesando ${fileName}:`, error.message);
+            return 0;
         }
+    }
+
+    /**
+     * Actualizar estadísticas desde las posiciones cargadas
+     */
+    updateStatsFromLoadedPositions() {
+        let totalPositions = 0;
+        let latestPosition = null;
+        let latestTime = 0;
+        
+        for (const [callsign, positionArray] of this.receivedPositions.entries()) {
+            totalPositions += positionArray.length;
+            positionArray.forEach(pos => {
+                if (pos.timestamp && typeof pos.timestamp.getTime === 'function' && pos.timestamp.getTime() > latestTime) {
+                    latestTime = pos.timestamp.getTime();
+                    latestPosition = pos;
+                }
+            });
+        }
+        
+        this.stats.positionsReceived = totalPositions;
+        if (latestPosition) {
+            this.stats.lastPosition = latestPosition;
+        }
+        
+        this.logger.info(`📊 Total de posiciones APRS históricas: ${totalPositions}`);
     }
 
     /**
@@ -976,12 +998,32 @@ class APRS extends EventEmitter {
                 });
             }
 
+            // Calcular estadísticas de fechas para filtros
+            const dates = positions.map(p => p.timestamp).filter(t => t);
+            const earliestDate = dates.length > 0 ? new Date(Math.min(...dates.map(d => new Date(d).getTime()))) : null;
+            const latestDate = dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d).getTime()))) : null;
+            const maxDistance = Math.max(...positions.map(p => p.distance || 0));
+            const maxDistanceStation = positions.find(p => p.distance === maxDistance);
+
             // Guardar de forma asíncrona para no bloquear
             fs.writeFileSync(this.logFile, JSON.stringify({
                 metadata: {
                     version: '1.0',
                     generated: new Date(),
                     totalStations: positions.length,
+                    dateRange: {
+                        earliest: earliestDate,
+                        latest: latestDate,
+                        daysSpan: earliestDate && latestDate ? 
+                            Math.ceil((latestDate - earliestDate) / (1000 * 60 * 60 * 24)) + 1 : 1
+                    },
+                    maxDistance: {
+                        distance: maxDistance,
+                        station: maxDistanceStation ? {
+                            callsign: maxDistanceStation.callsign,
+                            timestamp: maxDistanceStation.timestamp
+                        } : null
+                    },
                     repeater: {
                         callsign: this.config.callsign,
                         location: this.config.location

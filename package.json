@@ -1,6 +1,6 @@
 {
   "name": "vx200-controller",
-  "version": "2.4.2",
+  "version": "2.5.0",
   "description": "Controlador para repetidora Simplex con panel web",
   "main": "src/index.js",
   "scripts": {

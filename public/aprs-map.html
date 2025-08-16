@@ -168,6 +168,34 @@
                     </div>
                 </div>
 
+                <!-- Filtros de Fecha -->
+                <div class="info-panel">
+                    <h5>🔍 Filtros</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Mostrar estaciones:</label>
+                        <select class="form-select form-select-sm" id="dateFilter" onchange="applyDateFilter()">
+                            <option value="all">Todas las fechas</option>
+                            <option value="today" selected>Solo hoy</option>
+                            <option value="yesterday">Solo ayer</option>
+                            <option value="last7days">Últimos 7 días</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rango de fechas:</label>
+                        <div class="row">
+                            <div class="col-6">
+                                <input type="date" class="form-control form-control-sm" id="startDate" onchange="applyCustomFilter()">
+                            </div>
+                            <div class="col-6">
+                                <input type="date" class="form-control form-control-sm" id="endDate" onchange="applyCustomFilter()">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small text-muted" id="filterStats">
+                        Mostrando todas las estaciones
+                    </div>
+                </div>
+
                 <!-- Lista de Estaciones -->
                 <div class="info-panel">
                     <h5>📋 Estaciones Recibidas</h5>
@@ -232,7 +260,13 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeMap();
             initializeSocket();
-            loadInitialData();
+            loadInitialDataWithFilters();
+            loadInitialAPRSStatus(); // Cargar estado APRS inicial
+            
+            // Asegurar que el filtro "today" esté seleccionado (después de que se carguen los datos)
+            setTimeout(() => {
+                document.getElementById('dateFilter').value = 'today';
+            }, 300);
         });
         
         // Inicializar mapa
@@ -278,7 +312,7 @@
             
             socket.on('aprs_position', function(data) {
                 console.log('Nueva posición APRS:', data);
-                addPosition(data.data);
+                addPositionWithFilter(data.data);
             });
             
             socket.on('aprs_beacon', function(data) {
@@ -533,6 +567,36 @@
             tncElement.className = status.tncConnected ? 'text-success' : 'text-danger';
         }
         
+        // Cargar estado APRS inicial
+        function loadInitialAPRSStatus() {
+            fetch('/api/aprs/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        updateAPRSStatus(data.data);
+                        console.log('Estado APRS inicial cargado');
+                    }
+                })
+                .catch(error => {
+                    console.log('Error cargando estado APRS inicial:', error.message);
+                });
+        }
+        
+        // Actualizar contador de beacons enviados
+        function updateBeaconCount() {
+            // Simplemente hacer fetch del estado actual para obtener el contador actualizado
+            fetch('/api/aprs/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        updateAPRSStatus(data.data);
+                    }
+                })
+                .catch(error => {
+                    console.log('Error actualizando contador de beacons:', error.message);
+                });
+        }
+        
         // Enviar beacon manual
         async function sendManualBeacon() {
             try {
@@ -581,12 +645,14 @@
         function refreshMap() {
             console.log('Actualizando mapa - limpiando marcadores existentes...');
             clearAllMarkers();
-            loadInitialData();
+            loadInitialDataWithFilters();
         }
         
         // Actualizar círculo de cobertura basado en estaciones más lejanas
-        function updateCoverageCircle() {
-            if (positions.length === 0) {
+        function updateCoverageCircle(positionsToUse = null) {
+            const activePositions = positionsToUse || positions;
+            console.log(`🔵 updateCoverageCircle: ${activePositions.length} posiciones activas`);
+            if (activePositions.length === 0) {
                 // Si no hay posiciones, remover el círculo
                 if (coverageCircle) {
                     map.removeLayer(coverageCircle);
@@ -599,15 +665,20 @@
             
             // Encontrar la distancia máxima considerando todas las posiciones históricas
             let newMaxDistance = 0;
-            positions.forEach(pos => {
+            activePositions.forEach(pos => {
                 const distance = pos.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, pos.lat, pos.lon);
+                console.log(`📏 Estación ${pos.callsign}: ${distance.toFixed(2)} km`);
                 if (distance > newMaxDistance) {
                     newMaxDistance = distance;
                 }
             });
             
-            // Solo actualizar si la distancia cambió significativamente
-            if (Math.abs(newMaxDistance - maxDistance) > 0.1 || maxDistance === 0) {
+            console.log(`📏 Distancia máxima calculada: ${newMaxDistance.toFixed(2)} km (actual: ${maxDistance.toFixed(2)} km)`);
+            
+            // Actualizar círculo (forzar recreación cuando se usan posiciones filtradas)
+            const forceUpdate = positionsToUse !== null; // Si se pasaron posiciones específicas, forzar actualización
+            if (Math.abs(newMaxDistance - maxDistance) > 0.1 || maxDistance === 0 || forceUpdate) {
+                console.log(`🔵 Condición cumplida para crear círculo (forceUpdate: ${forceUpdate})`);
                 maxDistance = newMaxDistance;
                 
                 // Remover círculo anterior
@@ -632,13 +703,15 @@
                     <b>📡 Rango de Recepción</b><br>
                     Radio: <span style="color: #007bff;">${radiusKm.toFixed(2)} km</span><br>
                     Estación más lejana: <span style="color: #007bff;">${maxDistance.toFixed(2)} km</span><br>
-                    <small>Basado en ${positions.length} estacion${positions.length > 1 ? 'es' : ''} recibida${positions.length > 1 ? 's' : ''}</small>
+                    <small>Basado en ${activePositions.length} estacion${activePositions.length > 1 ? 'es' : ''} recibida${activePositions.length > 1 ? 's' : ''}</small>
                 `);
                 
-                console.log(`Círculo de cobertura actualizado: ${radiusKm.toFixed(2)} km`);
+                console.log(`🔵 Círculo de cobertura creado: ${radiusKm.toFixed(2)} km con ${activePositions.length} estaciones`);
                 
                 // Ajustar zoom automáticamente basado en el radio del círculo
                 adjustMapZoom(radiusKm);
+            } else {
+                console.log(`⚠️ No se crea círculo: diferencia ${Math.abs(newMaxDistance - maxDistance).toFixed(2)} km < 0.1 km`);
             }
             
             // Actualizar widget de distancia
@@ -698,6 +771,250 @@
             if (diffHours > 0) return `hace ${diffHours} hora${diffHours > 1 ? 's' : ''}`;
             if (diffMins > 0) return `hace ${diffMins} minuto${diffMins > 1 ? 's' : ''}`;
             return 'hace menos de 1 minuto';
+        }
+
+        // Variables para filtros
+        let allPositions = []; // Almacenar todas las posiciones sin filtrar
+        let currentFilter = 'today';
+
+        // Aplicar filtro por fecha predefinido
+        function applyDateFilter() {
+            const filterSelect = document.getElementById('dateFilter');
+            if (!filterSelect) {
+                console.log('Filtro no disponible aún, reintentando...');
+                setTimeout(applyDateFilter, 100);
+                return;
+            }
+            const filterValue = filterSelect.value;
+            currentFilter = filterValue;
+            
+            // Limpiar campos de fecha personalizados
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            
+            let filteredPositions = [];
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const yesterdayStart = new Date(todayStart);
+            yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+            const last7DaysStart = new Date(todayStart);
+            last7DaysStart.setDate(last7DaysStart.getDate() - 7);
+            
+            switch (filterValue) {
+                case 'all':
+                    filteredPositions = [...allPositions];
+                    break;
+                case 'today':
+                    filteredPositions = allPositions.filter(pos => {
+                        const posDate = new Date(pos.timestamp);
+                        return posDate >= todayStart;
+                    });
+                    break;
+                case 'yesterday':
+                    filteredPositions = allPositions.filter(pos => {
+                        const posDate = new Date(pos.timestamp);
+                        return posDate >= yesterdayStart && posDate < todayStart;
+                    });
+                    break;
+                case 'last7days':
+                    filteredPositions = allPositions.filter(pos => {
+                        const posDate = new Date(pos.timestamp);
+                        return posDate >= last7DaysStart;
+                    });
+                    break;
+            }
+            
+            applyFilter(filteredPositions, getFilterDescription(filterValue));
+        }
+
+        // Aplicar filtro por rango de fechas personalizado
+        function applyCustomFilter() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            if (!startDate || !endDate) return;
+            
+            // Limpiar filtro predefinido
+            document.getElementById('dateFilter').value = 'all';
+            currentFilter = 'custom';
+            
+            const start = new Date(startDate + 'T00:00:00');
+            const end = new Date(endDate + 'T23:59:59');
+            
+            const filteredPositions = allPositions.filter(pos => {
+                const posDate = new Date(pos.timestamp);
+                return posDate >= start && posDate <= end;
+            });
+            
+            const description = `desde ${startDate} hasta ${endDate}`;
+            applyFilter(filteredPositions, description);
+        }
+
+        // Aplicar filtro y actualizar la vista
+        function applyFilter(filteredPositions, description) {
+            // Actualizar la variable global positions
+            positions = filteredPositions;
+            
+            // Limpiar marcadores existentes
+            Object.values(markers).forEach(marker => {
+                map.removeLayer(marker);
+            });
+            markers = {};
+            
+            // Agregar marcadores filtrados
+            filteredPositions.forEach(pos => {
+                updatePositionMarker(pos);
+            });
+            
+            // Actualizar lista de estaciones
+            renderPositions();
+            
+            // Actualizar estadísticas del filtro
+            updateFilterStats(filteredPositions, description);
+            
+            // Actualizar distancia máxima con datos filtrados
+            updateMaxDistance(filteredPositions);
+            
+            // Actualizar círculo de cobertura con posiciones filtradas
+            updateCoverageCircle(filteredPositions);
+        }
+
+        // Actualizar estadísticas del filtro
+        function updateFilterStats(filteredPositions, description) {
+            const statsElement = document.getElementById('filterStats');
+            const uniqueStations = new Set(filteredPositions.map(p => p.callsign)).size;
+            
+            statsElement.innerHTML = `
+                Mostrando ${filteredPositions.length} posiciones de ${uniqueStations} estaciones<br>
+                <small>${description}</small>
+            `;
+        }
+
+        // Obtener descripción del filtro
+        function getFilterDescription(filterValue) {
+            switch (filterValue) {
+                case 'all': return 'todas las fechas';
+                case 'today': return 'solo hoy';
+                case 'yesterday': return 'solo ayer';
+                case 'last7days': return 'últimos 7 días';
+                default: return 'filtro personalizado';
+            }
+        }
+
+        // Actualizar distancia máxima basada en posiciones filtradas
+        function updateMaxDistance(filteredPositions) {
+            if (filteredPositions.length === 0) {
+                maxDistance = 0;
+                document.getElementById('maxDistanceValue').textContent = '0 km';
+                return;
+            }
+            
+            maxDistance = Math.max(...filteredPositions.map(pos => 
+                pos.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, pos.lat, pos.lon)
+            ));
+            
+            const maxDistanceStation = filteredPositions.find(pos => {
+                const distance = pos.distance || calculateDistance(REPEATER_CONFIG.lat, REPEATER_CONFIG.lon, pos.lat, pos.lon);
+                return Math.abs(distance - maxDistance) < 0.01;
+            });
+            
+            const widgetElement = document.getElementById('maxDistanceValue');
+            if (maxDistanceStation) {
+                widgetElement.innerHTML = `${maxDistance.toFixed(2)} km<br><small>${maxDistanceStation.callsign}</small>`;
+            } else {
+                widgetElement.textContent = `${maxDistance.toFixed(2)} km`;
+            }
+        }
+
+        // Función auxiliar para agregar nueva posición considerando filtros
+        function addPositionWithFilter(position) {
+            // Agregar a la lista completa
+            allPositions.push(position);
+            
+            // Si no hay filtro activo o la posición pasa el filtro actual, agregarla a la vista
+            if (currentFilter === 'all' || positionPassesCurrentFilter(position)) {
+                addPosition(position);
+            }
+        }
+
+        // Verificar si una posición pasa el filtro actual
+        function positionPassesCurrentFilter(position) {
+            const now = new Date();
+            const posDate = new Date(position.timestamp);
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            
+            switch (currentFilter) {
+                case 'today':
+                    return posDate >= todayStart;
+                case 'yesterday':
+                    const yesterdayStart = new Date(todayStart);
+                    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+                    return posDate >= yesterdayStart && posDate < todayStart;
+                case 'last7days':
+                    const last7DaysStart = new Date(todayStart);
+                    last7DaysStart.setDate(last7DaysStart.getDate() - 7);
+                    return posDate >= last7DaysStart;
+                case 'custom':
+                    const startDate = document.getElementById('startDate').value;
+                    const endDate = document.getElementById('endDate').value;
+                    if (startDate && endDate) {
+                        const start = new Date(startDate + 'T00:00:00');
+                        const end = new Date(endDate + 'T23:59:59');
+                        return posDate >= start && posDate <= end;
+                    }
+                    return true;
+                default:
+                    return true;
+            }
+        }
+
+        // Función personalizada para cargar datos iniciales con filtros
+        function loadInitialDataWithFilters() {
+            fetch('/api/aprs/positions')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.data && Array.isArray(data.data)) {
+                        allPositions = [...data.data]; // Guardar todas las posiciones
+                        
+                        console.log(`Cargadas ${data.data.length} posiciones iniciales`);
+                        
+                        // Asegurar que todo esté listo antes de aplicar filtros
+                        setTimeout(() => {
+                            applyDateFilter();
+                        }, 200);
+                    }
+                    
+                    // También intentar cargar metadata desde el archivo JSON 
+                    fetch('/logs/aprs-positions.json')
+                        .then(response => response.json())
+                        .then(jsonData => {
+                            if (jsonData.metadata && jsonData.metadata.dateRange) {
+                                setupDateRangeInputs(jsonData.metadata.dateRange);
+                            }
+                        })
+                        .catch(error => {
+                            console.log('Metadata no disponible desde JSON:', error.message);
+                        });
+                })
+                .catch(error => {
+                    console.error('Error cargando datos iniciales:', error);
+                });
+        }
+
+        // Configurar inputs de fecha basado en el rango disponible
+        function setupDateRangeInputs(dateRange) {
+            const startDateInput = document.getElementById('startDate');
+            const endDateInput = document.getElementById('endDate');
+            
+            if (dateRange.earliest) {
+                const earliestDate = new Date(dateRange.earliest);
+                startDateInput.min = earliestDate.toISOString().split('T')[0];
+            }
+            
+            if (dateRange.latest) {
+                const latestDate = new Date(dateRange.latest);
+                endDateInput.max = latestDate.toISOString().split('T')[0];
+            }
         }
     </script>
 </body>

@@ -1,17 +1,28 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.4.2
+## 📡 Sistema de Control para Repetidora Simplex v2.5.0
 
 Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa con historial de posiciones y análisis de cobertura avanzado.
 
-**🚀 Versión 2.4.2 - Zona Horaria Corregida y Coordinación de Timers Optimizada**
+**🚀 Versión 2.5.0 - Mapa APRS Avanzado con Persistencia Histórica y Filtros Temporales**
 
-### 📅 **Novedades v2.4.2** (Agosto 2025)
-- **🕐 Zona Horaria Corregida**: Cambio de Buenos Aires a Mendoza (GMT-3) 
-- **⚙️ Coordinación de Timers Optimizada**: Eliminadas colisiones entre APRS, Baliza y Alertas
-- **📊 Logs con Timestamp Correcto**: Uso de `moment-timezone` para hora local exacta
-- **🎯 Timers como Reloj Suizo**: APRS (15min+7.5min), Baliza (60min+2.5min+5min inicial), Alertas (87min/101min/17min)
-- **🔧 Refactor de Imports**: Logger centralizado para mejor organización del código
+### 📅 **Novedades v2.5.0** (Agosto 2025)
+- **🗂️ Persistencia Histórica Completa**: El sistema ahora conserva TODO el historial APRS - ya no se pierden datos de días anteriores al reiniciar
+- **🔍 Filtros Temporales Avanzados**: Panel de filtros en mapa APRS con opciones "HOY", "AYER", "Últimos 7 días" y rango personalizado
+- **🎯 Filtro "HOY" por Defecto**: El mapa muestra automáticamente solo las estaciones del día actual al cargar
+- **📊 Indicador de Estación Más Lejana Mejorado**: Calcula la estación más lejana basado en TODO el historial, no solo datos actuales
+- **🔵 Círculo de Cobertura Dinámico**: Círculo de rango actualizado que respeta los filtros aplicados
+- **📈 Metadata Enriquecida**: Estadísticas de rango temporal, estación más lejana histórica y spans de días
+- **🔧 Carga Histórica Multi-archivo**: Carga automática desde TODOS los archivos de log de Direwolf
+- **✅ Corrección de SSID APRS**: Manejo correcto de estaciones con SSID (ej: LU5MCD-7)
+
+### 📅 **Historial de Versiones**
+#### v2.4.2 (Agosto 2025)  
+- 🕐 Zona Horaria Corregida: Cambio de Buenos Aires a Mendoza (GMT-3)
+- ⚙️ Coordinación de Timers Optimizada: Eliminadas colisiones entre APRS, Baliza y Alertas
+- 📊 Logs con Timestamp Correcto: Uso de `moment-timezone` para hora local exacta
+- 🎯 Timers como Reloj Suizo: APRS (15min+7.5min), Baliza (60min+2.5min+5min inicial), Alertas (87min/101min/17min)
+- 🔧 Refactor de Imports: Logger centralizado para mejor organización del código
 
 ---
 
