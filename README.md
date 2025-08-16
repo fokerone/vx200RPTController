@@ -1,10 +1,20 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.5.0
+## 📡 Sistema de Control para Repetidora Simplex v2.6.0
 
-Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas e integración APRS completa con historial de posiciones y análisis de cobertura avanzado.
+Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas, integración APRS completa con historial de posiciones y monitoreo sísmico INPRES en tiempo real.
 
-**🚀 Versión 2.5.0 - Mapa APRS Avanzado con Persistencia Histórica y Filtros Temporales**
+**🚀 Versión 2.6.0 - Sistema de Monitoreo Sísmico INPRES Integrado**
+
+### 📅 **Novedades v2.6.0** (Agosto 2025)
+- **🌋 Monitoreo Sísmico INPRES**: Sistema completo de monitoreo de sismos del Instituto Nacional de Prevención Sísmica
+- **🎯 Detección Inteligente**: Filtrado automático de sismos >4.0 magnitud en región Mendoza
+- **🔍 Estados Sísmicos**: Diferenciación entre sismos preliminares, revisados y sentidos
+- **📢 Anuncios Automáticos**: Solo anuncia sismos revisados/sentidos para evitar falsos positivos
+- **⏰ Monitoreo Continuo**: Verificación cada 20 minutos para respuesta rápida
+- **🎤 Comando DTMF *3**: Consulta manual de sismos del día actual
+- **🗺️ Zonificación Mendoza**: Identificación automática de zonas (Capital, Valle de Uco, etc.)
+- **🌐 Panel Web Integrado**: Dashboard sísmico con información en tiempo real
 
 ### 📅 **Novedades v2.5.0** (Agosto 2025)
 - **🗂️ Persistencia Histórica Completa**: El sistema ahora conserva TODO el historial APRS - ya no se pierden datos de días anteriores al reiniciar
@@ -62,6 +72,17 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **DateTime**: Anuncio de fecha y hora (`*1`)
 - **Weather**: Información meteorológica (`*4` actual, `*5` voz)
 - **🌦️ Weather Alerts**: Sistema de alertas SMN Argentina (`*7` consultar, `*0` forzar verificación)
+- **🌋 INPRES Sísmico**: Monitoreo de sismos INPRES (`*3` consultar sismos del día)
+
+### 🌋 **Sistema de Monitoreo Sísmico INPRES**
+- **Monitoreo automático** cada 20 minutos del Instituto Nacional de Prevención Sísmica
+- **Filtrado inteligente** sismos >4.0 magnitud en región Mendoza
+- **Estados sísmicos diferenciados**: Azul (preliminar), Negro (revisado), Rojo (sentido)
+- **Anuncios selectivos** solo sismos revisados/sentidos para evitar falsos positivos
+- **Zonificación Mendoza** automática (Capital, Valle de Uco, San Rafael, etc.)
+- **Comando DTMF *3** para consulta manual de sismos del día
+- **Panel web sísmico** con dashboard en tiempo real
+- **Web scraping robusto** con parsing HTML avanzado
 
 ### 🌦️ **Sistema de Alertas Meteorológicas SMN**
 - **Monitoreo automático** cada 90 minutos de alertas SMN Argentina
@@ -214,6 +235,7 @@ OPENWEATHER_API_KEY=tu_api_key
 | Comando | Función | Descripción |
 |---------|---------|-------------|
 | `*1` | DateTime | Anuncia fecha y hora actual |
+| `*3` | **🌋 INPRES Sísmico** | **Consultar sismos >4.0 del día en Mendoza** |
 | `*4` | Weather | Clima actual |
 | `*5` | Weather Voice | Clima con voz natural |
 | `*7` | **🌦️ Weather Alerts** | **Consultar alertas meteorológicas activas** |
@@ -241,6 +263,7 @@ vx200RPTController/
 │   │   ├── weather.js           # Módulo meteorológico
 │   │   ├── weather-voice.js     # Módulo clima con voz
 │   │   ├── weatherAlerts.js     # Módulo alertas meteorológicas
+│   │   ├── inpres.js            # Módulo monitoreo sísmico INPRES
 │   │   └── aprs.js              # Módulo APRS con Direwolf
 │   └── web/
 │       └── server.js            # Servidor web con Socket.IO
@@ -351,6 +374,48 @@ ps aux | grep direwolf
 
 ## 📋 Changelog
 
+### v2.6.0 - Sistema de Monitoreo Sísmico INPRES 🌋
+
+#### 🌋 **Nuevas Características Sísmicas**
+- [x] **Sistema INPRES completo**
+  - [x] Monitoreo automático cada 20 minutos de https://www.inpres.gob.ar/desktop/
+  - [x] Web scraping robusto con parsing HTML usando Cheerio
+  - [x] Filtrado inteligente de sismos >4.0 magnitud en región Mendoza
+  - [x] Sistema de coordenadas geográficas para delimitar provincia
+- [x] **Estados sísmicos diferenciados**
+  - [x] Azul: Sismo preliminar/automático (puede estar errado)
+  - [x] Negro: Sismo revisado por sismólogo (no sentido)
+  - [x] Rojo: Sismo sentido revisado por sismólogo
+  - [x] Solo anuncia sismos revisados/sentidos para evitar falsos positivos
+- [x] **Zonificación de Mendoza**
+  - [x] Identificación automática de zonas por coordenadas
+  - [x] Capital-Gran Mendoza, Valle de Uco, San Rafael, Malargüe, etc.
+  - [x] Cálculo de distancias para determinar zona más cercana
+- [x] **Comando DTMF *3**
+  - [x] Consulta manual de sismos >4.0 del día actual
+  - [x] Lista hasta 5 sismos con magnitud, hora y zona
+  - [x] Mensaje informativo si no hay sismos detectados
+- [x] **Panel web sísmico integrado**
+  - [x] Dashboard en tiempo real con estado del sistema
+  - [x] Contador de sismos detectados del día
+  - [x] Última verificación y próxima programada
+  - [x] Controles de activación/desactivación
+  - [x] API REST completa para integración externa
+
+#### 🔧 **Mejoras Técnicas**
+- [x] **Arquitectura modular**
+  - [x] Siguiendo patrón EventEmitter como otros módulos
+  - [x] Integración completa con WebServer y Socket.IO
+  - [x] Manejo robusto de errores y cache HTTP
+  - [x] Sistema de cleanup automático de archivos TTS
+- [x] **Integración TTS**
+  - [x] Uso del sistema HybridVoiceManager existente
+  - [x] Google TTS para anuncios sísmicos
+  - [x] Fallback a espeak en caso de error
+  - [x] Sanitización de texto para mejor pronunciación
+
+### v2.5.0 - Mapa APRS Avanzado con Persistencia Histórica 🗺️
+
 ### v2.4.0 - Optimización y Limpieza del Sistema 🧹
 
 #### 🔧 **Optimizaciones y Mejoras**
@@ -375,6 +440,7 @@ ps aux | grep direwolf
 
 #### 📡 **Comandos DTMF Actuales**
 - [x] `*1` → DateTime (Fecha y hora)
+- [x] `*3` → INPRES Sísmico (Sismos >4.0 del día)
 - [x] `*4` → Weather (Clima actual)
 - [x] `*5` → Weather Voice (Clima con voz)
 - [x] `*7` → Weather Alerts (Alertas meteorológicas)
