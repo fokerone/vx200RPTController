@@ -104,6 +104,14 @@ class VX200Panel {
             this.handleExpiredWeatherAlert(data);
         });
 
+        // INPRES Seismic events
+        this.socket.on('seism_detected', (data) => {
+            this.handleSeismDetected(data);
+        });
+
+        this.socket.on('seism_announced', (data) => {
+            this.handleSeismAnnounced(data);
+        });
 
         // Eventos WebSocket para Sistema de Salud 24/7
         this.socket.on('cleanup_completed', (data) => {
@@ -303,6 +311,17 @@ class VX200Panel {
                 statusElement.textContent = status;
                 statusElement.className = `module-status ${moduleData.running ? 'enabled' : 
                                          moduleData.initialized ? 'ready' : 'disabled'}`;
+            } 
+            // Manejo especial para INPRES
+            else if (moduleName === 'inpres') {
+                const status = moduleData.running ? 'ACTIVO' : 
+                             moduleData.enabled ? 'LISTO' : 'INACTIVO';
+                statusElement.textContent = status;
+                statusElement.className = `module-status ${moduleData.running ? 'enabled' : 
+                                         moduleData.enabled ? 'ready' : 'disabled'}`;
+                
+                // Actualizar información específica de sismos
+                this.updateSeismicInfo(moduleData);
             } else {
                 statusElement.textContent = moduleData.enabled ? 'ENABLED' : 'DISABLED';
                 statusElement.className = `module-status ${moduleData.enabled ? 'enabled' : 'disabled'}`;
@@ -804,6 +823,125 @@ class VX200Panel {
             const count = data.activeAlerts || 0;
             alertBadgeElement.textContent = `${count} activas`;
             alertBadgeElement.className = `alert-badge ${count > 0 ? 'has-alerts' : ''}`;
+        }
+    }
+
+    updateSeismicInfo(moduleData) {
+        // Update seismic count
+        const seismCountElement = document.getElementById('seismCount');
+        if (seismCountElement && moduleData.todaySeisms !== undefined) {
+            seismCountElement.textContent = `${moduleData.todaySeisms} sismos detectados`;
+        }
+        
+        // Update last check time
+        const seismLastCheckElement = document.getElementById('seismLastCheck');
+        if (seismLastCheckElement && moduleData.lastCheck) {
+            const lastCheckDate = new Date(moduleData.lastCheck);
+            seismLastCheckElement.textContent = `Última verificación: ${lastCheckDate.toLocaleTimeString('es-AR')}`;
+        }
+        
+        // Update seismic system status
+        const seismSystemStatusElement = document.getElementById('seismSystemStatus');
+        if (seismSystemStatusElement) {
+            seismSystemStatusElement.textContent = moduleData.state || 'DESCONOCIDO';
+            seismSystemStatusElement.className = `status-text ${moduleData.state === 'ACTIVE' ? 'enabled' : 'disabled'}`;
+        }
+        
+        // Update next check time
+        const seismNextCheckElement = document.getElementById('seismNextCheck');
+        if (seismNextCheckElement && moduleData.nextCheck) {
+            seismNextCheckElement.textContent = `Próxima verificación: ${moduleData.nextCheck}`;
+        }
+        
+        // Update seism badge
+        const seismBadgeElement = document.getElementById('seismBadge');
+        if (seismBadgeElement && moduleData.todaySeisms !== undefined) {
+            seismBadgeElement.textContent = `${moduleData.todaySeisms} sismos`;
+        }
+        
+        // Update seisms display
+        this.updateSeismsDisplay(moduleData);
+    }
+
+    handleSeismDetected(data) {
+        console.log('Nuevo sismo detectado:', data);
+        this.showNotification(`🌋 Sismo detectado: M${data.magnitude} en ${data.zone}`, 'warning');
+        this.updateSeismsDisplay();
+    }
+
+    handleSeismAnnounced(data) {
+        console.log('Sismo anunciado:', data);
+        this.showNotification(`🌋 Sismo anunciado: M${data.magnitude}`, 'info');
+    }
+
+    updateSeismsDisplay(moduleData) {
+        const seismsList = document.getElementById('seismsList');
+        const noSeismsMessage = document.getElementById('noSeismsMessage');
+        
+        if (!seismsList || !noSeismsMessage) return;
+        
+        // Clear existing content
+        seismsList.innerHTML = '';
+        
+        if (!moduleData || !moduleData.todaySeisms || moduleData.todaySeisms === 0) {
+            noSeismsMessage.style.display = 'flex';
+            seismsList.style.display = 'none';
+            return;
+        }
+        
+        noSeismsMessage.style.display = 'none';
+        seismsList.style.display = 'block';
+        
+        // Get seisms data if available
+        if (moduleData.seismsList && moduleData.seismsList.length > 0) {
+            moduleData.seismsList.forEach((seism, index) => {
+                const seismItem = this.createSeismItem(seism, index);
+                seismsList.appendChild(seismItem);
+            });
+        }
+    }
+
+    createSeismItem(seism, index) {
+        const item = document.createElement('div');
+        item.className = 'alert-item seismic-item';
+        
+        const stateColor = this.getSeismicStateColor(seism.state);
+        
+        item.innerHTML = `
+            <div class="alert-header">
+                <div class="alert-title">
+                    <span class="seismic-state" style="background-color: ${stateColor}">●</span>
+                    M${seism.magnitude} - ${seism.zone || 'Mendoza'}
+                </div>
+                <div class="alert-time">${seism.date} ${seism.time}</div>
+            </div>
+            <div class="alert-details">
+                <div class="seismic-details">
+                    <span><strong>Profundidad:</strong> ${seism.depth}</span>
+                    <span><strong>Estado:</strong> ${this.getSeismicStateText(seism.state)}</span>
+                    <span><strong>Coordenadas:</strong> ${seism.latitude}°, ${seism.longitude}°</span>
+                </div>
+            </div>
+        `;
+        
+        return item;
+    }
+
+    getSeismicStateColor(state) {
+        switch(state) {
+            case 'azul': return '#007bff';  // Preliminar
+            case 'negro': return '#343a40'; // Revisado
+            case 'rojo': return '#dc3545';  // Sentido
+            default: return '#6c757d';      // Desconocido
+        }
+    }
+
+    getSeismicStateText(state) {
+        switch(state) {
+            case 'azul': return 'Preliminar (automático)';
+            case 'negro': return 'Revisado por sismólogo';
+            case 'rojo': return 'Sentido y revisado';
+            default: return 'Estado desconocido';
         }
     }
 
@@ -1343,6 +1481,29 @@ async function toggleWeatherAlerts() {
     } catch (error) {
         console.error('Error toggling weather alerts:', error);
         panel.showNotification('Error cambiando estado de alertas meteorológicas', 'error');
+    }
+}
+
+async function toggleInpres() {
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/inpres/toggle', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            panel.showNotification(result.message, 'success');
+            // Refresh system status to update INPRES module
+            panel.refreshSystemStatus();
+        } else {
+            panel.showNotification(result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error toggling INPRES:', error);
+        panel.showNotification('Error cambiando estado del monitoreo sísmico', 'error');
     }
 }
 

@@ -142,6 +142,21 @@
                             </div>
                         </div>
 
+                        <div class="module-item seismic-monitoring" data-module="inpres">
+                            <div class="module-header">
+                                <span class="module-name">🌋 Monitor Sísmico</span>
+                                <div class="module-status" id="inpresStatus">--</div>
+                            </div>
+                            <div class="module-info">
+                                <div class="seism-count" id="seismCount">0 sismos detectados</div>
+                                <div class="last-check" id="seismLastCheck">Última verificación: --</div>
+                            </div>
+                            <div class="module-controls">
+                                <button class="btn btn-execute" onclick="executeModule('inpres', '3')">*3 Consultar</button>
+                                <button class="btn btn-toggle" id="inpresToggle" onclick="toggleInpres()">Toggle</button>
+                            </div>
+                        </div>
+
                         <div class="module-item" data-module="rogerBeep">
                             <div class="module-header">
                                 <span class="module-name">Roger Beep</span>
@@ -211,6 +226,72 @@
                                 <div class="config-item">
                                     <label>APRS integración:</label>
                                     <span>Comment dinámico habilitado</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INPRES Seismic Monitoring Details -->
+            <div class="card" id="inpresCard">
+                <div class="card-header">
+                    <h2>🌋 Monitoreo Sísmico INPRES</h2>
+                    <div class="alert-source">
+                        <small>Fuente: Instituto Nacional de Prevención Sísmica</small>
+                        <span class="alert-badge" id="seismBadge">0 sismos</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="seismic-section">
+                        <div class="alerts-status">
+                            <div class="status-item">
+                                <label>Estado del sistema:</label>
+                                <span id="seismSystemStatus" class="status-text">--</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Próxima verificación:</label>
+                                <span id="seismNextCheck" class="status-text">--</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Región monitoreada:</label>
+                                <span class="status-text">Provincia de Mendoza</span>
+                            </div>
+                            <div class="status-item">
+                                <label>Umbral de magnitud:</label>
+                                <span class="status-text">> 4.0</span>
+                            </div>
+                        </div>
+                        
+                        <div class="active-alerts" id="activeSeismsList">
+                            <h3>Sismos Detectados Hoy</h3>
+                            <div class="no-alerts" id="noSeismsMessage">
+                                <span class="icon">✅</span>
+                                <span>No se han detectado sismos > 4.0 magnitud en Mendoza hoy</span>
+                            </div>
+                            <div id="seismsList" class="alerts-list">
+                                <!-- Los sismos se cargarán dinámicamente aquí -->
+                            </div>
+                        </div>
+                        
+                        <div class="alerts-config">
+                            <h3>Configuración</h3>
+                            <div class="config-grid">
+                                <div class="config-item">
+                                    <label>Verificación automática:</label>
+                                    <span>Cada 20 minutos</span>
+                                </div>
+                                <div class="config-item">
+                                    <label>Estados anunciados:</label>
+                                    <span>Revisados y Sentidos (negro/rojo)</span>
+                                </div>
+                                <div class="config-item">
+                                    <label>TTS:</label>
+                                    <span>Google TTS + Espeak fallback</span>
+                                </div>
+                                <div class="config-item">
+                                    <label>Comando DTMF:</label>
+                                    <span>*3 para consulta manual</span>
                                 </div>
                             </div>
                         </div>

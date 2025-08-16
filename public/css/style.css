@@ -860,6 +860,17 @@ body {
     font-weight: 600;
 }
 
+/* Módulo Sísmico */
+.seismic-monitoring {
+    border: 2px solid #dc2626;
+    background: rgba(220, 38, 38, 0.1);
+}
+
+.seismic-monitoring .module-name {
+    color: #dc2626;
+    font-weight: 600;
+}
+
 .module-info {
     font-size: 0.85rem;
     color: #94a3b8;
@@ -987,6 +998,44 @@ body {
 .alert-item.low {
     border-left-color: #10b981;
     background: rgba(16, 185, 129, 0.1);
+}
+
+/* Estilos para elementos sísmicos */
+.seismic-item {
+    border-left-color: #dc2626;
+    background: rgba(220, 38, 38, 0.1);
+}
+
+.seismic-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.seismic-state {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+}
+
+.seismic-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+    color: #94a3b8;
+}
+
+.seismic-details span {
+    display: flex;
+    align-items: center;
+}
+
+.seismic-details strong {
+    color: #e2e8f0;
+    min-width: 100px;
 }
 
 .alert-header {

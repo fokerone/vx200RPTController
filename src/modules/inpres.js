@@ -1,6 +1,9 @@
 const EventEmitter = require('events');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
 const { delay, sanitizeTextForTTS } = require('../utils');
 const { createLogger } = require('../logging/Logger');
 const { MODULE_STATES } = require('../constants');
@@ -82,10 +85,11 @@ class InpresSismic extends EventEmitter {
         };
         
         // Voice Manager para Google TTS
-        this.voiceManager = null;
+        // Inicializar sistema híbrido de voz
+        this.voiceManager = new HybridVoiceManager();
         if (this.config.useGoogleTTS) {
             try {
-                this.voiceManager = new HybridVoiceManager();
+                // TTS habilitado via audioManager
                 this.logger.info('Google TTS habilitado para alertas sísmicas');
             } catch (error) {
                 this.logger.warn('Google TTS no disponible, usando fallback:', error.message);
@@ -465,8 +469,8 @@ class InpresSismic extends EventEmitter {
             const sanitizedMessage = sanitizeTextForTTS(message);
             
             // Usar Google TTS si está disponible
-            if (this.voiceManager) {
-                await this.voiceManager.speak(sanitizedMessage);
+            if (this.audioManager) {
+                await this.audioManager.speak(sanitizedMessage);
             } else {
                 // Fallback a TTS del sistema
                 await this.audioManager.speak(sanitizedMessage);
@@ -487,6 +491,10 @@ class InpresSismic extends EventEmitter {
         this.logger.info(`Comando DTMF ejecutado: ${command}`);
         
         try {
+            // Tono de confirmación
+            await this.audioManager.playTone(800, 200, 0.6);
+            await delay(300);
+            
             if (this.todaySeisms.length === 0) {
                 const message = 'No se han detectado sismos mayores a magnitud 4 en Mendoza el día de hoy.';
                 await this.speak(message);
@@ -519,16 +527,85 @@ class InpresSismic extends EventEmitter {
     }
     
     /**
+     * TTS usando sistema híbrido (Google TTS + espeak fallback)
+     */
+    async speakWithHybridVoice(text, options = {}) {
+        try {
+            // Generar audio con sistema híbrido (Google TTS -> espeak fallback)
+            const audioFile = await this.voiceManager.generateSpeech(text, options);
+            
+            // Reproducir usando paplay directamente
+            await this.playAudioFile(audioFile);
+            
+            // Ejecutar roger beep después de la reproducción
+            if (this.audioManager.rogerBeep && this.audioManager.rogerBeep.enabled) {
+                await this.audioManager.rogerBeep.executeAfterTransmission();
+            }
+            
+            // Limpiar archivo temporal después de un tiempo
+            setTimeout(() => {
+                try {
+                    if (fs.existsSync(audioFile)) {
+                        fs.unlinkSync(audioFile);
+                    }
+                } catch (error) {
+                    this.logger.warn('Error eliminando archivo temporal:', error.message);
+                }
+            }, 30000); // 30 segundos
+            
+        } catch (error) {
+            this.logger.error('Error en speakWithHybridVoice:', error.message);
+            // Fallback de emergencia usando audioManager original
+            await this.audioManager.speak(text, options);
+        }
+    }
+
+    /**
+     * Reproducir archivo de audio usando paplay
+     */
+    async playAudioFile(audioFile) {
+        return new Promise((resolve, reject) => {
+            if (!fs.existsSync(audioFile)) {
+                reject(new Error('Archivo de audio no existe'));
+                return;
+            }
+
+            this.logger.debug(`Reproduciendo archivo: ${path.basename(audioFile)}`);
+            
+            const paplay = spawn('paplay', [audioFile]);
+            
+            paplay.on('close', (code) => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`paplay falló con código: ${code}`));
+                }
+            });
+            
+            paplay.on('error', (error) => {
+                reject(new Error(`Error ejecutando paplay: ${error.message}`));
+            });
+        });
+    }
+
+    /**
      * Función auxiliar para TTS
      */
     async speak(message) {
-        if (this.voiceManager) {
-            await this.voiceManager.speak(message);
-        } else {
-            await this.audioManager.speak(message);
-        }
+        const mensajeLimpio = sanitizeTextForTTS(message);
+        await this.speakWithHybridVoice(mensajeLimpio);
     }
     
+    /**
+     * Obtener sismos del día actual
+     */
+    getTodaySeisms() {
+        return this.todaySeisms.map(seism => ({
+            ...seism,
+            zone: this.getZoneName(seism.latitude, seism.longitude)
+        }));
+    }
+
     /**
      * Obtener estado del módulo
      */
@@ -545,7 +622,8 @@ class InpresSismic extends EventEmitter {
             magnitudeThreshold: this.config.magnitudeThreshold,
             nextCheck: this.checkTimer ? 
                 new Date(Date.now() + this.config.checkInterval).toLocaleTimeString() : 
-                'No programado'
+                'No programado',
+            seismsList: this.getTodaySeisms()
         };
     }
     

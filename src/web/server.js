@@ -369,6 +369,66 @@ class WebServer {
             }
         });
 
+        // === RUTAS INPRES - MONITOREO SÍSMICO ===
+        
+        this.app.get('/api/inpres/status', (req, res) => {
+            try {
+                if (this.controller.modules.inpres) {
+                    const status = this.controller.modules.inpres.getStatus();
+                    res.json({ success: true, data: status });
+                } else {
+                    res.json({ success: false, message: 'Módulo INPRES no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.get('/api/inpres/seisms', (req, res) => {
+            try {
+                if (this.controller.modules.inpres) {
+                    const seisms = this.controller.modules.inpres.getTodaySeisms();
+                    res.json({ success: true, data: seisms });
+                } else {
+                    res.json({ success: false, message: 'Módulo INPRES no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.post('/api/inpres/check', async (req, res) => {
+            try {
+                if (this.controller.modules.inpres) {
+                    await this.controller.modules.inpres.checkSeisms();
+                    res.json({ success: true, message: 'Verificación sísmica iniciada' });
+                } else {
+                    res.json({ success: false, message: 'Módulo INPRES no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+        this.app.post('/api/inpres/toggle', (req, res) => {
+            try {
+                if (this.controller.modules.inpres) {
+                    const currentState = this.controller.modules.inpres.state;
+                    if (currentState === 'ACTIVE') {
+                        this.controller.modules.inpres.stop();
+                        res.json({ success: true, message: 'Monitoreo sísmico detenido', enabled: false });
+                    } else {
+                        this.controller.modules.inpres.start();
+                        res.json({ success: true, message: 'Monitoreo sísmico iniciado', enabled: true });
+                    }
+                } else {
+                    res.json({ success: false, message: 'Módulo INPRES no disponible' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
         // === RUTAS SISTEMA DE CLEANUP ===
         
         this.app.get('/api/system/health', (req, res) => {
@@ -849,11 +909,25 @@ class WebServer {
         }
     }
 
+    // === MÉTODOS BROADCAST INPRES ===
+    
+    broadcastSeismDetected(seism) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('seism_detected', { data: seism });
+        }
+    }
+
+    broadcastSeismAnnounced(seism) {
+        if (this.connectedClients.size > 0) {
+            this.io.emit('seism_announced', { data: seism });
+        }
+    }
 
 
     getDTMFTargetModule(sequence) {
         const commands = {
             '*1': 'DateTime',
+            '*3': 'Monitor Sísmico',
             '*4': 'Clima',
             '*5': 'Clima Voz',
             '*7': 'Alertas Meteo',
