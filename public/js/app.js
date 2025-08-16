@@ -843,8 +843,9 @@ class VX200Panel {
         // Update seismic system status
         const seismSystemStatusElement = document.getElementById('seismSystemStatus');
         if (seismSystemStatusElement) {
-            seismSystemStatusElement.textContent = moduleData.state || 'DESCONOCIDO';
-            seismSystemStatusElement.className = `status-text ${moduleData.state === 'ACTIVE' ? 'enabled' : 'disabled'}`;
+            const stateText = moduleData.state ? moduleData.state.toUpperCase() : 'DESCONOCIDO';
+            seismSystemStatusElement.textContent = stateText;
+            seismSystemStatusElement.className = `status-text ${moduleData.state === 'active' ? 'enabled' : 'disabled'}`;
         }
         
         // Update next check time

@@ -547,6 +547,12 @@ class WebServer {
                     status: this.getModuleStatus('weatherAlerts'),
                     activeAlerts: this.controller.modules?.weatherAlerts?.getStatus()?.activeAlerts || 0
                 },
+                inpres: this.controller.modules?.inpres?.getStatus() || {
+                    enabled: false,
+                    state: 'unavailable',
+                    running: false,
+                    todaySeisms: 0
+                },
                 rogerBeep: {
                     enabled: this.controller.audio?.getRogerBeepStatus()?.enabled || false,
                     status: 'ready'
