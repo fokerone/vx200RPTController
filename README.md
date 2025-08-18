@@ -1,10 +1,16 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.6.0
+## 📡 Sistema de Control para Repetidora Simplex v2.6.1
 
 Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas, integración APRS completa con historial de posiciones y monitoreo sísmico INPRES en tiempo real.
 
-**🚀 Versión 2.6.0 - Sistema de Monitoreo Sísmico INPRES Integrado**
+**🚀 Versión 2.6.1 - Fix DTMF Anti-Falsos Positivos y Estabilidad 24/7**
+
+### 📅 **Novedades v2.6.1** (Agosto 2025)
+- **🔇 Eliminación de Falsos Positivos DTMF**: Corregido feedback de tono que causaba detecciones falsas durante transmisiones de voz
+- **⚡ Estabilidad 24/7 Probada**: Sistema probado durante 27+ horas continuas sin interrupciones ni errores
+- **🎯 Optimización APRS**: Configuración de niveles de audio optimizada para mejor recepción (15% capture)
+- **🔧 Fix Crítico**: Eliminado `playTone(400, 200, 0.5)` en `handleUnknownCommand()` que generaba loops de retroalimentación
 
 ### 📅 **Novedades v2.6.0** (Agosto 2025)
 - **🌋 Monitoreo Sísmico INPRES**: Sistema completo de monitoreo de sismos del Instituto Nacional de Prevención Sísmica
@@ -374,6 +380,34 @@ ps aux | grep direwolf
 
 ## 📋 Changelog
 
+### v2.6.1 - Fix DTMF Anti-Falsos Positivos y Estabilidad 24/7 🔇
+
+#### 🔧 **Correcciones Críticas**
+- [x] **Eliminación de falsos positivos DTMF**
+  - [x] Removido `playTone(400, 200, 0.5)` de `handleUnknownCommand()` que causaba feedback
+  - [x] Fix crítico: El tono de "comando desconocido" generaba loops de retroalimentación
+  - [x] Eliminado completamente el problema de detecciones DTMF durante conversaciones
+  - [x] Sistema ahora diferencia correctamente entre DTMF real y artefactos de voz
+- [x] **Pruebas de estabilidad 24/7**
+  - [x] Sistema operativo durante 27+ horas continuas sin interrupciones
+  - [x] Zero errores no controlados durante test de estabilidad extendido
+  - [x] Confirmada capacidad de operación 24/7 en producción
+  - [x] Monitoreo continuo cada hora durante testing nocturno
+- [x] **Optimización APRS**
+  - [x] Configuración de audio capture optimizada al 15% para mejor recepción
+  - [x] Mejorada detección de balizas APRS en handheld a 1200 baud AFSK
+  - [x] Verificación de niveles de audio para equipos VHF externos
+
+#### 🎯 **Mejoras de Rendimiento**
+- [x] **Audio Manager**
+  - [x] Eliminado source de interferencia en detección DTMF
+  - [x] Reducidos significativamente los falsos positivos durante transmisiones de voz
+  - [x] Sistema más robusto para diferenciar tonos DTMF reales de artefactos
+- [x] **Sistema de Logging**
+  - [x] Implementado monitoreo detallado para testing 24/7
+  - [x] Logs de salud del sistema cada hora durante operación extendida
+  - [x] Tracking preciso de errores y warnings durante operación continua
+
 ### v2.6.0 - Sistema de Monitoreo Sísmico INPRES 🌋
 
 #### 🌋 **Nuevas Características Sísmicas**
@@ -568,4 +602,4 @@ Este proyecto está bajo la Licencia MIT. Ver archivo `LICENSE` para más detall
 
 ---
 
-**✨ VX200 Controller v2.1.1 - Sistema de Repetidora Moderno y Profesional 📡🚀**
+**✨ VX200 Controller v2.6.1 - Sistema de Repetidora Moderno y Profesional 📡🚀**

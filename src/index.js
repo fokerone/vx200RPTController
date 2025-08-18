@@ -328,7 +328,9 @@ class VX200Controller {
 
     async handleUnknownCommand(sequence) {
         try {
-            await this.audio.playTone(400, 200, 0.5);
+            // Tono de confirmación deshabilitado para evitar retroalimentación
+            // que causa falsos positivos DTMF cuando operadores hablan
+            // await this.audio.playTone(400, 200, 0.5);
         } catch (error) {
             
         }
