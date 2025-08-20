@@ -1,10 +1,19 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.6.1
+## 📡 Sistema de Control para Repetidora Simplex v2.6.2
 
 Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas, integración APRS completa con historial de posiciones y monitoreo sísmico INPRES en tiempo real.
 
-**🚀 Versión 2.6.1 - Fix DTMF Anti-Falsos Positivos y Estabilidad 24/7**
+**🚀 Versión 2.6.2 - Fix APRS Posiciones y Alertas Meteorológicas Completas**
+
+### 📅 **Novedades v2.6.2** (Agosto 2025)
+- **📍 Fix APRS Posiciones Reales**: Corregido parser para mostrar coordenadas reales transmitidas en lugar de coordenadas fallback del repetidor
+- **🗺️ Visualización Completa**: Ahora muestra todas las posiciones únicas transmitidas (11 ubicaciones vs 1-2 anteriormente)
+- **📊 Contador Preciso**: Contador de posiciones ahora refleja packets reales recibidos (71) vs posiciones únicas mostradas
+- **📡 Parser Mejorado**: Mejorado parser de logs Direwolf para obtener coordenadas exactas por callsign y timestamp
+- **🌦️ Fix Audio Alertas Completo**: Solucionado problema de audio cortado en repeticiones de alertas meteorológicas
+- **🔊 Playlist Secuencial**: Sistema de fallback que reproduce todos los fragmentos cuando falla combinación ffmpeg
+- **⚡ Anti-Truncamiento**: Eliminado fallback que solo reproducía primer fragmento, ahora reproduce mensaje completo siempre
 
 ### 📅 **Novedades v2.6.1** (Agosto 2025)
 - **🔇 Eliminación de Falsos Positivos DTMF**: Corregido feedback de tono que causaba detecciones falsas durante transmisiones de voz

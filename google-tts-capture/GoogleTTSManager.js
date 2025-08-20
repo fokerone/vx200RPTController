@@ -270,8 +270,8 @@ class GoogleTTSManager {
                         
                         resolve(combinedFile);
                     } else {
-                        console.error('❌ Error combinando audio con ffmpeg');
-                        resolve(audioFiles[0]); // Usar primer fragmento como fallback
+                        console.error('❌ Error combinando audio con ffmpeg, reproduciendo fragmentos secuencialmente');
+                        resolve(this.createSequentialPlaylist(audioFiles));
                     }
                 });
                 
@@ -281,14 +281,37 @@ class GoogleTTSManager {
                     if (fs.existsSync(listFile)) {
                         fs.unlinkSync(listFile);
                     }
-                    resolve(audioFiles[0]); // Usar primer fragmento como fallback
+                    resolve(this.createSequentialPlaylist(audioFiles));
                 });
                 
             } catch (writeError) {
                 console.error('❌ Error creando lista de archivos:', writeError.message);
-                resolve(audioFiles[0]); // Usar primer fragmento como fallback
+                resolve(this.createSequentialPlaylist(audioFiles));
             }
         });
+    }
+
+    /**
+     * Crear objeto especial para reproducción secuencial cuando falla ffmpeg
+     * @param {Array<string>} audioFiles - Array de archivos de audio
+     * @returns {object} - Objeto con información de playlist
+     */
+    createSequentialPlaylist(audioFiles) {
+        const validFiles = audioFiles.filter(file => fs.existsSync(file));
+        
+        if (validFiles.length === 0) {
+            console.error('❌ No hay archivos válidos para playlist');
+            return audioFiles[0]; // Fallback al primer archivo original
+        }
+        
+        console.log(`📝 Playlist secuencial creado: ${validFiles.length} fragmentos`);
+        
+        // Retornar objeto especial que identifica que es un playlist
+        return {
+            __isPlaylist: true,
+            files: validFiles,
+            totalFragments: validFiles.length
+        };
     }
 
     /**

@@ -699,7 +699,15 @@ class AudioManager extends EventEmitter {
      * Reproducir archivo de audio con paplay específicamente para alertas meteorológicas
      * con timeout extendido para permitir mensajes largos
      */
-    async playWeatherAlertWithPaplay(filePath) {
+    async playWeatherAlertWithPaplay(audioInput) {
+        // Detectar si es un playlist de múltiples fragmentos
+        if (audioInput && typeof audioInput === 'object' && audioInput.__isPlaylist) {
+            this.logger.info(`Reproduciendo playlist secuencial: ${audioInput.totalFragments} fragmentos`);
+            return this.playSequentialPlaylist(audioInput.files);
+        }
+        
+        // Reproducción normal de un solo archivo
+        const filePath = audioInput;
         return new Promise((resolve, reject) => {
             // Intentar con paplay sin especificar dispositivo para usar el default
             const paplay = spawn('paplay', ['--volume=65536', filePath]);
@@ -727,6 +735,70 @@ class AudioManager extends EventEmitter {
                     resolve();
                 } else {
                     let errorMsg = `paplay para alerta meteorológica falló con código ${code}`;
+                    if (stderr.trim()) {
+                        errorMsg += `: ${stderr.trim()}`;
+                    }
+                    reject(new Error(errorMsg));
+                }
+            });
+            
+            paplay.on('error', (err) => {
+                if (paplayTimeout) clearTimeout(paplayTimeout);
+                reject(err);
+            });
+        });
+    }
+
+    /**
+     * Reproducir lista de archivos de audio secuencialmente
+     */
+    async playSequentialPlaylist(audioFiles) {
+        for (let i = 0; i < audioFiles.length; i++) {
+            const file = audioFiles[i];
+            this.logger.debug(`Reproduciendo fragmento ${i + 1}/${audioFiles.length}: ${file}`);
+            
+            try {
+                await this.playSingleAudioFile(file);
+                // Pequeña pausa entre fragmentos para mejor fluidez
+                if (i < audioFiles.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+            } catch (error) {
+                this.logger.warn(`Error reproduciendo fragmento ${i + 1}: ${error.message}`);
+                // Continuar con el siguiente fragmento en caso de error
+            }
+        }
+        this.logger.info('Playlist secuencial completado');
+    }
+
+    /**
+     * Reproducir un solo archivo de audio sin verificar playlists
+     */
+    async playSingleAudioFile(filePath) {
+        return new Promise((resolve, reject) => {
+            const paplay = spawn('paplay', ['--volume=65536', filePath]);
+            let paplayTimeout = null;
+            let stderr = '';
+            
+            paplay.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+            
+            paplayTimeout = setTimeout(() => {
+                if (!paplay.killed) {
+                    paplay.kill('SIGTERM');
+                    reject(new Error('paplay timeout para fragmento de audio'));
+                }
+            }, 15000); // 15 segundos por fragmento
+            
+            paplay.on('close', (code) => {
+                if (paplayTimeout) clearTimeout(paplayTimeout);
+                
+                if (code === 0) {
+                    this.logger.debug('Fragmento de audio completado exitosamente');
+                    resolve();
+                } else {
+                    let errorMsg = `paplay para fragmento falló con código ${code}`;
                     if (stderr.trim()) {
                         errorMsg += `: ${stderr.trim()}`;
                     }
