@@ -717,6 +717,52 @@ class APRS extends EventEmitter {
     }
 
     /**
+     * Obtener datos enriquecidos del log más reciente de Direwolf
+     */
+    async getEnrichedDataFromLog(callsign) {
+        try {
+            const logsDir = path.join(__dirname, '../../logs');
+            const todayLog = path.join(logsDir, `${new Date().toISOString().split('T')[0]}.log`);
+            
+            if (!fs.existsSync(todayLog)) {
+                return null;
+            }
+            
+            const logContent = fs.readFileSync(todayLog, 'utf8');
+            const lines = logContent.trim().split('\n');
+            
+            if (lines.length < 2) return null;
+            
+            const header = lines[0].split(',');
+            const sourceIndex = header.indexOf('source');
+            const speedIndex = header.indexOf('speed');
+            const courseIndex = header.indexOf('course');
+            const altitudeIndex = header.indexOf('altitude');
+            const levelIndex = header.indexOf('level');
+            const errorIndex = header.indexOf('error');
+            
+            // Buscar la entrada más reciente para este callsign
+            for (let i = lines.length - 1; i >= 1; i--) {
+                const fields = lines[i].split(',');
+                if (fields[sourceIndex] === callsign) {
+                    return {
+                        speed: speedIndex >= 0 && fields[speedIndex] ? parseFloat(fields[speedIndex]) : null,
+                        course: courseIndex >= 0 && fields[courseIndex] ? parseFloat(fields[courseIndex]) : null,
+                        altitude: altitudeIndex >= 0 && fields[altitudeIndex] ? parseFloat(fields[altitudeIndex]) : null,
+                        audioLevel: levelIndex >= 0 && fields[levelIndex] ? fields[levelIndex] : null,
+                        errorRate: errorIndex >= 0 && fields[errorIndex] ? parseInt(fields[errorIndex]) : null
+                    };
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            this.logger.debug('Error obteniendo datos enriquecidos:', error.message);
+            return null;
+        }
+    }
+
+    /**
      * Manejar frame APRS recibido
      */
     async handleReceivedFrame(frame) {
@@ -753,6 +799,9 @@ class APRS extends EventEmitter {
                         return locDistance < 0.2; // 200 metros
                     });
 
+                // Obtener datos adicionales del log más reciente de Direwolf
+                const enrichedData = await this.getEnrichedDataFromLog(parsed.source);
+                
                 const position = {
                     callsign: parsed.source,
                     lat: parsed.aprs.position.lat,
@@ -765,7 +814,14 @@ class APRS extends EventEmitter {
                     firstHeard: isNewStation ? new Date() : existingPositions[0].firstHeard,
                     distance: Math.round(distanceKm * 100) / 100,
                     locationId: Date.now(), // ID único para esta ubicación
-                    raw: frame
+                    raw: frame,
+                    
+                    // Datos adicionales desde log de Direwolf
+                    speed: enrichedData?.speed || null,
+                    course: enrichedData?.course || null,
+                    altitude: enrichedData?.altitude || null,
+                    audioLevel: enrichedData?.audioLevel || null,
+                    errorRate: enrichedData?.errorRate || null
                 };
                 
                 if (isNewLocation) {
@@ -943,6 +999,13 @@ class APRS extends EventEmitter {
             const commentIndex = header.indexOf('comment');
             const symbolIndex = header.indexOf('symbol');
             
+            // Nuevos índices para datos adicionales
+            const speedIndex = header.indexOf('speed');
+            const courseIndex = header.indexOf('course');
+            const altitudeIndex = header.indexOf('altitude');
+            const levelIndex = header.indexOf('level');
+            const errorIndex = header.indexOf('error');
+            
             let positionsLoaded = 0;
             
             // Procesar cada línea del CSV
@@ -983,7 +1046,14 @@ class APRS extends EventEmitter {
                         count: existingPositions.length + 1,
                         firstHeard: existingPositions.length === 0 ? new Date(fields[timeIndex]) : existingPositions[0].firstHeard,
                         distance: Math.round(distanceKm * 100) / 100,
-                        locationId: Date.now() + i + Math.random() * 1000 // ID único
+                        locationId: Date.now() + i + Math.random() * 1000, // ID único
+                        
+                        // Nuevos datos adicionales de Direwolf
+                        speed: speedIndex >= 0 && fields[speedIndex] ? parseFloat(fields[speedIndex]) : null,
+                        course: courseIndex >= 0 && fields[courseIndex] ? parseFloat(fields[courseIndex]) : null,
+                        altitude: altitudeIndex >= 0 && fields[altitudeIndex] ? parseFloat(fields[altitudeIndex]) : null,
+                        audioLevel: levelIndex >= 0 && fields[levelIndex] ? fields[levelIndex] : null,
+                        errorRate: errorIndex >= 0 && fields[errorIndex] ? parseInt(fields[errorIndex]) : null
                     };
                     
                     existingPositions.push(position);

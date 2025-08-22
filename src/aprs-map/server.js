@@ -8,7 +8,7 @@ class APRSMapServer {
         this.controller = vx200Controller;
         this.logger = createLogger('[APRS-Map]');
         this.server = null;
-        this.port = process.env.APRS_MAP_PORT || 8080;
+        this.port = process.env.APRS_MAP_PORT || 3000;
         this.isRunning = false;
     }
 
@@ -82,6 +82,25 @@ class APRSMapServer {
                 if (fs.existsSync(logFile)) {
                     const rawData = fs.readFileSync(logFile, 'utf8');
                     data = JSON.parse(rawData);
+                    
+                    // Enriquecer estaciones con datos del log de Direwolf
+                    if (data.stations && data.stations.length > 0) {
+                        for (let i = 0; i < data.stations.length; i++) {
+                            const station = data.stations[i];
+                            const enrichedData = await aprsModule.getEnrichedDataFromLog(station.callsign);
+                            
+                            if (enrichedData) {
+                                data.stations[i] = {
+                                    ...station,
+                                    speed: enrichedData.speed,
+                                    course: enrichedData.course,
+                                    altitude: enrichedData.altitude,
+                                    audioLevel: enrichedData.audioLevel,
+                                    errorRate: enrichedData.errorRate
+                                };
+                            }
+                        }
+                    }
                 } else {
                     // Fallback: obtener datos del módulo
                     const positions = aprsModule.getAllPositions();

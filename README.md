@@ -1,10 +1,29 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Simplex v2.6.2
+## 📡 Sistema de Control para Repetidora Headless v2.7.0
 
-Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. Incluye decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, panel web moderno con navegación por pestañas, integración APRS completa con historial de posiciones y monitoreo sísmico INPRES en tiempo real.
+Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. **Versión Headless** con interfaz APRS liviana, decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados y monitoreo sísmico INPRES en tiempo real.
 
-**🚀 Versión 2.6.2 - Fix APRS Posiciones y Alertas Meteorológicas Completas**
+**🚀 Versión 2.7.0 - Sistema Headless con Mapa APRS Completo**
+
+### 📅 **Novedades v2.7.0** (Agosto 2025)
+- **🖥️ Sistema Completamente Headless**: Eliminado dashboard web completo, ahora funciona solo por consola
+- **🗺️ Mapa APRS Liviano**: Nueva interfaz web minimalista con Bootstrap 5 y Leaflet.js
+- **📊 Datos Enriquecidos Completos**: Integración total de datos Direwolf (speed, course, altitude, audioLevel, errorRate)
+- **📱 Diseño Responsive Avanzado**: Optimizado para dispositivos móviles con iconografía moderna
+- **🎯 Marcadores Grandes**: Marcadores de 32px con indicadores visuales mejorados para mejor usabilidad
+- **📈 Panel de Información Detallada**: 6 secciones organizadas que aparecen al clickear marcadores
+- **⚡ Puerto Optimizado**: Servidor APRS en puerto 3000 para evitar conflictos
+- **🔄 Actualización Automática**: Datos actualizados cada 30 segundos
+- **📡 APIs REST**: Endpoints `/api/positions` y `/api/repeater` para integración externa
+
+### 🗺️ **Nuevo Mapa APRS Interactivo**
+- **Marcadores Visuales**: Indicadores de velocidad, curso, altitud y calidad de señal
+- **Información Completa**: Speed (km/h), Course (grados), Altitude (metros), Audio Level, Error Rate
+- **Panel Detallado**: Información organizada en secciones al hacer clic en marcadores
+- **Charts de Altitud**: Visualización gráfica con Canvas HTML5
+- **Cobertura Dinámica**: Círculo de alcance basado en estación más lejana
+- **Responsive Design**: Interfaz optimizada para móviles y tablets
 
 ### 📅 **Novedades v2.6.2** (Agosto 2025)
 - **📍 Fix APRS Posiciones Reales**: Corregido parser para mostrar coordenadas reales transmitidas en lugar de coordenadas fallback del repetidor
@@ -15,43 +34,16 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **🔊 Playlist Secuencial**: Sistema de fallback que reproduce todos los fragmentos cuando falla combinación ffmpeg
 - **⚡ Anti-Truncamiento**: Eliminado fallback que solo reproducía primer fragmento, ahora reproduce mensaje completo siempre
 
-### 📅 **Novedades v2.6.1** (Agosto 2025)
-- **🔇 Eliminación de Falsos Positivos DTMF**: Corregido feedback de tono que causaba detecciones falsas durante transmisiones de voz
-- **⚡ Estabilidad 24/7 Probada**: Sistema probado durante 27+ horas continuas sin interrupciones ni errores
-- **🎯 Optimización APRS**: Configuración de niveles de audio optimizada para mejor recepción (15% capture)
-- **🔧 Fix Crítico**: Eliminado `playTone(400, 200, 0.5)` en `handleUnknownCommand()` que generaba loops de retroalimentación
-
-### 📅 **Novedades v2.6.0** (Agosto 2025)
-- **🌋 Monitoreo Sísmico INPRES**: Sistema completo de monitoreo de sismos del Instituto Nacional de Prevención Sísmica
-- **🎯 Detección Inteligente**: Filtrado automático de sismos >4.0 magnitud en región Mendoza
-- **🔍 Estados Sísmicos**: Diferenciación entre sismos preliminares, revisados y sentidos
-- **📢 Anuncios Automáticos**: Solo anuncia sismos revisados/sentidos para evitar falsos positivos
-- **⏰ Monitoreo Continuo**: Verificación cada 20 minutos para respuesta rápida
-- **🎤 Comando DTMF *3**: Consulta manual de sismos del día actual
-- **🗺️ Zonificación Mendoza**: Identificación automática de zonas (Capital, Valle de Uco, etc.)
-- **🌐 Panel Web Integrado**: Dashboard sísmico con información en tiempo real
-
-### 📅 **Novedades v2.5.0** (Agosto 2025)
-- **🗂️ Persistencia Histórica Completa**: El sistema ahora conserva TODO el historial APRS - ya no se pierden datos de días anteriores al reiniciar
-- **🔍 Filtros Temporales Avanzados**: Panel de filtros en mapa APRS con opciones "HOY", "AYER", "Últimos 7 días" y rango personalizado
-- **🎯 Filtro "HOY" por Defecto**: El mapa muestra automáticamente solo las estaciones del día actual al cargar
-- **📊 Indicador de Estación Más Lejana Mejorado**: Calcula la estación más lejana basado en TODO el historial, no solo datos actuales
-- **🔵 Círculo de Cobertura Dinámico**: Círculo de rango actualizado que respeta los filtros aplicados
-- **📈 Metadata Enriquecida**: Estadísticas de rango temporal, estación más lejana histórica y spans de días
-- **🔧 Carga Histórica Multi-archivo**: Carga automática desde TODOS los archivos de log de Direwolf
-- **✅ Corrección de SSID APRS**: Manejo correcto de estaciones con SSID (ej: LU5MCD-7)
-
-### 📅 **Historial de Versiones**
-#### v2.4.2 (Agosto 2025)  
-- 🕐 Zona Horaria Corregida: Cambio de Buenos Aires a Mendoza (GMT-3)
-- ⚙️ Coordinación de Timers Optimizada: Eliminadas colisiones entre APRS, Baliza y Alertas
-- 📊 Logs con Timestamp Correcto: Uso de `moment-timezone` para hora local exacta
-- 🎯 Timers como Reloj Suizo: APRS (15min+7.5min), Baliza (60min+2.5min+5min inicial), Alertas (87min/101min/17min)
-- 🔧 Refactor de Imports: Logger centralizado para mejor organización del código
-
 ---
 
 ## ✨ Características Principales
+
+### 🖥️ **Sistema Headless**
+- **Funcionamiento solo por consola** - Sin interfaz web pesada
+- **Mapa APRS liviano** como única interfaz web
+- **Optimizado para servidores** y dispositivos embebidos
+- **Menor consumo de recursos** sin dashboard completo
+- **Ideal para implementaciones 24/7** en producción
 
 ### 🎵 **Sistema de Audio Avanzado**
 - Grabación en tiempo real con soporte ALSA/PulseAudio
@@ -64,23 +56,25 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 ### 📡 **Sistema APRS Completo con Análisis de Cobertura**
 - **TNC Software** integrado con Direwolf
 - **Historial completo de posiciones** por estación con persistencia
+- **Datos enriquecidos completos**: Speed, Course, Altitude, Audio Level, Error Rate
 - **180+ símbolos APRS oficiales** con emojis descriptivos
 - **Cálculo de distancias** precisas desde repetidora (fórmula Haversine)
 - **Círculo de cobertura dinámico** en mapa web
 - **Widget en tiempo real** de estación más lejana recibida
 - **Detección automática** de nuevas ubicaciones (>100m)
-- **Mapa APRS interactivo** con marcadores informativos
+- **Mapa APRS interactivo** con marcadores informativos grandes
 - Transmisión de beacons automáticos y manuales
-- Configuración dinámica desde panel web
 - Estadísticas detalladas de tráfico APRS
 
-### 🌐 **Panel Web Moderno v2.1**
-- **Navegación por pestañas** (Estado, DTMF, APRS, Configuración)
-- **Monitor DTMF en tiempo real** con historial
-- **Dashboard APRS** con mapa y estadísticas
-- Controles de sensibilidad y debug DTMF
-- Interfaz completamente **responsive**
-- **Socket.IO** para actualizaciones en tiempo real
+### 🗺️ **Mapa APRS Interactivo Moderno**
+- **Bootstrap 5** con diseño responsive avanzado
+- **Leaflet.js** para mapas interactivos suaves
+- **Marcadores grandes** (32px) optimizados para móviles
+- **Indicadores visuales** para velocidad, curso, altitud y señal
+- **Panel de información detallada** con 6 secciones organizadas
+- **Charts de altitud** con Canvas HTML5
+- **Actualización automática** cada 30 segundos
+- **APIs REST** para integración externa
 
 ### 🔊 **Sistema de Módulos**
 - **Baliza Inteligente**: Transmisión automática/manual (`*9`)
@@ -96,7 +90,6 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **Anuncios selectivos** solo sismos revisados/sentidos para evitar falsos positivos
 - **Zonificación Mendoza** automática (Capital, Valle de Uco, San Rafael, etc.)
 - **Comando DTMF *3** para consulta manual de sismos del día
-- **Panel web sísmico** con dashboard en tiempo real
 - **Web scraping robusto** con parsing HTML avanzado
 
 ### 🌦️ **Sistema de Alertas Meteorológicas SMN**
@@ -105,45 +98,7 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **Filtrado geográfico inteligente** por coordenadas y polígonos CAP
 - **Anuncios automáticos** con Google TTS + fragmentación para textos largos
 - **Integración APRS** con comentarios dinámicos incluyendo clima actual
-- **Panel web actualizado** con estado en tiempo real de alertas activas
 - **Repetición automática** cada 105 minutos para alertas vigentes
-
-### 🗺️ **Nuevo v2.3.0: Análisis de Cobertura APRS Avanzado**
-
-#### **📍 Sistema de Historial de Posiciones**
-- **Múltiples ubicaciones por callsign** - Detecta automáticamente movimiento >100 metros
-- **Persistencia completa** - Guarda y carga historial entre reinicios del sistema
-- **Base de datos robusta** - Map<callsign, Array<posiciones>> para máximo rendimiento
-- **API optimizada** - Soporte completo para aplicaciones web y móviles
-
-#### **🎯 Mapeo de Símbolos APRS Oficial**
-- **180+ símbolos** de tablas primaria (/) y alternativa (\) completas
-- **Emojis descriptivos** - Mapeo visual intuitivo (🚗 Auto, 📡 Repetidor, ✈️ Avión)
-- **Basado en especificación oficial** - Compatible con http://www.aprs.org/symbols/
-- **Soporte completo MIC-E** - Kenwood, Yaesu y otros fabricantes
-
-#### **📏 Análisis de Distancias y Cobertura**
-- **Cálculo geodésico preciso** - Fórmula Haversine para distancias exactas
-- **Círculo de cobertura dinámico** - Visualización automática del rango real
-- **Widget en tiempo real** - Estación más lejana actualizada automáticamente
-- **Marcadores informativos** - Distancia, símbolo y comentario en cada posición
-
-#### **🎮 Casos de Uso Prácticos**
-```bash
-# Análisis de cobertura típico
-1. Emitir desde ubicación A → Primera posición (0.5km)
-2. Moverse >100m a ubicación B → Nueva ubicación detectada automáticamente  
-3. Emitir desde ubicación B → Historial expandido (1.2km)
-4. Círculo de cobertura se ajusta → Widget muestra "1.2 km"
-5. Repetir proceso → Mapa completo de cobertura real
-```
-
-**Ideal para:**
-- 🔬 **Pruebas de cobertura de repetidoras**
-- 📊 **Análisis de propagación VHF/UHF** 
-- 🚨 **Monitoreo de emergencias**
-- 🏃 **Seguimiento de eventos deportivos**
-- 📈 **Estadísticas de red APRS**
 
 ---
 
@@ -200,7 +155,7 @@ APRS_CALLSIGN=TU_INDICATIVO
 APRS_LOCATION=lat,lon
 ```
 
-**Panel web disponible en: http://localhost:3000**
+**🗺️ Mapa APRS disponible en: http://localhost:3000**
 
 ---
 
@@ -212,7 +167,7 @@ APRS_LOCATION=lat,lon
 # Sistema
 CALLSIGN=TU_INDICATIVO
 NODE_ENV=production
-WEB_PORT=3000
+APRS_MAP_PORT=3000
 
 # Audio
 AUDIO_DEVICE=default
@@ -280,13 +235,9 @@ vx200RPTController/
 │   │   ├── weatherAlerts.js     # Módulo alertas meteorológicas
 │   │   ├── inpres.js            # Módulo monitoreo sísmico INPRES
 │   │   └── aprs.js              # Módulo APRS con Direwolf
-│   └── web/
-│       └── server.js            # Servidor web con Socket.IO
-├── public/
-│   ├── index.html               # Panel web principal
-│   ├── aprs-map.html            # Mapa APRS interactivo
-│   ├── css/style.css            # Estilos modernos
-│   └── js/app.js                # JavaScript frontend
+│   └── aprs-map/
+│       ├── server.js            # Servidor mapa APRS liviano
+│       └── map.html             # Interfaz mapa interactivo
 ├── config/
 │   └── default.json             # Configuración por defecto
 ├── .env.example                 # Template de variables
@@ -295,42 +246,53 @@ vx200RPTController/
 
 ---
 
-## 🖥️ Panel Web v2.1
+## 🗺️ Mapa APRS v2.7.0
 
-### **Navegación por Pestañas**
-- **🏠 Estado del Sistema**: Overview general y control de módulos
-- **📞 Monitor DTMF**: Seguimiento en tiempo real con estadísticas
-- **📡 APRS**: Dashboard completo con mapa y beacons
-- **⚙️ Configuración**: Settings dinámicos del sistema
+### **Características del Mapa**
+- **🎯 URL**: `http://localhost:3000`
+- **📱 Responsive**: Optimizado para móviles y tablets
+- **🔄 Auto-actualización**: Datos frescos cada 30 segundos
+- **📊 APIs REST**: `/api/positions` y `/api/repeater`
 
 ### **Funcionalidades Destacadas**
-- **Monitor DTMF en Tiempo Real**: Historial, validaciones y debug
-- **Dashboard APRS**: Mapa interactivo con estaciones activas
-- **Estadísticas Avanzadas**: Métricas de DTMF y APRS
-- **Controles Dinámicos**: Sensibilidad DTMF, beacons APRS
-- **Responsive Design**: Optimizado para móviles y tablets
+- **Marcadores grandes** (32px) fáciles de tocar
+- **Indicadores visuales** para velocidad, curso y altitud
+- **Panel de información completo** con 6 secciones
+- **Charts de altitud** dinámicos con Canvas
+- **Círculo de cobertura** basado en estación más lejana
+- **Estadísticas en tiempo real** de tráfico APRS
+
+### **Datos Enriquecidos**
+- **Speed**: Velocidad en km/h
+- **Course**: Rumbo en grados (0-359°)
+- **Altitude**: Altitud sobre el nivel del mar
+- **Audio Level**: Nivel de señal y estadísticas
+- **Error Rate**: Tasa de errores de recepción
 
 ---
 
 ## 🔧 Scripts Disponibles
 
 ```bash
-# Iniciar sistema completo
+# Iniciar sistema headless completo
 npm start
 
-# Modo desarrollo con hot-reload
+# Modo desarrollo
 npm run dev
 
-# Solo servidor web (testing)
-npm run web-only
-
-# Limpiar archivos temporales
-npm run clean
+# Test de salud del sistema
+npm run health
 ```
 
 ---
 
-## 🛠️ Características Técnicas v2.1
+## 🛠️ Características Técnicas v2.7.0
+
+### **Sistema Headless**
+- **Servidor liviano**: Solo mapa APRS en puerto 3000
+- **Sin dashboard pesado**: Eliminado para mejor rendimiento
+- **Optimizado para producción**: Ideal para servidores 24/7
+- **APIs REST**: Integración externa simplificada
 
 ### **DTMF Profesional**
 - **dtmf-detection-stream**: Librería especializada
@@ -341,15 +303,16 @@ npm run clean
 
 ### **APRS Integration**
 - **Direwolf TNC**: Software TNC completo
+- **Datos enriquecidos**: Speed, course, altitude, audioLevel, errorRate
 - **Beacon automático**: Transmisión programable
 - **Position tracking**: Seguimiento de estaciones
 - **Mapa en tiempo real**: Visualización web interactiva
 
 ### **Web Architecture**
-- **Socket.IO**: Comunicación bidireccional
-- **Navegación SPA**: Single Page Application
-- **Cache DOM**: Optimización de rendimiento
-- **Responsive CSS**: Grid y Flexbox moderno
+- **HTTP Server nativo**: Sin frameworks pesados
+- **Bootstrap 5**: CSS framework moderno
+- **Leaflet.js**: Mapas interactivos suaves
+- **Canvas Charts**: Gráficos de altitud dinámicos
 
 ---
 
@@ -369,11 +332,11 @@ AUDIO_DEVICE=default
 
 ### DTMF No Detecta
 ```bash
-# Verificar desde panel web:
-# 1. Ir a pestaña "Monitor DTMF"
-# 2. Activar "Modo Debug"
-# 3. Cambiar sensibilidad a "Alta"
-# 4. Verificar estadísticas en tiempo real
+# Activar debug en logs
+# Verificar niveles de audio con:
+# 1. Cambiar DTMF_SENSITIVITY=high en .env
+# 2. Monitorear logs en tiempo real
+# 3. Verificar AUDIO_CHANNEL_THRESHOLD
 ```
 
 ### APRS No Conecta
@@ -385,9 +348,87 @@ direwolf -t 0
 ps aux | grep direwolf
 ```
 
+### Mapa APRS No Carga
+```bash
+# Verificar puerto disponible
+curl http://localhost:3000
+
+# Verificar logs del servidor
+npm start  # Ver logs en consola
+```
+
 ---
 
 ## 📋 Changelog
+
+### v2.7.0 - Sistema Headless con Mapa APRS Completo 🖥️
+
+#### 🚀 **Transformación Headless**
+- [x] **Dashboard web eliminado completamente**
+  - [x] Removido sistema Express.js pesado con Socket.IO
+  - [x] Eliminadas 500+ líneas de código frontend innecesario
+  - [x] Removidos archivos CSS, JavaScript y HTML del dashboard
+  - [x] Sistema ahora funciona completamente por consola
+- [x] **Mapa APRS liviano implementado**
+  - [x] Servidor HTTP nativo minimalista en src/aprs-map/server.js
+  - [x] Interfaz Bootstrap 5 + Leaflet.js en map.html
+  - [x] Solo 200 líneas de código servidor vs 1500+ anteriores
+  - [x] Puerto 3000 optimizado sin conflictos
+
+#### 🗺️ **Mapa APRS Interactivo Avanzado**
+- [x] **Datos enriquecidos completos de Direwolf**
+  - [x] Speed (velocidad en km/h)
+  - [x] Course (rumbo en grados 0-359°)
+  - [x] Altitude (altitud sobre nivel del mar)
+  - [x] Audio Level (nivel de señal con estadísticas)
+  - [x] Error Rate (tasa de errores de recepción)
+- [x] **Interfaz visual mejorada**
+  - [x] Marcadores grandes de 32px vs 22px anteriores
+  - [x] Indicadores visuales para velocidad, curso y altitud
+  - [x] Panel de información detallada con 6 secciones organizadas
+  - [x] Charts de altitud dinámicos con Canvas HTML5
+- [x] **Responsive design avanzado**
+  - [x] Optimizado para dispositivos móviles
+  - [x] Touch-friendly con marcadores grandes
+  - [x] Iconografía moderna con emojis descriptivos
+  - [x] Bootstrap 5 con diseño limpio y profesional
+
+#### 📊 **APIs REST y Actualización Automática**
+- [x] **Endpoints optimizados**
+  - [x] `/api/positions` - Posiciones con datos enriquecidos
+  - [x] `/api/repeater` - Estado del repetidor y estadísticas
+  - [x] Datos JSON limpios para integración externa
+- [x] **Sistema de actualización**
+  - [x] Actualización automática cada 30 segundos
+  - [x] Enriquecimiento dinámico desde logs de Direwolf
+  - [x] Persistencia de datos entre reinicios
+
+#### 🎯 **Optimizaciones de Rendimiento**
+- [x] **Menor consumo de recursos**
+  - [x] Eliminado Express.js y dependencias pesadas
+  - [x] Servidor HTTP nativo más eficiente
+  - [x] Sin WebSocket ni Socket.IO innecesarios
+  - [x] Ideal para dispositivos embebidos y servidores 24/7
+- [x] **Código más limpio**
+  - [x] Arquitectura simplificada y modular
+  - [x] Separación clara entre backend y frontend
+  - [x] Mantenimiento más sencillo
+
+### v2.6.2 - Fix APRS Posiciones y Alertas Meteorológicas Completas 📍
+
+#### 🔧 **Correcciones Críticas**
+- [x] **Fix APRS Posiciones Reales**
+  - [x] Corregido parser para mostrar coordenadas reales transmitidas
+  - [x] Eliminado uso de coordenadas fallback del repetidor
+  - [x] Parser mejorado de logs Direwolf para obtener coordenadas exactas
+  - [x] Ahora muestra 11 ubicaciones reales vs 1-2 anteriormente
+- [x] **Contador de posiciones preciso**
+  - [x] Refleja packets reales recibidos (71) vs posiciones únicas
+  - [x] Diferenciación entre packets totales y ubicaciones únicas
+- [x] **Fix audio alertas meteorológicas**
+  - [x] Solucionado problema de audio cortado en repeticiones
+  - [x] Sistema de fallback secuencial mejorado
+  - [x] Eliminado truncamiento que solo reproducía primer fragmento
 
 ### v2.6.1 - Fix DTMF Anti-Falsos Positivos y Estabilidad 24/7 🔇
 
@@ -402,187 +443,22 @@ ps aux | grep direwolf
   - [x] Zero errores no controlados durante test de estabilidad extendido
   - [x] Confirmada capacidad de operación 24/7 en producción
   - [x] Monitoreo continuo cada hora durante testing nocturno
-- [x] **Optimización APRS**
-  - [x] Configuración de audio capture optimizada al 15% para mejor recepción
-  - [x] Mejorada detección de balizas APRS en handheld a 1200 baud AFSK
-  - [x] Verificación de niveles de audio para equipos VHF externos
-
-#### 🎯 **Mejoras de Rendimiento**
-- [x] **Audio Manager**
-  - [x] Eliminado source de interferencia en detección DTMF
-  - [x] Reducidos significativamente los falsos positivos durante transmisiones de voz
-  - [x] Sistema más robusto para diferenciar tonos DTMF reales de artefactos
-- [x] **Sistema de Logging**
-  - [x] Implementado monitoreo detallado para testing 24/7
-  - [x] Logs de salud del sistema cada hora durante operación extendida
-  - [x] Tracking preciso de errores y warnings durante operación continua
-
-### v2.6.0 - Sistema de Monitoreo Sísmico INPRES 🌋
-
-#### 🌋 **Nuevas Características Sísmicas**
-- [x] **Sistema INPRES completo**
-  - [x] Monitoreo automático cada 20 minutos de https://www.inpres.gob.ar/desktop/
-  - [x] Web scraping robusto con parsing HTML usando Cheerio
-  - [x] Filtrado inteligente de sismos >4.0 magnitud en región Mendoza
-  - [x] Sistema de coordenadas geográficas para delimitar provincia
-- [x] **Estados sísmicos diferenciados**
-  - [x] Azul: Sismo preliminar/automático (puede estar errado)
-  - [x] Negro: Sismo revisado por sismólogo (no sentido)
-  - [x] Rojo: Sismo sentido revisado por sismólogo
-  - [x] Solo anuncia sismos revisados/sentidos para evitar falsos positivos
-- [x] **Zonificación de Mendoza**
-  - [x] Identificación automática de zonas por coordenadas
-  - [x] Capital-Gran Mendoza, Valle de Uco, San Rafael, Malargüe, etc.
-  - [x] Cálculo de distancias para determinar zona más cercana
-- [x] **Comando DTMF *3**
-  - [x] Consulta manual de sismos >4.0 del día actual
-  - [x] Lista hasta 5 sismos con magnitud, hora y zona
-  - [x] Mensaje informativo si no hay sismos detectados
-- [x] **Panel web sísmico integrado**
-  - [x] Dashboard en tiempo real con estado del sistema
-  - [x] Contador de sismos detectados del día
-  - [x] Última verificación y próxima programada
-  - [x] Controles de activación/desactivación
-  - [x] API REST completa para integración externa
-
-#### 🔧 **Mejoras Técnicas**
-- [x] **Arquitectura modular**
-  - [x] Siguiendo patrón EventEmitter como otros módulos
-  - [x] Integración completa con WebServer y Socket.IO
-  - [x] Manejo robusto de errores y cache HTTP
-  - [x] Sistema de cleanup automático de archivos TTS
-- [x] **Integración TTS**
-  - [x] Uso del sistema HybridVoiceManager existente
-  - [x] Google TTS para anuncios sísmicos
-  - [x] Fallback a espeak en caso de error
-  - [x] Sanitización de texto para mejor pronunciación
-
-### v2.5.0 - Mapa APRS Avanzado con Persistencia Histórica 🗺️
-
-### v2.4.0 - Optimización y Limpieza del Sistema 🧹
-
-#### 🔧 **Optimizaciones y Mejoras**
-- [x] **Limpieza completa de dependencias**
-  - [x] Eliminadas 13 dependencias no utilizadas (fs-extra, ejs, fft-js, multer, etc.)
-  - [x] Reducción significativa del tamaño de node_modules (184 packages removidos)
-  - [x] Sistema más ligero y eficiente
-- [x] **Eliminación de módulos obsoletos**
-  - [x] Removido completamente módulo AI Chat (*2) - Sin uso activo
-  - [x] Removido completamente módulo SMS (*3) - Sin uso activo  
-  - [x] Removido completamente módulo Mumble Bridge - Sin uso activo
-  - [x] Limpieza de configuración y variables de entorno asociadas
-- [x] **Mejoras en panel web**
-  - [x] Interfaz más limpia sin módulos no utilizados
-  - [x] Banner de inicio mejorado con localhost + IP local
-  - [x] Eliminadas secciones de configuración innecesarias (OpenAI, Twilio)
-- [x] **Correcciones y estabilidad**
-  - [x] Corregida visualización de alertas meteorológicas en panel web
-  - [x] Implementado sistema de cleanup automático 24/7
-  - [x] Mejorado mapa APRS con datos reales y mejor UX
-  - [x] Sistema más estable y enfocado en funcionalidades principales
-
-#### 📡 **Comandos DTMF Actuales**
-- [x] `*1` → DateTime (Fecha y hora)
-- [x] `*3` → INPRES Sísmico (Sismos >4.0 del día)
-- [x] `*4` → Weather (Clima actual)
-- [x] `*5` → Weather Voice (Clima con voz)
-- [x] `*7` → Weather Alerts (Alertas meteorológicas)
-- [x] `*0` → Force Check (Verificación manual alertas)
-- [x] `*9` → Baliza (Baliza manual)
-
-#### 🎯 **Enfoque del Sistema**
-El sistema ahora está **completamente enfocado** en las funcionalidades principales:
-- **Radio Amateur**: DTMF, Baliza, APRS
-- **Meteorología**: Clima actual, pronósticos, alertas SMN
-- **Panel Web**: Monitoreo en tiempo real, configuración, estadísticas
-
-### v2.3.0 - Sistema APRS Completo con Historial de Posiciones 🚀
-
-#### 📡 **Nuevas Características APRS**
-- [x] **Sistema de historial completo de posiciones**
-  - [x] Múltiples ubicaciones por callsign con detección automática >100m
-  - [x] Persistencia completa entre reinicios del sistema
-  - [x] Estructura Map<callsign, Array<posiciones>> optimizada
-  - [x] API mejorada para soporte de aplicaciones web
-- [x] **Mapeo completo de símbolos APRS**
-  - [x] 180+ símbolos oficiales de tablas primaria (/) y alternativa (\)
-  - [x] Emojis descriptivos para cada símbolo (🚗 📡 ✈️ 🏠)
-  - [x] Basado en especificación oficial http://www.aprs.org/symbols/
-  - [x] Soporte completo MIC-E para radios Kenwood/Yaesu
-- [x] **Análisis avanzado de cobertura**
-  - [x] Cálculo geodésico preciso con fórmula Haversine
-  - [x] Círculo de cobertura dinámico en mapa web
-  - [x] Widget flotante con estación más lejana en tiempo real
-  - [x] Marcadores con distancia, símbolo y comentario detallado
-- [x] **Mejoras en frontend**
-  - [x] Lista de estaciones con distancias calculadas
-  - [x] Información completa en popups de marcadores  
-  - [x] Widget de estación más lejana (esquina inferior izquierda)
-  - [x] Círculo visual de rango de recepción actualizado automáticamente
-
-#### 🔧 **Mejoras Técnicas**
-- [x] **Backend robusto**
-  - [x] Detección inteligente de nuevas ubicaciones
-  - [x] Sistema de logs diferenciados (nueva estación/ubicación/actualización)
-  - [x] API `getAllPositions()` optimizada para historial múltiple
-  - [x] Limpieza avanzada de comentarios APRS
-- [x] **Casos de uso prácticos**
-  - [x] Análisis profesional de cobertura de repetidoras
-  - [x] Monitoreo de eventos y emergencias
-  - [x] Seguimiento de estaciones móviles
-  - [x] Estadísticas de propagación VHF/UHF
-
-### v2.2.0 - Sistema de Alertas Meteorológicas ✨
-
-#### 🌦️ **Nuevas Características**
-- [x] **Sistema de Alertas Meteorológicas SMN** completo
-  - [x] Monitoreo automático cada 90 minutos
-  - [x] Cobertura completa provincia de Mendoza  
-  - [x] Filtrado geográfico por coordenadas y polígonos CAP
-  - [x] Anuncios automáticos con Google TTS + fragmentación
-  - [x] Comandos DTMF `*7` (consultar) y `*0` (forzar verificación)
-- [x] **Integración APRS mejorada**
-  - [x] Comentarios dinámicos con clima actual (temp, humedad, viento)
-  - [x] Indicadores de alertas activas en beacon
-  - [x] Actualización automática cada 15 minutos
-- [x] **Panel web actualizado**
-  - [x] Sección dedicada de alertas meteorológicas
-  - [x] Estado del sistema en tiempo real 
-  - [x] Contador de alertas activas
-  - [x] Información de próximas verificaciones
-
-#### 🐛 **Correcciones**
-- [x] **Panel web**: Estado del sistema mostraba "--" 
-- [x] **Panel web**: Próxima verificación mostraba "--"
-- [x] **Panel web**: Contador de alertas siempre mostraba "0"
-- [x] **Audio**: Reproductores timeout mejorados para alertas largas (45s)
-- [x] **TTS**: Fragmentación automática para textos >200 caracteres
-- [x] **Audio**: ffmpeg reemplazó sox para mejor compatibilidad MP3
-
-### v2.1.1 - Panel Web Moderno
-
-#### ✅ Características Anteriores
-- [x] **Panel web rediseñado** con navegación por pestañas
-- [x] **Monitor DTMF profesional** con estadísticas en tiempo real
-- [x] **Dashboard APRS completo** con mapa interactivo
-- [x] **Sistema de configuración dinámico**
-- [x] **Controles de sensibilidad DTMF**
 
 ---
 
 ## 🎯 Próximas Versiones
 
-### v2.3 - Planificado
-- [ ] **Métricas avanzadas** del sistema
-- [ ] **API REST completa** para integraciones
-- [ ] **Backup automático** de configuración
-- [ ] **Alertas por múltiples provincias**
+### v2.8 - Planificado
+- [ ] **Contenedorización Docker** para despliegue fácil
+- [ ] **Métricas Prometheus** para monitoreo avanzado
+- [ ] **API GraphQL** para consultas flexibles
+- [ ] **Multi-repetidora** con sincronización
 
-### v2.3 - Futuro
+### v2.9 - Futuro
 - [ ] **App móvil nativa** con React Native
 - [ ] **Integración LoRa** para enlaces remotos
 - [ ] **Machine Learning** para predicción de tráfico
-- [ ] **Multi-repetidora** con sincronización
+- [ ] **Clustering** para alta disponibilidad
 
 ---
 
@@ -600,8 +476,8 @@ El sistema ahora está **completamente enfocado** en las funcionalidades princip
 
 - **dtmf-detection-stream**: Excelente librería para detección DTMF
 - **Direwolf**: Software TNC indispensable para APRS
-- **OpenAI**: Integración de IA conversacional
-- **Socket.IO**: Comunicación en tiempo real
+- **Bootstrap 5**: Framework CSS moderno y responsive
+- **Leaflet.js**: Biblioteca de mapas interactivos ligera y potente
 
 ---
 
@@ -611,4 +487,4 @@ Este proyecto está bajo la Licencia MIT. Ver archivo `LICENSE` para más detall
 
 ---
 
-**✨ VX200 Controller v2.6.1 - Sistema de Repetidora Moderno y Profesional 📡🚀**
+**✨ VX200 Controller v2.7.0 - Sistema Headless Moderno con Mapa APRS Completo 📡🚀**

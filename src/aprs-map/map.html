@@ -317,6 +317,74 @@
         .repeater-marker:hover div:first-child {
             transform: scale(1.15) !important;
         }
+        
+        /* Station Details Panel */
+        .detail-section {
+            margin-bottom: 1rem;
+        }
+        
+        .detail-section h6 {
+            color: #2c3e50;
+            margin-bottom: 0.75rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        
+        .detail-grid {
+            display: grid;
+            gap: 0.5rem;
+        }
+        
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        
+        .detail-label {
+            color: #7f8c8d;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .detail-value {
+            color: #2c3e50;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-align: right;
+        }
+        
+        .altitude-chart-container {
+            background: #f8f9fa;
+            border-radius: 4px;
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        #altitude-chart {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* Responsive adjustments for details panel */
+        @media (max-width: 768px) {
+            .detail-section h6 {
+                font-size: 0.8rem;
+            }
+            
+            .detail-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.25rem;
+            }
+            
+            .detail-value {
+                text-align: left;
+                font-size: 0.9rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -381,6 +449,126 @@
 
                 <!-- Map Container -->
                 <div id="map"></div>
+                
+                <!-- Station Details Panel -->
+                <div class="info-card mt-3" id="station-details" style="display: none;">
+                    <h5 class="mb-3">📡 Detalles de Estación</h5>
+                    <div class="row">
+                        <!-- Basic Info -->
+                        <div class="col-md-6">
+                            <div class="detail-section">
+                                <h6>🔢 Información Básica</h6>
+                                <div class="detail-grid">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Indicativo:</span>
+                                        <span class="detail-value" id="detail-callsign">-</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Radio:</span>
+                                        <span class="detail-value" id="detail-radio">-</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Última recepción:</span>
+                                        <span class="detail-value" id="detail-timestamp">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Position Info -->
+                        <div class="col-md-6">
+                            <div class="detail-section">
+                                <h6>📍 Posición</h6>
+                                <div class="detail-grid">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Coordenadas:</span>
+                                        <span class="detail-value" id="detail-coords">-</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Distancia:</span>
+                                        <span class="detail-value" id="detail-distance">-</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Altitud:</span>
+                                        <span class="detail-value" id="detail-altitude">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <!-- Movement Info -->
+                        <div class="col-md-4">
+                            <div class="detail-section">
+                                <h6>🚗 Movimiento</h6>
+                                <div class="detail-grid">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Velocidad:</span>
+                                        <span class="detail-value" id="detail-speed">-</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Rumbo:</span>
+                                        <span class="detail-value" id="detail-course">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Signal Info -->
+                        <div class="col-md-4">
+                            <div class="detail-section">
+                                <h6>📶 Señal RF</h6>
+                                <div class="detail-grid">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Nivel:</span>
+                                        <span class="detail-value" id="detail-signal">-</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Errores:</span>
+                                        <span class="detail-value" id="detail-errors">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Statistics -->
+                        <div class="col-md-4">
+                            <div class="detail-section">
+                                <h6>📊 Estadísticas</h6>
+                                <div class="detail-grid">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Posiciones:</span>
+                                        <span class="detail-value" id="detail-positions">-</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Primera:</span>
+                                        <span class="detail-value" id="detail-first">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Altitude Chart -->
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="detail-section">
+                                <h6>📈 Perfil de Altitud</h6>
+                                <div class="altitude-chart-container">
+                                    <canvas id="altitude-chart" width="400" height="100"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Close Button -->
+                    <div class="text-end mt-3">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="closeStationDetails()">
+                            ✖️ Cerrar
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Sidebar -->
@@ -601,42 +789,105 @@
             createStationMarker(station, index) {
                 const color = this.getMarkerColor(station.callsign);
                 
-                // Create modern marker with station icon
+                // Generate visual indicators
+                const speedIndicator = this.getSpeedIndicator(station.speed);
+                const courseArrow = this.getCourseArrow(station.course);
+                const signalIndicator = this.getSignalIndicator(station.audioLevel);
+                
+                // Create modern marker with station icon and indicators
                 const icon = L.divIcon({
                     html: `
                         <div style="position: relative;">
+                            <!-- Main marker -->
                             <div style="
                                 background: linear-gradient(135deg, ${color} 0%, ${this.darkenColor(color)} 100%); 
-                                width: 22px; 
-                                height: 22px; 
+                                width: 32px; 
+                                height: 32px; 
                                 border-radius: 50%; 
-                                border: 3px solid white; 
-                                box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+                                border: 4px solid white; 
+                                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
                                 display: flex;
                                 align-items: center;
                                 justify-content: center;
-                                font-size: 11px;
+                                font-size: 14px;
                                 color: white;
                                 font-weight: bold;
                                 transition: transform 0.2s ease;
                             ">
                                 📻
                             </div>
+                            
+                            <!-- Signal quality indicator -->
                             <div style="
                                 position: absolute;
                                 top: -2px;
                                 right: -2px;
-                                background: #27ae60;
+                                background: ${signalIndicator.color};
                                 width: 8px;
                                 height: 8px;
                                 border-radius: 50%;
                                 border: 2px solid white;
                                 box-shadow: 0 1px 3px rgba(0,0,0,0.3);
                             "></div>
+                            
+                            <!-- Speed indicator -->
+                            ${station.speed !== null && station.speed > 1 ? `
+                                <div style="
+                                    position: absolute;
+                                    bottom: -5px;
+                                    left: -5px;
+                                    background: ${speedIndicator.color};
+                                    width: 14px;
+                                    height: 14px;
+                                    border-radius: 50%;
+                                    border: 2px solid white;
+                                    font-size: 10px;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    color: white;
+                                ">
+                                    ${speedIndicator.icon}
+                                </div>
+                            ` : ''}
+                            
+                            <!-- Course arrow -->
+                            ${station.course !== null ? `
+                                <div style="
+                                    position: absolute;
+                                    top: -15px;
+                                    left: 50%;
+                                    transform: translateX(-50%) rotate(${station.course}deg);
+                                    color: #2c3e50;
+                                    font-size: 12px;
+                                    text-shadow: 0 0 3px white;
+                                ">
+                                    ⬆️
+                                </div>
+                            ` : ''}
+                            
+                            <!-- Altitude badge -->
+                            ${station.altitude !== null ? `
+                                <div style="
+                                    position: absolute;
+                                    top: 25px;
+                                    left: 50%;
+                                    transform: translateX(-50%);
+                                    background: rgba(44, 62, 80, 0.8);
+                                    color: white;
+                                    font-size: 8px;
+                                    padding: 1px 3px;
+                                    border-radius: 8px;
+                                    white-space: nowrap;
+                                    font-weight: bold;
+                                ">
+                                    ${station.altitude.toFixed(0)}m
+                                </div>
+                            ` : ''}
                         </div>
                     `,
-                    iconSize: [28, 28],
-                    iconAnchor: [14, 14],
+                    iconSize: [50, 60],
+                    iconAnchor: [25, 30],
                     className: 'station-marker'
                 });
 
@@ -657,8 +908,19 @@
                     </div>
                 `;
 
-                marker.bindPopup(popupContent, {
-                    maxWidth: 250,
+                // Add click event for detailed view
+                marker.on('click', () => {
+                    this.showStationDetails(station);
+                });
+                
+                // Keep simple popup for quick info
+                marker.bindPopup(`
+                    <div style="text-align: center;">
+                        <strong>📻 ${station.callsign}</strong><br>
+                        <small>Click para más detalles</small>
+                    </div>
+                `, {
+                    maxWidth: 200,
                     className: 'custom-popup'
                 });
                 
@@ -840,6 +1102,50 @@
                 return colorMap[color] || color;
             }
 
+            getSpeedIndicator(speed) {
+                if (speed === null || speed === undefined) {
+                    return { color: '#bdc3c7', icon: '' };
+                }
+                
+                if (speed < 5) {
+                    return { color: '#27ae60', icon: '🚶' }; // Walking
+                } else if (speed < 25) {
+                    return { color: '#f39c12', icon: '🚴' }; // Cycling
+                } else if (speed < 60) {
+                    return { color: '#e67e22', icon: '🚗' }; // Car
+                } else {
+                    return { color: '#e74c3c', icon: '✈️' }; // Fast
+                }
+            }
+
+            getCourseArrow(course) {
+                if (course === null || course === undefined) {
+                    return '';
+                }
+                return `⬆️`; // Arrow will be rotated via CSS transform
+            }
+
+            getSignalIndicator(audioLevel) {
+                if (!audioLevel) {
+                    return { color: '#bdc3c7' }; // Gray for unknown
+                }
+                
+                // Parse audio level like "66(22/22)"
+                const match = audioLevel.match(/(\d+)\(/);
+                if (match) {
+                    const level = parseInt(match[1]);
+                    if (level >= 60) {
+                        return { color: '#27ae60' }; // Green - Strong signal
+                    } else if (level >= 40) {
+                        return { color: '#f39c12' }; // Orange - Medium signal
+                    } else {
+                        return { color: '#e74c3c' }; // Red - Weak signal
+                    }
+                }
+                
+                return { color: '#bdc3c7' }; // Gray for unparseable
+            }
+
             clearMarkers() {
                 this.stationMarkers.forEach(marker => this.map.removeLayer(marker));
                 this.stationMarkers = [];
@@ -851,10 +1157,151 @@
                 }, 30000); // Update every 30 seconds
             }
 
+            showStationDetails(station) {
+                // Show the details panel
+                document.getElementById('station-details').style.display = 'block';
+                
+                // Populate basic info
+                document.getElementById('detail-callsign').textContent = station.callsign || '-';
+                document.getElementById('detail-radio').textContent = station.comment || '-';
+                document.getElementById('detail-timestamp').textContent = 
+                    new Date(station.timestamp).toLocaleString();
+                
+                // Position info
+                document.getElementById('detail-coords').textContent = 
+                    `${station.lat.toFixed(6)}, ${station.lon.toFixed(6)}`;
+                document.getElementById('detail-distance').textContent = 
+                    station.distance ? `${station.distance.toFixed(2)} km` : '-';
+                document.getElementById('detail-altitude').textContent = 
+                    station.altitude ? `${station.altitude.toFixed(0)} m` : '-';
+                
+                // Movement info (from extended data if available)
+                document.getElementById('detail-speed').textContent = 
+                    station.speed ? `${station.speed.toFixed(1)} km/h` : '-';
+                document.getElementById('detail-course').textContent = 
+                    station.course ? `${station.course.toFixed(0)}°` : '-';
+                
+                // Signal info
+                document.getElementById('detail-signal').textContent = 
+                    station.audioLevel || '-';
+                document.getElementById('detail-errors').textContent = 
+                    station.errorRate !== undefined ? station.errorRate : '-';
+                
+                // Statistics
+                const stationPositions = this.stations.filter(s => s.callsign === station.callsign);
+                document.getElementById('detail-positions').textContent = stationPositions.length;
+                
+                if (stationPositions.length > 0) {
+                    const firstStation = stationPositions.reduce((earliest, current) => 
+                        new Date(current.timestamp) < new Date(earliest.timestamp) ? current : earliest
+                    );
+                    document.getElementById('detail-first').textContent = 
+                        new Date(firstStation.timestamp).toLocaleDateString();
+                }
+                
+                // Draw altitude chart
+                this.drawAltitudeChart(stationPositions);
+                
+                // Scroll to details panel
+                document.getElementById('station-details').scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'start' 
+                });
+            }
+
+            drawAltitudeChart(positions) {
+                const canvas = document.getElementById('altitude-chart');
+                const ctx = canvas.getContext('2d');
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                if (!positions || positions.length === 0) {
+                    ctx.fillStyle = '#7f8c8d';
+                    ctx.font = '14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('No hay datos de altitud', canvas.width / 2, canvas.height / 2);
+                    return;
+                }
+                
+                // Filter positions with altitude data
+                const altitudeData = positions
+                    .filter(p => p.altitude !== undefined && p.altitude !== null)
+                    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                
+                if (altitudeData.length === 0) {
+                    ctx.fillStyle = '#7f8c8d';
+                    ctx.font = '14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('No hay datos de altitud disponibles', canvas.width / 2, canvas.height / 2);
+                    return;
+                }
+                
+                // Calculate bounds
+                const minAlt = Math.min(...altitudeData.map(p => p.altitude));
+                const maxAlt = Math.max(...altitudeData.map(p => p.altitude));
+                const altRange = maxAlt - minAlt || 1;
+                
+                const padding = 20;
+                const chartWidth = canvas.width - 2 * padding;
+                const chartHeight = canvas.height - 2 * padding;
+                
+                // Draw axes
+                ctx.strokeStyle = '#bdc3c7';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(padding, padding);
+                ctx.lineTo(padding, canvas.height - padding);
+                ctx.lineTo(canvas.width - padding, canvas.height - padding);
+                ctx.stroke();
+                
+                // Draw altitude line
+                ctx.strokeStyle = '#3498db';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                
+                altitudeData.forEach((point, index) => {
+                    const x = padding + (index / (altitudeData.length - 1)) * chartWidth;
+                    const y = canvas.height - padding - ((point.altitude - minAlt) / altRange) * chartHeight;
+                    
+                    if (index === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                
+                ctx.stroke();
+                
+                // Draw points
+                ctx.fillStyle = '#3498db';
+                altitudeData.forEach((point, index) => {
+                    const x = padding + (index / (altitudeData.length - 1)) * chartWidth;
+                    const y = canvas.height - padding - ((point.altitude - minAlt) / altRange) * chartHeight;
+                    
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+                
+                // Draw labels
+                ctx.fillStyle = '#7f8c8d';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(`${minAlt.toFixed(0)}m`, 5, canvas.height - 5);
+                ctx.textAlign = 'right';
+                ctx.fillText(`${maxAlt.toFixed(0)}m`, canvas.width - 5, 15);
+            }
+
             showError(message) {
                 console.error(message);
                 // Could implement a toast notification here
             }
+        }
+
+        // Global function to close station details
+        function closeStationDetails() {
+            document.getElementById('station-details').style.display = 'none';
         }
 
         // Initialize the map when the page loads
