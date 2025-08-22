@@ -15,100 +15,251 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
         }
         
         .header {
             background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
             color: white;
-            padding: 1rem 0;
+            padding: 0.75rem 0;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
+        .header h1 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+        
+        .header .h1-icon {
+            font-size: 1.2rem;
+        }
+        
         #map {
-            height: 60vh;
-            min-height: 400px;
+            height: 50vh;
+            min-height: 350px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
         }
         
         .info-card {
             background: white;
             border-radius: 8px;
-            padding: 1.5rem;
+            padding: 1rem;
             margin-bottom: 1rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
         .station-list {
-            max-height: 300px;
+            max-height: 250px;
             overflow-y: auto;
         }
         
         .station-item {
             cursor: pointer;
-            padding: 0.5rem;
+            padding: 0.75rem 0.5rem;
             border-radius: 4px;
             margin-bottom: 0.25rem;
-            transition: background-color 0.2s;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
         }
         
         .station-item:hover {
             background-color: #f8f9fa;
+            border-left: 3px solid #3498db;
         }
         
         .station-item.selected {
             background-color: #e3f2fd;
-            border-left: 4px solid #2196F3;
+            border-left: 3px solid #2196F3;
         }
         
         .badge-custom {
-            font-size: 0.8em;
+            font-size: 0.75em;
+            padding: 0.25em 0.5em;
         }
         
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
         }
         
         .stat-item {
             text-align: center;
-            padding: 1rem;
+            padding: 0.75rem 0.5rem;
             background: white;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
         .stat-value {
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             font-weight: bold;
             color: #2c3e50;
         }
         
         .stat-label {
             color: #7f8c8d;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
         }
         
         .loading {
             display: none;
             text-align: center;
-            padding: 2rem;
+            padding: 1.5rem;
         }
         
         .update-indicator {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: 15px;
+            right: 15px;
             z-index: 1000;
         }
         
         .filter-controls {
             background: white;
-            padding: 1rem;
+            padding: 0.75rem;
             border-radius: 8px;
             margin-bottom: 1rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Custom marker styles */
+        .repeater-marker {
+            background: none !important;
+            border: none !important;
+        }
+        
+        .station-marker {
+            background: none !important;
+            border: none !important;
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .header {
+                padding: 0.5rem 0;
+            }
+            
+            .header h1 {
+                font-size: 1.2rem;
+            }
+            
+            .header small {
+                font-size: 0.8rem;
+            }
+            
+            #map {
+                height: 45vh;
+                min-height: 300px;
+                border-radius: 4px;
+            }
+            
+            .info-card {
+                padding: 0.75rem;
+                margin-bottom: 0.75rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 0.5rem;
+            }
+            
+            .stat-item {
+                padding: 0.5rem 0.25rem;
+            }
+            
+            .stat-value {
+                font-size: 1rem;
+            }
+            
+            .stat-label {
+                font-size: 0.7rem;
+            }
+            
+            .filter-controls {
+                padding: 0.5rem;
+            }
+            
+            .filter-controls .row > * {
+                margin-bottom: 0.5rem;
+            }
+            
+            .station-item {
+                padding: 0.5rem;
+                font-size: 0.9rem;
+            }
+            
+            .update-indicator {
+                top: 10px;
+                right: 10px;
+            }
+            
+            .container-fluid {
+                padding: 0.75rem;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .header h1 {
+                font-size: 1.1rem;
+            }
+            
+            #map {
+                height: 40vh;
+                min-height: 280px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+            }
+            
+            .filter-controls .row {
+                flex-direction: column;
+            }
+            
+            .filter-controls .col-md-6:last-child {
+                text-align: left !important;
+                margin-top: 0.5rem;
+            }
+            
+            .btn-group-sm .btn {
+                font-size: 0.8rem;
+                padding: 0.25rem 0.5rem;
+            }
+            
+            .station-list {
+                max-height: 200px;
+            }
+        }
+        
+        /* Touch-friendly buttons */
+        .btn-sm {
+            min-height: 36px;
+        }
+        
+        /* Status indicators */
+        .status-online {
+            color: #27ae60;
+        }
+        
+        .status-offline {
+            color: #e74c3c;
+        }
+        
+        /* Loading animation */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .loading-pulse {
+            animation: pulse 1.5s infinite;
         }
     </style>
 </head>
@@ -119,14 +270,14 @@
             <div class="row align-items-center">
                 <div class="col">
                     <h1 class="mb-0">
-                        <i class="fas fa-satellite-dish me-2"></i>
+                        <span class="h1-icon">📡</span>
                         VX200Controller APRS MAP
                     </h1>
-                    <small class="opacity-75">Mapa en tiempo real de posiciones APRS recibidas</small>
+                    <small class="opacity-75">Mapa en tiempo real de posiciones APRS</small>
                 </div>
                 <div class="col-auto">
-                    <span class="badge bg-success" id="status-badge">●</span>
-                    <span id="last-update">Cargando...</span>
+                    <span class="badge bg-success status-online" id="status-badge">●</span>
+                    <span id="last-update" class="d-none d-md-inline">Cargando...</span>
                 </div>
             </div>
         </div>
@@ -147,20 +298,22 @@
                 <div class="filter-controls">
                     <div class="row align-items-center">
                         <div class="col-md-6">
-                            <div class="d-flex align-items-center">
-                                <label class="form-label me-2 mb-0">Filtrar por estación:</label>
-                                <select id="station-filter" class="form-select form-select-sm">
+                            <div class="d-flex align-items-center flex-wrap">
+                                <label class="form-label me-2 mb-1 mb-md-0">🔍 Filtrar:</label>
+                                <select id="station-filter" class="form-select form-select-sm flex-grow-1">
                                     <option value="">Todas las estaciones</option>
                                 </select>
                             </div>
                         </div>
-                        <div class="col-md-6 text-end">
-                            <button id="reset-filter" class="btn btn-outline-secondary btn-sm me-2">
-                                <i class="fas fa-refresh"></i> Reset
-                            </button>
-                            <button id="center-map" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-crosshairs"></i> Centrar
-                            </button>
+                        <div class="col-md-6 text-md-end">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button id="reset-filter" class="btn btn-outline-secondary">
+                                    🔄 Reset
+                                </button>
+                                <button id="center-map" class="btn btn-outline-primary">
+                                    🎯 Centrar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -173,30 +326,30 @@
             <div class="col-lg-4">
                 <!-- Statistics -->
                 <div class="info-card">
-                    <h5 class="mb-3">Estadísticas</h5>
+                    <h5 class="mb-3">📊 Estadísticas</h5>
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-value" id="total-stations">-</div>
-                            <div class="stat-label">Total Estaciones</div>
+                            <div class="stat-label">🏘️ Estaciones</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="max-distance">-</div>
-                            <div class="stat-label">Más Lejana</div>
+                            <div class="stat-label">📏 Más Lejana</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="last-station">-</div>
-                            <div class="stat-label">Última Estación</div>
+                            <div class="stat-label">📻 Última</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="coverage-radius">-</div>
-                            <div class="stat-label">Radio Cobertura</div>
+                            <div class="stat-label">📡 Cobertura</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Station List -->
                 <div class="info-card">
-                    <h5 class="mb-3">Estaciones Recibidas</h5>
+                    <h5 class="mb-3">📋 Estaciones Recibidas</h5>
                     <div class="station-list" id="station-list">
                         <div class="loading">
                             <div class="spinner-border text-primary" role="status">
@@ -303,8 +456,27 @@
                 // Add repeater marker
                 if (this.repeaterLocation) {
                     const repeaterIcon = L.divIcon({
-                        html: '<div style="background: #e74c3c; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
-                        iconSize: [20, 20],
+                        html: `
+                            <div style="position: relative;">
+                                <div style="
+                                    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); 
+                                    width: 24px; 
+                                    height: 24px; 
+                                    border-radius: 50%; 
+                                    border: 4px solid white; 
+                                    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    font-size: 12px;
+                                    animation: pulse 2s infinite;
+                                ">
+                                    🏗️
+                                </div>
+                            </div>
+                        `,
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16],
                         className: 'repeater-marker'
                     });
 
@@ -313,10 +485,24 @@
                     }).addTo(this.map);
 
                     this.repeaterMarker.bindPopup(`
-                        <strong>Repetidora VX200</strong><br>
-                        Callsign: ${this.repeaterLocation.callsign || 'YOSHUA'}<br>
-                        Ubicación: ${this.repeaterLocation.name || 'Guaymallén, Mendoza'}
-                    `);
+                        <div style="text-align: center; min-width: 250px;">
+                            <h5 style="margin: 0 0 10px 0; color: #e74c3c;">
+                                🏗️ Repetidora VX200
+                            </h5>
+                            <div style="margin-bottom: 8px;">
+                                📻 <strong>${this.repeaterLocation.callsign || 'YOSHUA'}</strong>
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                📍 ${this.repeaterLocation.name || 'Guaymallén, Mendoza'}
+                            </div>
+                            <small style="color: #7f8c8d;">
+                                ⛰️ Elevación: ${this.repeaterLocation.elevation || 775}m
+                            </small>
+                        </div>
+                    `, {
+                        maxWidth: 300,
+                        className: 'custom-popup'
+                    });
                 }
 
                 // Add station markers
@@ -342,24 +528,54 @@
             createStationMarker(station, index) {
                 const color = this.getMarkerColor(station.callsign);
                 
+                // Create modern marker with station icon
                 const icon = L.divIcon({
-                    html: `<div style="background: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-                    iconSize: [12, 12],
+                    html: `
+                        <div style="position: relative;">
+                            <div style="
+                                background: ${color}; 
+                                width: 16px; 
+                                height: 16px; 
+                                border-radius: 50%; 
+                                border: 3px solid white; 
+                                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 8px;
+                                color: white;
+                                font-weight: bold;
+                            ">
+                                📻
+                            </div>
+                        </div>
+                    `,
+                    iconSize: [22, 22],
+                    iconAnchor: [11, 11],
                     className: 'station-marker'
                 });
 
                 const marker = L.marker([station.lat, station.lon], { icon }).addTo(this.map);
 
                 const popupContent = `
-                    <strong>${station.callsign}</strong><br>
-                    ${station.comment || 'Sin comentario'}<br>
-                    <small>
-                        Recibido: ${new Date(station.timestamp).toLocaleString()}<br>
-                        Distancia: ${station.distance ? station.distance.toFixed(2) + ' km' : 'N/A'}
-                    </small>
+                    <div style="text-align: center; min-width: 200px;">
+                        <h6 style="margin: 0 0 8px 0; color: #2c3e50;">
+                            📻 ${station.callsign}
+                        </h6>
+                        <div style="margin-bottom: 8px;">
+                            ${station.comment ? `💬 ${station.comment}` : '💬 Sin comentario'}
+                        </div>
+                        <small style="color: #7f8c8d;">
+                            🕒 ${new Date(station.timestamp).toLocaleString()}<br>
+                            📏 ${station.distance ? station.distance.toFixed(2) + ' km' : 'N/A'}
+                        </small>
+                    </div>
                 `;
 
-                marker.bindPopup(popupContent);
+                marker.bindPopup(popupContent, {
+                    maxWidth: 250,
+                    className: 'custom-popup'
+                });
                 
                 return marker;
             }
@@ -417,7 +633,7 @@
                 const callsigns = this.getUniqueCallsigns();
                 
                 if (callsigns.length === 0) {
-                    container.innerHTML = '<p class="text-muted text-center">No hay estaciones recibidas</p>';
+                    container.innerHTML = '<p class="text-muted text-center">📭 No hay estaciones recibidas</p>';
                     return;
                 }
 
@@ -432,17 +648,17 @@
                     div.innerHTML = `
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <strong>${callsign}</strong>
+                                📻 <strong>${callsign}</strong>
                                 <br>
                                 <small class="text-muted">
-                                    ${new Date(latest.timestamp).toLocaleString()}
+                                    🕒 ${new Date(latest.timestamp).toLocaleTimeString()}
                                 </small>
                             </div>
                             <div class="text-end">
                                 <span class="badge bg-primary badge-custom">${stationPositions.length}</span>
                                 <br>
                                 <small class="text-muted">
-                                    ${latest.distance ? latest.distance.toFixed(1) + ' km' : '-'}
+                                    📏 ${latest.distance ? latest.distance.toFixed(1) + ' km' : '-'}
                                 </small>
                             </div>
                         </div>

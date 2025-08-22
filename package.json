@@ -8,7 +8,7 @@
     "start:prod": "npm run start",
     "dev": "node src/index.js",
     "test": "node src/test-complete.js",
-    "health": "node -e \"console.log('VX200 Health Check:', new Date().toISOString())\"",
+    "health": "node -e \"console.log('VX200 Health Check:', new Date().toISOString())\""
   },
   "dependencies": {
     "axios": "^1.11.0",
