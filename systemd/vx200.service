@@ -1,0 +1,55 @@
+[Unit]
+Description=VX200 Repetidora Controller with Dashboard
+Documentation=https://github.com/vx200/controller
+After=network.target sound.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=fokerone
+Group=fokerone
+WorkingDirectory=/home/fokerone/vx200RPTController
+Environment=NODE_ENV=production
+Environment=DASHBOARD_PORT=8080
+Environment=LOG_LEVEL=info
+ExecStartPre=/bin/bash -c 'cd /home/fokerone/vx200RPTController && npm run build:dashboard'
+ExecStart=/usr/bin/node src/index.js
+ExecReload=/bin/kill -USR1 $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vx200
+
+# Límites de recursos para operación 24/7
+LimitNOFILE=65536
+LimitCORE=0
+
+# Configuración de memoria
+MemoryAccounting=true
+MemoryHigh=512M
+MemoryMax=1G
+
+# Configuración de CPU
+CPUAccounting=true
+CPUWeight=100
+
+# Configuración de IO
+IOAccounting=true
+IOWeight=100
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/fokerone/vx200RPTController/logs /home/fokerone/vx200RPTController/temp
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Audio permissions (necesario para repetidora)
+SupplementaryGroups=audio
+
+[Install]
+WantedBy=multi-user.target

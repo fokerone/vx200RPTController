@@ -194,16 +194,14 @@ class VX200Controller {
             this.logger.debug('Transmisión terminada:', data);
         });
 
-        this.setupWebEvents();
+        this.setupEvents();
     }
 
-    setupWebEvents() {
-        // Eventos de módulos sin servidor web
+    setupEvents() {
         this.modules.baliza.on('transmitted', (data) => {
             this.logger.debug('Baliza transmitida:', data);
         });
 
-        // Eventos APRS - solo logging
         this.modules.aprs.on('position_received', (position) => {
             this.logger.info(`APRS Position: ${position.callsign} at ${position.lat},${position.lon}`);
         });
@@ -224,7 +222,6 @@ class VX200Controller {
             this.logger.info(`APRS: ${data.newPositions} nuevas posiciones desde ${data.fromFile}`);
         });
         
-        // Eventos INPRES - solo logging
         this.modules.inpres.on('seism_detected', (seism) => {
             this.logger.info(`Sismo detectado: ${seism.magnitude} - ${seism.location}`);
         });
@@ -295,31 +292,6 @@ class VX200Controller {
         });
     }
 
-    async executeWebCommand(command) {
-        this.logger.info(`Comando web: ${command}`);
-        
-        try {
-            switch (command) {
-                case 'baliza_manual':
-                    await this.modules.baliza.execute('*9');
-                    break;
-                case 'datetime':
-                    await this.modules.datetime.execute('*1');
-                    break;
-                case 'weather':
-                    await this.modules.weather.execute('*4');
-                    break;
-                case 'weather_alerts':
-                    await this.modules.weatherAlerts?.execute('*7');
-                    break;
-                default:
-                    throw new Error(`Comando desconocido: ${command}`);
-            }
-        } catch (error) {
-            this.logger.error('Error comando web:', error.message);
-            throw error;
-        }
-    }
 
     toggleRogerBeep() {
         const wasEnabled = this.audio.getRogerBeepStatus().enabled;
@@ -420,6 +392,7 @@ class VX200Controller {
                 }
             }
             
+            
             this.isRunning = true;
             this.state = MODULE_STATES.ACTIVE;
             
@@ -476,6 +449,7 @@ class VX200Controller {
         if (this.audio) {
             this.audio.stop();
         }
+        
         
         
         if (this.modules.baliza?.isRunning) {
@@ -636,7 +610,7 @@ class VX200Controller {
         this.logger.info(`  Canal: ${status.channel.isActive ? 'OCUPADO' : 'LIBRE'}`);
         this.logger.info(`  Baliza: ${status.baliza.running ? 'RUNNING' : 'STOPPED'}`);
         this.logger.info(`  Roger Beep: ${status.rogerBeep.enabled ? 'ENABLED' : 'DISABLED'}`);
-        this.logger.info(`  Web Server: ${this.isRunning ? 'RUNNING' : 'STOPPED'}`);
+        this.logger.info(`  Sistema: ${this.isRunning ? 'RUNNING' : 'STOPPED'}`);
         
         // Verificar estado de archivos temporales
         if (this.audio && typeof this.audio.getTempSpaceStats === 'function') {
