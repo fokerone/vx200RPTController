@@ -6,7 +6,6 @@ const WeatherAlerts = require('./modules/weatherAlerts');
 const InpresSismic = require('./modules/inpres');
 const APRS = require('./modules/aprs');
 const DirewolfManager = require('./utils/direwolfManager');
-const WebServer = require('./web/server');
 const { Config } = require('./config');
 const { createLogger } = require('./logging/Logger');
 const { getSystemOutput } = require('./logging/SystemOutput');
@@ -22,7 +21,6 @@ class VX200Controller {
         this.audio = null;
         this.modules = {};
         this.direwolf = null;
-        this.webServer = null;
         
         this.isRunning = false;
         this.startTime = Date.now();
@@ -41,8 +39,6 @@ class VX200Controller {
             this.logger.debug('Inicializando Módulos...');
             await this.initializeModules();
             
-            this.logger.debug('Inicializando WebServer...');
-            await this.initializeWebServer();
             
             this.logger.debug('Configurando event handlers...');
             this.setupEventHandlers();
@@ -57,20 +53,7 @@ class VX200Controller {
                 this.logger.warn(`Sistema inicializado con ${this.initializationErrors.length} errores: ${this.initializationErrors.join(', ')}`);
                 this.state = MODULE_STATES.ERROR;
             } else {
-                const { networkInterfaces } = require('os');
-                const getLocalIP = () => {
-                    const nets = networkInterfaces();
-                    for (const name of Object.keys(nets)) {
-                        for (const net of nets[name]) {
-                            if (net.family === 'IPv4' && !net.internal) {
-                                return net.address;
-                            }
-                        }
-                    }
-                    return '127.0.0.1';
-                };
-                const localIP = getLocalIP();
-                this.logger.info(`🔥 VX200 REPETIDORA OPERATIVA - Audio: LISTO, APRS: ACTIVO, Web: http://localhost:3000 | http://${localIP}:3000`);
+                this.logger.info('🔥 VX200 REPETIDORA OPERATIVA - Audio: LISTO, APRS: ACTIVO');
             }
             
         } catch (error) {
@@ -157,18 +140,6 @@ class VX200Controller {
         // Todos los módulos procesados
     }
 
-    async initializeWebServer() {
-        try {
-            this.logger.debug('Intentando inicializar WebServer...');
-            this.webServer = new WebServer(this);
-            // WebServer inicializado
-        } catch (error) {
-            this.logger.error('Error inicializando WebServer:', error.message);
-            this.logger.error('Stack trace:', error.stack);
-            this.initializationErrors.push('WebServer');
-            this.webServer = null;
-        }
-    }
 
     configureFromFile() {
         if (Config.rogerBeepEnabled) {
@@ -204,107 +175,65 @@ class VX200Controller {
         });
 
         this.audio.on('channel_active', (data) => {
-            this.webServer.broadcastChannelActivity(true, data.level);
+            // Channel activity logged
         });
 
         this.audio.on('channel_inactive', (data) => {
-            this.webServer.broadcastChannelActivity(false, 0);
+            // Channel inactive logged
         });
 
         this.audio.on('signal_level', (data) => {
-            this.webServer.broadcastSignalLevel(data);
+            // Signal level logged
         });
 
         this.audio.on('transmission_started', (data) => {
             this.logger.debug('Transmisión iniciada:', data);
-            this.webServer.broadcastChannelActivity(true, 0);
         });
 
         this.audio.on('transmission_ended', (data) => {
             this.logger.debug('Transmisión terminada:', data);
-            this.webServer.broadcastChannelActivity(false, 0);
         });
 
         this.setupWebEvents();
     }
 
     setupWebEvents() {
-        this.audio.on('dtmf', (sequence) => {
-            this.webServer.broadcastDTMF(sequence);
-        });
-
+        // Eventos de módulos sin servidor web
         this.modules.baliza.on('transmitted', (data) => {
-            if (this.webServer && typeof this.webServer.broadcastBalizaTransmitted === 'function') {
-                this.webServer.broadcastBalizaTransmitted(data);
-            }
+            this.logger.debug('Baliza transmitida:', data);
         });
 
-        // Eventos APRS
+        // Eventos APRS - solo logging
         this.modules.aprs.on('position_received', (position) => {
-            if (this.webServer && typeof this.webServer.broadcastAPRSPosition === 'function') {
-                this.webServer.broadcastAPRSPosition(position);
-            }
+            this.logger.info(`APRS Position: ${position.callsign} at ${position.lat},${position.lon}`);
         });
 
         this.modules.aprs.on('beacon_sent', (beacon) => {
-            if (this.webServer && typeof this.webServer.broadcastAPRSBeacon === 'function') {
-                this.webServer.broadcastAPRSBeacon(beacon);
-            }
+            this.logger.info('APRS Beacon sent:', beacon);
         });
 
         this.modules.aprs.on('tnc_connected', () => {
-            if (this.webServer && typeof this.webServer.broadcastAPRSStatus === 'function') {
-                const status = this.modules.aprs.getStatus();
-                this.webServer.broadcastAPRSStatus(status);
-            }
+            this.logger.info('APRS TNC connected');
         });
 
         this.modules.aprs.on('tnc_disconnected', () => {
-            if (this.webServer && typeof this.webServer.broadcastAPRSStatus === 'function') {
-                const status = this.modules.aprs.getStatus();
-                this.webServer.broadcastAPRSStatus(status);
-            }
+            this.logger.warn('APRS TNC disconnected');
+        });
+
+        this.modules.aprs.on('positions_updated', (data) => {
+            this.logger.info(`APRS: ${data.newPositions} nuevas posiciones desde ${data.fromFile}`);
         });
         
-        // Eventos INPRES
+        // Eventos INPRES - solo logging
         this.modules.inpres.on('seism_detected', (seism) => {
-            if (this.webServer && typeof this.webServer.broadcastSeismDetected === 'function') {
-                this.webServer.broadcastSeismDetected(seism);
-            }
+            this.logger.info(`Sismo detectado: ${seism.magnitude} - ${seism.location}`);
         });
         
         this.modules.inpres.on('seism_announced', (seism) => {
-            if (this.webServer && typeof this.webServer.broadcastSeismAnnounced === 'function') {
-                this.webServer.broadcastSeismAnnounced(seism);
-            }
+            this.logger.info(`Sismo anunciado: ${seism.magnitude} - ${seism.location}`);
         });
-
-        this.interceptLogs();
     }
 
-    interceptLogs() {
-        const originalLog = console.log;
-        const originalError = console.error;
-        
-        console.log = (...args) => {
-            originalLog.apply(console, args);
-            
-            const message = args.join(' ');
-            if (message.includes('📞 DTMF:') || 
-                message.includes('🎯 Ejecutando') ||
-                message.includes('Roger Beep') ||
-                message.includes('Baliza') ||
-                message.includes('Canal')) {
-                this.webServer.broadcastLog('info', message);
-            }
-        };
-
-        console.error = (...args) => {
-            originalError.apply(console, args);
-            const message = args.join(' ');
-            this.webServer.broadcastLog('error', message);
-        };
-    }
 
     async handleDTMF(sequence) {
         const commands = {
@@ -346,7 +275,7 @@ class VX200Controller {
 
     async safeTransmit(callback) {
         if (!this.audio.isSafeToTransmit()) {
-            this.webServer.broadcastLog('warning', 'Canal ocupado - Esperando...');
+            this.logger.warn('Canal ocupado - Esperando...');
             await this.waitForFreeChannel();
         }
         
@@ -397,8 +326,6 @@ class VX200Controller {
         const isEnabled = this.audio.toggleRogerBeep();
         
         this.logger.info(`Roger Beep: ${isEnabled ? 'ON' : 'OFF'}`);
-        this.webServer.broadcastLog('info', `Roger Beep ${isEnabled ? 'activado' : 'desactivado'}`);
-        
         return {
             success: true,
             enabled: isEnabled,
@@ -448,18 +375,6 @@ class VX200Controller {
                 if (!audioStarted) {
                     throw new Error('No se pudo iniciar AudioManager');
                 }
-            }
-            if (this.webServer) {
-                try {
-                    await this.webServer.start();
-                    // WebServer operativo
-                } catch (error) {
-                    this.logger.error('Error iniciando WebServer:', error.message);
-                    throw error;
-                }
-            } else {
-                this.logger.error('WebServer no está inicializado');
-                throw new Error('WebServer no está inicializado');
             }
             
             if (Config.balizaEnabled && this.modules.baliza) {
@@ -547,10 +462,6 @@ class VX200Controller {
                 details: this.modules.inpres && this.modules.inpres.state === MODULE_STATES.ACTIVE ? 
                     'Seismic monitoring active' : 'Monitoring stopped'
             },
-            webServer: { 
-                enabled: true,
-                details: `Port: ${Config.webPort}`
-            }
         };
 
         this.systemOutput.printModuleStatus(moduleStatus);
@@ -566,9 +477,6 @@ class VX200Controller {
             this.audio.stop();
         }
         
-        if (this.webServer) {
-            this.webServer.stop();
-        }
         
         if (this.modules.baliza?.isRunning) {
             this.modules.baliza.stop();
@@ -624,7 +532,7 @@ class VX200Controller {
             }
             
             this.logger.info(`${service}: ${result.enabled ? 'ON' : 'OFF'}`);
-            this.webServer.broadcastLog('info', result.message);
+            this.logger.info(result.message);
             
         } catch (error) {
             result = { success: false, message: `Error: ${error.message}` };
@@ -668,7 +576,6 @@ class VX200Controller {
             services: {
                 audio: this.audio.getStatus().audio.isRecording,
                 baliza: this.modules.baliza.isRunning,
-                webServer: this.isRunning,
                 rogerBeep: this.audio.getRogerBeepStatus().enabled
             }
         };
@@ -678,7 +585,7 @@ class VX200Controller {
 
     async shutdown() {
         this.logger.warn('Apagando sistema...');
-        this.webServer.broadcastLog('warning', 'Sistema apagándose...');
+        this.logger.warn('Sistema apagándose...');
         
         try {
             await this.audio.speakNoRoger('Sistema apagándose');
@@ -696,7 +603,7 @@ class VX200Controller {
 
     async restart() {
         this.logger.warn('Reiniciando sistema...');
-        this.webServer.broadcastLog('warning', 'Reiniciando...');
+        this.logger.warn('Reiniciando...');
         
         try {
             await this.audio.speakNoRoger('Sistema reiniciándose');
@@ -709,7 +616,7 @@ class VX200Controller {
         setTimeout(() => {
             console.log('Reiniciando...');
             this.start();
-            this.webServer.broadcastLog('success', 'Sistema reiniciado');
+            this.logger.info('Sistema reiniciado');
         }, 3000);
     }
 

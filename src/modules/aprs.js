@@ -49,6 +49,11 @@ class APRS extends EventEmitter {
         
         // Timers
         this.beaconTimer = null;
+        this.logMonitorTimer = null;
+        
+        // Control de archivos de log procesados
+        this.processedLogFiles = new Set();
+        this.lastLogCheck = Date.now();
         
         // Estadísticas
         this.stats = {
@@ -830,6 +835,7 @@ class APRS extends EventEmitter {
                 const logFilePath = path.join(logsDir, logFile);
                 if (fs.existsSync(logFilePath) && fs.statSync(logFilePath).size > 0) {
                     await this.loadPositionsFromFile(logFilePath, logFile);
+                    this.processedLogFiles.add(logFile); // Registrar archivo procesado
                     processedFiles++;
                 }
             }
@@ -845,6 +851,76 @@ class APRS extends EventEmitter {
             
         } catch (error) {
             this.logger.error('Error cargando historial de Direwolf:', error.message);
+        }
+    }
+
+    /**
+     * Revisar archivos de log nuevos o modificados
+     */
+    async checkForNewLogFiles() {
+        try {
+            const logsDir = path.join(__dirname, '../../logs');
+            if (!fs.existsSync(logsDir)) return;
+            
+            const currentLogFiles = fs.readdirSync(logsDir)
+                .filter(f => f.endsWith('.log'))
+                .sort();
+            
+            let newFilesProcessed = 0;
+            let positionsAdded = 0;
+            
+            for (const logFile of currentLogFiles) {
+                const logFilePath = path.join(logsDir, logFile);
+                
+                // Solo procesar archivos nuevos o que han sido modificados recientemente
+                if (!this.processedLogFiles.has(logFile)) {
+                    if (fs.existsSync(logFilePath) && fs.statSync(logFilePath).size > 0) {
+                        const fileStats = fs.statSync(logFilePath);
+                        
+                        // Solo procesar si el archivo es nuevo o fue modificado después de la última revisión
+                        if (fileStats.mtime > this.lastLogCheck) {
+                            this.logger.info(`📂 Detectado archivo nuevo: ${logFile}`);
+                            const positions = await this.loadPositionsFromFile(logFilePath, logFile);
+                            this.processedLogFiles.add(logFile);
+                            newFilesProcessed++;
+                            positionsAdded += positions;
+                            
+                            // Emitir evento para notificar nueva posición
+                            if (positions > 0) {
+                                this.emit('positions_updated', {
+                                    newPositions: positions,
+                                    fromFile: logFile
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    // Para archivos ya procesados, verificar si han sido modificados (posiciones nuevas en el mismo día)
+                    const fileStats = fs.statSync(logFilePath);
+                    if (fileStats.mtime > this.lastLogCheck) {
+                        this.logger.debug(`📝 Archivo modificado: ${logFile}, revisando nuevas posiciones`);
+                        // Recargar solo las posiciones nuevas (esto podría optimizarse más)
+                        const positions = await this.loadPositionsFromFile(logFilePath, logFile);
+                        if (positions > 0) {
+                            positionsAdded += positions;
+                            this.emit('positions_updated', {
+                                newPositions: positions,
+                                fromFile: logFile
+                            });
+                        }
+                    }
+                }
+            }
+            
+            this.lastLogCheck = Date.now();
+            
+            if (newFilesProcessed > 0 || positionsAdded > 0) {
+                this.updateStatsFromLoadedPositions();
+                this.logger.info(`🔄 Revisión de logs: ${newFilesProcessed} archivos nuevos, ${positionsAdded} posiciones agregadas`);
+            }
+            
+        } catch (error) {
+            this.logger.error('Error revisando archivos nuevos:', error.message);
         }
     }
 
@@ -1309,7 +1385,29 @@ class APRS extends EventEmitter {
             
         }, offset);
 
+        // Iniciar monitoreo de archivos de log
+        this.startLogMonitoring();
+
         this.logger.info(`Beacon automático configurado: cada ${Math.floor(interval/60000)} minutos`);
+    }
+
+    /**
+     * Iniciar monitoreo continuo de archivos de log
+     */
+    startLogMonitoring() {
+        // Limpiar timer existente si hay uno
+        if (this.logMonitorTimer) {
+            clearInterval(this.logMonitorTimer);
+        }
+
+        // Revisar archivos cada 2 minutos
+        const monitorInterval = 2 * 60 * 1000; // 2 minutos
+        
+        this.logMonitorTimer = setInterval(async () => {
+            await this.checkForNewLogFiles();
+        }, monitorInterval);
+
+        this.logger.info(`Monitoreo de logs activado: revisión cada 2 minutos`);
     }
 
     /**
@@ -1380,6 +1478,11 @@ class APRS extends EventEmitter {
             if (this.beaconTimer) {
                 clearInterval(this.beaconTimer);
                 this.beaconTimer = null;
+            }
+            
+            if (this.logMonitorTimer) {
+                clearInterval(this.logMonitorTimer);
+                this.logMonitorTimer = null;
             }
             
             if (this.cleanupTimer) {
@@ -1546,6 +1649,68 @@ class APRS extends EventEmitter {
         this.cleanupTimer = setInterval(() => {
             this.cleanupOldPositions();
         }, 6 * 60 * 60 * 1000);
+    }
+
+    /**
+     * Limpiar TODOS los logs de APRS (direwolf + JSON)
+     */
+    async clearAllLogs() {
+        try {
+            this.logger.warn('Iniciando limpieza completa de logs APRS');
+            
+            // 1. Limpiar datos en memoria
+            this.receivedPositions.clear();
+            this.processedLogFiles.clear(); // Limpiar registro de archivos procesados
+            this.stats.positionsReceived = 0;
+            this.stats.lastPosition = null;
+            
+            // 2. Eliminar archivo JSON de posiciones
+            if (fs.existsSync(this.logFile)) {
+                fs.unlinkSync(this.logFile);
+                this.logger.info('Archivo JSON de posiciones eliminado');
+            }
+            
+            // 3. Eliminar logs de direwolf (.log)
+            const logsDir = path.join(__dirname, '../../logs');
+            let deletedLogFiles = 0;
+            
+            if (fs.existsSync(logsDir)) {
+                const logFiles = fs.readdirSync(logsDir)
+                    .filter(f => f.endsWith('.log'))
+                    .map(f => path.join(logsDir, f));
+                
+                for (const logFile of logFiles) {
+                    try {
+                        fs.unlinkSync(logFile);
+                        deletedLogFiles++;
+                        this.logger.info(`Log eliminado: ${path.basename(logFile)}`);
+                    } catch (error) {
+                        this.logger.warn(`No se pudo eliminar ${path.basename(logFile)}: ${error.message}`);
+                    }
+                }
+            }
+            
+            // 4. Eliminar archivos de respaldo de posiciones
+            const backupFiles = fs.readdirSync(logsDir)
+                .filter(f => f.includes('aprs-positions-backup'))
+                .map(f => path.join(logsDir, f));
+                
+            for (const backupFile of backupFiles) {
+                try {
+                    fs.unlinkSync(backupFile);
+                    this.logger.info(`Backup eliminado: ${path.basename(backupFile)}`);
+                } catch (error) {
+                    this.logger.warn(`No se pudo eliminar backup ${path.basename(backupFile)}: ${error.message}`);
+                }
+            }
+            
+            this.logger.info(`Limpieza completa: ${deletedLogFiles} logs de direwolf eliminados`);
+            return true;
+            
+        } catch (error) {
+            this.logger.error('Error durante limpieza de logs:', error.message);
+            throw error;
+        }
     }
 
     /**

@@ -176,8 +176,10 @@ class GoogleTTSManager {
             }
             
         } catch (error) {
-            // Limpiar archivos parciales
-            audioFiles.forEach(file => this.cleanupFile(file));
+            // NO limpiar archivos inmediatamente en caso de error
+            // Pueden ser útiles para fallback o debugging
+            // Los archivos se limpiarán automáticamente por el sistema de cleanup
+            console.warn(`⚠️ Error en generateSpeech pero manteniendo archivos para fallback: ${error.message}`);
             throw error;
         }
     }
@@ -265,8 +267,8 @@ class GoogleTTSManager {
                     if (code === 0 && fs.existsSync(combinedFile)) {
                         console.log(`✅ Audio combinado con ffmpeg: ${combinedFile}`);
                         
-                        // Limpiar archivos individuales
-                        audioFiles.forEach(file => this.cleanupFile(file));
+                        // NO limpiar archivos individuales inmediatamente para permitir reproducciones posteriores
+                        // Los archivos se limpiarán automáticamente por el sistema de cleanup
                         
                         resolve(combinedFile);
                     } else {
