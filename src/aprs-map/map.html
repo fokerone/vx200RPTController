@@ -251,15 +251,71 @@
             color: #e74c3c;
         }
         
-        /* Loading animation */
+        /* Animations */
         @keyframes pulse {
             0% { opacity: 1; }
             50% { opacity: 0.5; }
             100% { opacity: 1; }
         }
         
+        @keyframes repeater-pulse {
+            0% { 
+                transform: scale(1);
+                box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+            }
+            50% { 
+                transform: scale(1.1);
+                box-shadow: 0 6px 16px rgba(231, 76, 60, 0.6);
+            }
+            100% { 
+                transform: scale(1);
+                box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+            }
+        }
+        
+        @keyframes status-blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
         .loading-pulse {
             animation: pulse 1.5s infinite;
+        }
+        
+        /* Status indicator */
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #27ae60;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+            animation: status-blink 2s infinite;
+            box-shadow: 0 0 10px rgba(39, 174, 96, 0.5);
+        }
+        
+        .status-text {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        
+        /* Marker hover effects */
+        .station-marker:hover div:first-child {
+            transform: scale(1.1) !important;
+        }
+        
+        .repeater-marker:hover div:first-child {
+            transform: scale(1.15) !important;
         }
     </style>
 </head>
@@ -276,8 +332,13 @@
                     <small class="opacity-75">Mapa en tiempo real de posiciones APRS</small>
                 </div>
                 <div class="col-auto">
-                    <span class="badge bg-success status-online" id="status-badge">●</span>
-                    <span id="last-update" class="d-none d-md-inline">Cargando...</span>
+                    <div class="d-flex align-items-center">
+                        <div class="status-indicator me-2">
+                            <div class="status-dot"></div>
+                            <span class="status-text">EN LÍNEA</span>
+                        </div>
+                        <small id="last-update" class="d-none d-md-inline text-white-50">Cargando...</small>
+                    </div>
                 </div>
             </div>
         </div>
@@ -460,23 +521,35 @@
                             <div style="position: relative;">
                                 <div style="
                                     background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); 
-                                    width: 24px; 
-                                    height: 24px; 
+                                    width: 32px; 
+                                    height: 32px; 
                                     border-radius: 50%; 
                                     border: 4px solid white; 
-                                    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+                                    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
                                     display: flex;
                                     align-items: center;
                                     justify-content: center;
-                                    font-size: 12px;
-                                    animation: pulse 2s infinite;
+                                    font-size: 16px;
+                                    animation: repeater-pulse 3s infinite;
                                 ">
                                     🏗️
                                 </div>
+                                <div style="
+                                    position: absolute;
+                                    top: -3px;
+                                    right: -3px;
+                                    background: #27ae60;
+                                    width: 12px;
+                                    height: 12px;
+                                    border-radius: 50%;
+                                    border: 2px solid white;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                                    animation: status-blink 2s infinite;
+                                "></div>
                             </div>
                         `,
-                        iconSize: [32, 32],
-                        iconAnchor: [16, 16],
+                        iconSize: [40, 40],
+                        iconAnchor: [20, 20],
                         className: 'repeater-marker'
                     });
 
@@ -533,25 +606,37 @@
                     html: `
                         <div style="position: relative;">
                             <div style="
-                                background: ${color}; 
-                                width: 16px; 
-                                height: 16px; 
+                                background: linear-gradient(135deg, ${color} 0%, ${this.darkenColor(color)} 100%); 
+                                width: 22px; 
+                                height: 22px; 
                                 border-radius: 50%; 
                                 border: 3px solid white; 
-                                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                                box-shadow: 0 3px 8px rgba(0,0,0,0.4);
                                 display: flex;
                                 align-items: center;
                                 justify-content: center;
-                                font-size: 8px;
+                                font-size: 11px;
                                 color: white;
                                 font-weight: bold;
+                                transition: transform 0.2s ease;
                             ">
                                 📻
                             </div>
+                            <div style="
+                                position: absolute;
+                                top: -2px;
+                                right: -2px;
+                                background: #27ae60;
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 50%;
+                                border: 2px solid white;
+                                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                            "></div>
                         </div>
                     `,
-                    iconSize: [22, 22],
-                    iconAnchor: [11, 11],
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14],
                     className: 'station-marker'
                 });
 
@@ -736,6 +821,23 @@
                 ];
                 const hash = callsign.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
                 return colors[hash % colors.length];
+            }
+
+            darkenColor(color) {
+                // Simple color darkening function
+                const colorMap = {
+                    '#3498db': '#2980b9',
+                    '#e74c3c': '#c0392b',
+                    '#2ecc71': '#27ae60',
+                    '#f39c12': '#e67e22',
+                    '#9b59b6': '#8e44ad',
+                    '#1abc9c': '#16a085',
+                    '#e67e22': '#d68910',
+                    '#34495e': '#2c3e50',
+                    '#fd79a8': '#e84393',
+                    '#00b894': '#00a085'
+                };
+                return colorMap[color] || color;
             }
 
             clearMarkers() {
