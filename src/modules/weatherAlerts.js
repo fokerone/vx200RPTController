@@ -164,7 +164,7 @@ class WeatherAlerts extends EventEmitter {
             const mendozaAlerts = await this.filterMendozaAlerts(alerts);
             
             this.logger.info(`📊 Alertas encontradas: ${alerts.length}, para Mendoza: ${mendozaAlerts.length}`);
-            
+      
             // Procesar nuevas alertas
             const newAlerts = this.processNewAlerts(mendozaAlerts);
             
@@ -259,7 +259,7 @@ class WeatherAlerts extends EventEmitter {
                     if (capData && this.isAlertForMendoza(capData)) {
                         alert.severity = capData.severity;
                         alert.expires = capData.expires;
-                        alert.polygon = capData.polygon;
+                        alert.polygons = capData.polygons;
                         alert.instructions = capData.instructions;
                         mendozaAlerts.push(alert);
                     }
@@ -293,10 +293,18 @@ class WeatherAlerts extends EventEmitter {
             
             if (capData.alert && capData.alert.info) {
                 const info = Array.isArray(capData.alert.info) ? capData.alert.info[0] : capData.alert.info;
+                
+                // Extraer todos los polígonos de todas las áreas
+                let polygons = [];
+                if (info.area) {
+                    const areas = Array.isArray(info.area) ? info.area : [info.area];
+                    polygons = areas.map(area => area.polygon).filter(Boolean);
+                }
+                
                 return {
                     severity: info.severity,
                     expires: info.expires,
-                    polygon: info.area?.polygon,
+                    polygons: polygons, // Array de polígonos en lugar de uno solo
                     instructions: info.instruction
                 };
             }
@@ -312,22 +320,31 @@ class WeatherAlerts extends EventEmitter {
      * Verificar si una alerta CAP afecta a Mendoza por coordenadas
      */
     isAlertForMendoza(capData) {
-        if (!capData.polygon) {
+        if (!capData.polygons || capData.polygons.length === 0) {
             return false;
         }
         
         try {
-            // Parse polygon coordinates
-            const coords = capData.polygon.split(' ').map(coord => {
-                const [lat, lon] = coord.split(',').map(parseFloat);
-                return { lat, lon };
-            });
+            // Verificar cada polígono - si cualquiera intersecta con Mendoza, la alerta aplica
+            for (const polygon of capData.polygons) {
+                if (!polygon) continue;
+                
+                // Parse polygon coordinates
+                const coords = polygon.split(' ').map(coord => {
+                    const [lat, lon] = coord.split(',').map(parseFloat);
+                    return { lat, lon };
+                });
+                
+                // Si este polígono intersecta con Mendoza, la alerta aplica
+                if (this.polygonIntersectsMendoza(coords)) {
+                    return true;
+                }
+            }
             
-            // Verificar si el polígono de la alerta intersecta con los límites de Mendoza
-            return this.polygonIntersectsMendoza(coords);
+            return false;
             
         } catch (error) {
-            this.logger.debug('Error verificando polígono:', error.message);
+            this.logger.debug('Error verificando polígonos:', error.message);
             return false;
         }
     }
@@ -391,7 +408,7 @@ class WeatherAlerts extends EventEmitter {
             'mendoza', 'cuyo', 'precordillera', 'cordillera mendocina',
             'alta montaña mendoza', 'valle de uco', 'región cuyo',
             // Términos geográficos generales que afectan Mendoza
-            'zonda', 'cordillera', 'alta montaña', 'montaña',
+            'viento zonda', 'cordillera', 'alta montaña', 'montaña',
             // Departamentos principales de Mendoza
             'godoy cruz', 'las heras', 'luján de cuyo', 'maipú',
             'guaymallén', 'san rafael', 'general alvear', 'malargüe',
@@ -473,8 +490,14 @@ class WeatherAlerts extends EventEmitter {
             const alert = alerts[0];
             return `Nueva alerta meteorológica para Mendoza. ${alert.title}. ${alert.description}`;
         } else {
-            const types = [...new Set(alerts.map(a => a.title))].join(', ');
-            return `Nuevas alertas meteorológicas para Mendoza. Se han emitido ${alerts.length} alertas: ${types}.`;
+            // Para múltiples alertas, leer cada una con su descripción
+            let message = `Nuevas alertas meteorológicas para Mendoza. Se han emitido ${alerts.length} alertas. `;
+            
+            alerts.forEach((alert, index) => {
+                message += `Alerta ${index + 1}: ${alert.title}. ${alert.description}. `;
+            });
+            
+            return message;
         }
     }
     
@@ -534,7 +557,7 @@ class WeatherAlerts extends EventEmitter {
             const humidity = Math.round(weatherData.humidity);
             const windSpeed = Math.round(weatherData.wind_speed);
             
-            return `${temp}°C ${humidity}% ${windSpeed}km/h`;
+            return `${temp}C ${humidity}% ${windSpeed}km/h`;
             
         } catch (error) {
             this.logger.debug('Error obteniendo clima para APRS:', error.message);
