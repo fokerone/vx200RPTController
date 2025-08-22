@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VX200Controller APRS MAP</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8f9fa;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        #map {
+            height: 60vh;
+            min-height: 400px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .info-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .station-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .station-item {
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.25rem;
+            transition: background-color 0.2s;
+        }
+        
+        .station-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .station-item.selected {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196F3;
+        }
+        
+        .badge-custom {
+            font-size: 0.8em;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .stat-label {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .update-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .filter-controls {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1 class="mb-0">
+                        <i class="fas fa-satellite-dish me-2"></i>
+                        VX200Controller APRS MAP
+                    </h1>
+                    <small class="opacity-75">Mapa en tiempo real de posiciones APRS recibidas</small>
+                </div>
+                <div class="col-auto">
+                    <span class="badge bg-success" id="status-badge">●</span>
+                    <span id="last-update">Cargando...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Update Indicator -->
+    <div class="update-indicator">
+        <div class="spinner-border text-primary" role="status" id="loading-spinner" style="display: none;">
+            <span class="visually-hidden">Actualizando...</span>
+        </div>
+    </div>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Main Map Column -->
+            <div class="col-lg-8">
+                <!-- Filter Controls -->
+                <div class="filter-controls">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                <label class="form-label me-2 mb-0">Filtrar por estación:</label>
+                                <select id="station-filter" class="form-select form-select-sm">
+                                    <option value="">Todas las estaciones</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <button id="reset-filter" class="btn btn-outline-secondary btn-sm me-2">
+                                <i class="fas fa-refresh"></i> Reset
+                            </button>
+                            <button id="center-map" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-crosshairs"></i> Centrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Map Container -->
+                <div id="map"></div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="col-lg-4">
+                <!-- Statistics -->
+                <div class="info-card">
+                    <h5 class="mb-3">Estadísticas</h5>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="total-stations">-</div>
+                            <div class="stat-label">Total Estaciones</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="max-distance">-</div>
+                            <div class="stat-label">Más Lejana</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="last-station">-</div>
+                            <div class="stat-label">Última Estación</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="coverage-radius">-</div>
+                            <div class="stat-label">Radio Cobertura</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Station List -->
+                <div class="info-card">
+                    <h5 class="mb-3">Estaciones Recibidas</h5>
+                    <div class="station-list" id="station-list">
+                        <div class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                            <p class="mt-2">Cargando estaciones...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <script src="https://kit.fontawesome.com/yourkitcode.js" crossorigin="anonymous"></script>
+    
+    <script>
+        class APRSMap {
+            constructor() {
+                this.map = null;
+                this.repeaterMarker = null;
+                this.coverageCircle = null;
+                this.stationMarkers = [];
+                this.stations = [];
+                this.filteredCallsign = null;
+                this.repeaterLocation = null;
+                this.updateInterval = null;
+                
+                this.init();
+            }
+
+            async init() {
+                this.initMap();
+                this.setupEventListeners();
+                await this.loadData();
+                this.startAutoUpdate();
+            }
+
+            initMap() {
+                // Initialize map centered on Mendoza, Argentina
+                this.map = L.map('map').setView([-32.9082647, -68.8162689], 12);
+
+                // Add OpenStreetMap tile layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(this.map);
+            }
+
+            setupEventListeners() {
+                document.getElementById('reset-filter').addEventListener('click', () => {
+                    this.resetFilter();
+                });
+
+                document.getElementById('center-map').addEventListener('click', () => {
+                    this.centerMapOnRepeater();
+                });
+
+                document.getElementById('station-filter').addEventListener('change', (e) => {
+                    this.filterByCallsign(e.target.value);
+                });
+            }
+
+            async loadData() {
+                try {
+                    document.getElementById('loading-spinner').style.display = 'block';
+                    
+                    const [positionsResponse, repeaterResponse] = await Promise.all([
+                        fetch('/api/positions'),
+                        fetch('/api/repeater')
+                    ]);
+
+                    const positionsData = await positionsResponse.json();
+                    const repeaterData = await repeaterResponse.json();
+
+                    this.stations = positionsData.stations || [];
+                    this.repeaterLocation = repeaterData.location;
+
+                    this.updateMap();
+                    this.updateStatistics(positionsData.metadata);
+                    this.updateStationList();
+                    this.updateStationFilter();
+                    
+                    document.getElementById('last-update').textContent = 
+                        'Último: ' + new Date().toLocaleTimeString();
+                    
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    this.showError('Error cargando datos del servidor');
+                } finally {
+                    document.getElementById('loading-spinner').style.display = 'none';
+                }
+            }
+
+            updateMap() {
+                // Clear existing markers
+                this.clearMarkers();
+
+                // Add repeater marker
+                if (this.repeaterLocation) {
+                    const repeaterIcon = L.divIcon({
+                        html: '<div style="background: #e74c3c; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [20, 20],
+                        className: 'repeater-marker'
+                    });
+
+                    this.repeaterMarker = L.marker([this.repeaterLocation.lat, this.repeaterLocation.lon], {
+                        icon: repeaterIcon
+                    }).addTo(this.map);
+
+                    this.repeaterMarker.bindPopup(`
+                        <strong>Repetidora VX200</strong><br>
+                        Callsign: ${this.repeaterLocation.callsign || 'YOSHUA'}<br>
+                        Ubicación: ${this.repeaterLocation.name || 'Guaymallén, Mendoza'}
+                    `);
+                }
+
+                // Add station markers
+                const stationsToShow = this.filteredCallsign ? 
+                    this.stations.filter(s => s.callsign === this.filteredCallsign) : 
+                    this.stations;
+
+                stationsToShow.forEach((station, index) => {
+                    const marker = this.createStationMarker(station, index);
+                    this.stationMarkers.push(marker);
+                });
+
+                // Add coverage circle
+                this.updateCoverageCircle();
+
+                // Fit map to show all markers
+                if (stationsToShow.length > 0 && this.repeaterLocation) {
+                    const group = new L.featureGroup([this.repeaterMarker, ...this.stationMarkers]);
+                    this.map.fitBounds(group.getBounds().pad(0.1));
+                }
+            }
+
+            createStationMarker(station, index) {
+                const color = this.getMarkerColor(station.callsign);
+                
+                const icon = L.divIcon({
+                    html: `<div style="background: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+                    iconSize: [12, 12],
+                    className: 'station-marker'
+                });
+
+                const marker = L.marker([station.lat, station.lon], { icon }).addTo(this.map);
+
+                const popupContent = `
+                    <strong>${station.callsign}</strong><br>
+                    ${station.comment || 'Sin comentario'}<br>
+                    <small>
+                        Recibido: ${new Date(station.timestamp).toLocaleString()}<br>
+                        Distancia: ${station.distance ? station.distance.toFixed(2) + ' km' : 'N/A'}
+                    </small>
+                `;
+
+                marker.bindPopup(popupContent);
+                
+                return marker;
+            }
+
+            updateCoverageCircle() {
+                if (this.coverageCircle) {
+                    this.map.removeLayer(this.coverageCircle);
+                }
+
+                if (this.stations.length > 0 && this.repeaterLocation) {
+                    const maxDistance = Math.max(...this.stations.map(s => s.distance || 0));
+                    
+                    if (maxDistance > 0) {
+                        this.coverageCircle = L.circle(
+                            [this.repeaterLocation.lat, this.repeaterLocation.lon], 
+                            {
+                                radius: maxDistance * 1000, // Convert km to meters
+                                fillColor: '#3498db',
+                                color: '#2980b9',
+                                weight: 2,
+                                opacity: 0.6,
+                                fillOpacity: 0.1
+                            }
+                        ).addTo(this.map);
+                    }
+                }
+            }
+
+            updateStatistics(metadata) {
+                if (!metadata) return;
+
+                document.getElementById('total-stations').textContent = 
+                    this.getUniqueCallsigns().length;
+                
+                document.getElementById('max-distance').textContent = 
+                    metadata.maxDistance ? `${metadata.maxDistance.distance.toFixed(1)} km` : '-';
+                
+                const lastStation = this.stations.length > 0 ? 
+                    this.stations.reduce((latest, current) => 
+                        new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest
+                    ) : null;
+                
+                document.getElementById('last-station').textContent = 
+                    lastStation ? lastStation.callsign : '-';
+                
+                const maxDist = Math.max(...this.stations.map(s => s.distance || 0));
+                document.getElementById('coverage-radius').textContent = 
+                    maxDist > 0 ? `${maxDist.toFixed(1)} km` : '-';
+            }
+
+            updateStationList() {
+                const container = document.getElementById('station-list');
+                container.innerHTML = '';
+
+                const callsigns = this.getUniqueCallsigns();
+                
+                if (callsigns.length === 0) {
+                    container.innerHTML = '<p class="text-muted text-center">No hay estaciones recibidas</p>';
+                    return;
+                }
+
+                callsigns.forEach(callsign => {
+                    const stationPositions = this.stations.filter(s => s.callsign === callsign);
+                    const latest = stationPositions.reduce((latest, current) => 
+                        new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest
+                    );
+
+                    const div = document.createElement('div');
+                    div.className = 'station-item';
+                    div.innerHTML = `
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${callsign}</strong>
+                                <br>
+                                <small class="text-muted">
+                                    ${new Date(latest.timestamp).toLocaleString()}
+                                </small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-primary badge-custom">${stationPositions.length}</span>
+                                <br>
+                                <small class="text-muted">
+                                    ${latest.distance ? latest.distance.toFixed(1) + ' km' : '-'}
+                                </small>
+                            </div>
+                        </div>
+                    `;
+
+                    div.addEventListener('click', () => {
+                        this.selectStation(callsign, div);
+                    });
+
+                    container.appendChild(div);
+                });
+            }
+
+            updateStationFilter() {
+                const select = document.getElementById('station-filter');
+                select.innerHTML = '<option value="">Todas las estaciones</option>';
+
+                const callsigns = this.getUniqueCallsigns().sort();
+                callsigns.forEach(callsign => {
+                    const option = document.createElement('option');
+                    option.value = callsign;
+                    option.textContent = callsign;
+                    select.appendChild(option);
+                });
+            }
+
+            selectStation(callsign, element) {
+                // Update UI
+                document.querySelectorAll('.station-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                element.classList.add('selected');
+
+                // Update filter
+                this.filteredCallsign = callsign;
+                document.getElementById('station-filter').value = callsign;
+                
+                // Update map
+                this.updateMap();
+            }
+
+            filterByCallsign(callsign) {
+                this.filteredCallsign = callsign || null;
+                this.updateMap();
+                
+                // Update station list selection
+                document.querySelectorAll('.station-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+            }
+
+            resetFilter() {
+                this.filteredCallsign = null;
+                document.getElementById('station-filter').value = '';
+                document.querySelectorAll('.station-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                this.updateMap();
+            }
+
+            centerMapOnRepeater() {
+                if (this.repeaterLocation) {
+                    this.map.setView([this.repeaterLocation.lat, this.repeaterLocation.lon], 12);
+                }
+            }
+
+            getUniqueCallsigns() {
+                return [...new Set(this.stations.map(s => s.callsign))];
+            }
+
+            getMarkerColor(callsign) {
+                const colors = [
+                    '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
+                    '#1abc9c', '#e67e22', '#34495e', '#fd79a8', '#00b894'
+                ];
+                const hash = callsign.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                return colors[hash % colors.length];
+            }
+
+            clearMarkers() {
+                this.stationMarkers.forEach(marker => this.map.removeLayer(marker));
+                this.stationMarkers = [];
+            }
+
+            startAutoUpdate() {
+                this.updateInterval = setInterval(() => {
+                    this.loadData();
+                }, 30000); // Update every 30 seconds
+            }
+
+            showError(message) {
+                console.error(message);
+                // Could implement a toast notification here
+            }
+        }
+
+        // Initialize the map when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new APRSMap();
+        });
+    </script>
+</body>
+</html>

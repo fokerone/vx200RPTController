@@ -6,6 +6,7 @@ const WeatherAlerts = require('./modules/weatherAlerts');
 const InpresSismic = require('./modules/inpres');
 const APRS = require('./modules/aprs');
 const DirewolfManager = require('./utils/direwolfManager');
+const APRSMapServer = require('./aprs-map/server');
 const { Config } = require('./config');
 const { createLogger } = require('./logging/Logger');
 const { getSystemOutput } = require('./logging/SystemOutput');
@@ -21,6 +22,7 @@ class VX200Controller {
         this.audio = null;
         this.modules = {};
         this.direwolf = null;
+        this.aprsMapServer = null;
         
         this.isRunning = false;
         this.startTime = Date.now();
@@ -43,6 +45,9 @@ class VX200Controller {
             this.logger.debug('Configurando event handlers...');
             this.setupEventHandlers();
             
+            this.logger.debug('Inicializando servidor mapa APRS...');
+            await this.initializeAPRSMapServer();
+            
             this.logger.debug('Configurando desde archivo...');
             this.configureFromFile();
             
@@ -54,6 +59,10 @@ class VX200Controller {
                 this.state = MODULE_STATES.ERROR;
             } else {
                 this.logger.info('🔥 VX200 REPETIDORA OPERATIVA - Audio: LISTO, APRS: ACTIVO');
+                if (this.aprsMapServer && this.aprsMapServer.isRunning) {
+                    const mapPort = process.env.APRS_MAP_PORT || 8080;
+                    this.logger.info(`🗺️ Mapa APRS: http://localhost:${mapPort}`);
+                }
             }
             
         } catch (error) {
@@ -140,6 +149,16 @@ class VX200Controller {
         // Todos los módulos procesados
     }
 
+    async initializeAPRSMapServer() {
+        try {
+            this.aprsMapServer = new APRSMapServer(this);
+            this.logger.info('Servidor mapa APRS inicializado correctamente');
+        } catch (error) {
+            this.logger.error('Error inicializando servidor mapa APRS:', error.message);
+            this.initializationErrors.push('APRS Map Server');
+            this.aprsMapServer = null;
+        }
+    }
 
     configureFromFile() {
         if (Config.rogerBeepEnabled) {
@@ -372,6 +391,17 @@ class VX200Controller {
                 }
             }
             
+            // Iniciar servidor mapa APRS
+            if (this.aprsMapServer) {
+                try {
+                    await this.aprsMapServer.start();
+                    const status = this.aprsMapServer.getStatus();
+                    this.logger.info(`🗺️ Mapa APRS disponible en: ${status.url}`);
+                } catch (error) {
+                    this.logger.warn('Error iniciando servidor mapa APRS:', error.message);
+                }
+            }
+            
             // Inicializar monitoreo de alertas meteorológicas
             if (this.modules.weatherAlerts) {
                 try {
@@ -458,6 +488,10 @@ class VX200Controller {
         
         if (this.modules.aprs?.isRunning) {
             this.modules.aprs.stop();
+        }
+        
+        if (this.aprsMapServer) {
+            this.aprsMapServer.stop();
         }
         
         if (this.modules.weatherAlerts) {
