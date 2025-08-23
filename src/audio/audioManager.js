@@ -22,7 +22,7 @@ class AudioManager extends EventEmitter {
         this.device = getValue('audio.device');
         
         // Componentes principales
-        this.dtmfDecoder = new (require('./dtmfDecoder'))(this.sampleRate);
+        this.dtmfDecoder = new (require('./dtmfDecoder'))(this.sampleRate, this);
         this.rogerBeep = new RogerBeep(this);
         
         // Configurar DTMF con parámetros del ConfigManager
@@ -216,6 +216,11 @@ class AudioManager extends EventEmitter {
         if (!audioData || audioData.length === 0) {
             return;
         }
+        
+        // SIMPLEX: Si la grabación está pausada, no procesar audio
+        if (!this.isRecording) {
+            return;
+        }
 
         try {
             // Convertir buffer a array de muestras normalizadas
@@ -234,10 +239,12 @@ class AudioManager extends EventEmitter {
             // Detectar actividad del canal
             this.detectChannelActivity(audioArray);
             
-            // Procesar DTMF siempre (la librería maneja la detección de señal internamente)
-            this.dtmfDecoder.detectSequence(audioArray, (dtmf) => {
-                this.handleDTMF(dtmf);
-            });
+            // Procesar DTMF solo si no estamos transmitiendo (lógica simplex)
+            if (!this.isTransmitting()) {
+                this.dtmfDecoder.detectSequence(audioArray, (dtmf) => {
+                    this.handleDTMF(dtmf);
+                });
+            }
 
             // Debug: Guardar audio para análisis si hay actividad
             if (this.channelActivity.isActive && this.debugBuffer.length < 88200) { // ~2 segundos a 44100Hz
@@ -367,6 +374,20 @@ class AudioManager extends EventEmitter {
 
     async speakWithEspeak(text, options = {}) {
         return new Promise((resolve, reject) => {
+            // LÓGICA SIMPLEX: Pausar escucha durante TTS
+            const wasRecording = this.isRecording;
+            if (wasRecording) {
+                this.pauseRecording();
+                this.logger.debug('SIMPLEX: Escucha pausada para TTS');
+            }
+            
+            // Emitir evento de transmisión iniciada
+            this.emit('transmission_started', {
+                type: 'tts',
+                text: text.substring(0, 50),
+                timestamp: Date.now()
+            });
+            
             // Configuración con defaults desde variables de entorno
             const voice = options.voice || getValue('tts.voice');
             const speed = options.speed || getValue('tts.speed');
@@ -395,6 +416,20 @@ class AudioManager extends EventEmitter {
             espeak.on('close', (code) => {
                 if (timeout) clearTimeout(timeout);
                 
+                // Emitir evento de transmisión terminada
+                this.emit('transmission_ended', {
+                    type: 'tts',
+                    timestamp: Date.now()
+                });
+                
+                // LÓGICA SIMPLEX: Reanudar escucha después de TTS
+                if (wasRecording && !this.isRecording) {
+                    setTimeout(() => {
+                        this.resumeRecording();
+                        this.logger.debug('SIMPLEX: Escucha reanudada post-TTS');
+                    }, 100); // 100ms delay
+                }
+                
                 if (code === 0) {
                     this.logger.debug('TTS completado exitosamente');
                     resolve();
@@ -407,6 +442,22 @@ class AudioManager extends EventEmitter {
             
             espeak.on('error', (err) => {
                 if (timeout) clearTimeout(timeout);
+                
+                // Emitir evento de transmisión terminada (con error)
+                this.emit('transmission_ended', {
+                    type: 'tts',
+                    error: true,
+                    timestamp: Date.now()
+                });
+                
+                // LÓGICA SIMPLEX: Reanudar escucha en caso de error
+                if (wasRecording && !this.isRecording) {
+                    setTimeout(() => {
+                        this.resumeRecording();
+                        this.logger.debug('SIMPLEX: Escucha reanudada post-error TTS');
+                    }, 100);
+                }
+                
                 this.logger.error('Error iniciando espeak:', err.message);
                 reject(err);
             });
@@ -415,6 +466,22 @@ class AudioManager extends EventEmitter {
             timeout = setTimeout(() => {
                 if (!espeak.killed) {
                     espeak.kill('SIGTERM');
+                    
+                    // Emitir evento de transmisión terminada (timeout)
+                    this.emit('transmission_ended', {
+                        type: 'tts',
+                        timeout: true,
+                        timestamp: Date.now()
+                    });
+                    
+                    // LÓGICA SIMPLEX: Reanudar escucha en caso de timeout
+                    if (wasRecording && !this.isRecording) {
+                        setTimeout(() => {
+                            this.resumeRecording();
+                            this.logger.debug('SIMPLEX: Escucha reanudada post-timeout TTS');
+                        }, 100);
+                    }
+                    
                     reject(new Error('TTS timeout - proceso terminado forzosamente'));
                 }
             }, 30000);
@@ -485,6 +552,12 @@ class AudioManager extends EventEmitter {
         this.isProcessingAudio = true;
         this.logger.debug(`Procesando cola de audio: ${this.audioQueue.length} elementos`);
         
+        // LÓGICA SIMPLEX: Pausar escucha durante transmisión
+        if (this.isRecording) {
+            this.pauseRecording();
+            this.logger.debug('SIMPLEX: Escucha pausada para transmisión');
+        }
+        
         // Emitir evento de que empezamos a transmitir
         this.emit('transmission_started', {
             queueLength: this.audioQueue.length,
@@ -533,6 +606,15 @@ class AudioManager extends EventEmitter {
         this.emit('transmission_ended', {
             timestamp: Date.now()
         });
+        
+        // LÓGICA SIMPLEX: Reanudar escucha después de transmisión
+        if (!this.isRecording) {
+            // Pequeño delay para evitar capturar el final de nuestra propia transmisión
+            setTimeout(() => {
+                this.resumeRecording();
+                this.logger.debug('SIMPLEX: Escucha reanudada post-transmisión');
+            }, 100); // 100ms delay
+        }
     }
 
     async generateAndPlayTone(frequency, duration, volume = 0.5) {
@@ -709,6 +791,20 @@ class AudioManager extends EventEmitter {
         // Reproducción normal de un solo archivo
         const filePath = audioInput;
         return new Promise((resolve, reject) => {
+            // LÓGICA SIMPLEX: Pausar escucha durante transmisión de alerta
+            const wasRecording = this.isRecording;
+            if (wasRecording) {
+                this.pauseRecording();
+                this.logger.debug('SIMPLEX: Escucha pausada para alerta meteorológica');
+            }
+            
+            // Emitir evento de transmisión iniciada
+            this.emit('transmission_started', {
+                type: 'weather_alert',
+                file: path.basename(filePath),
+                timestamp: Date.now()
+            });
+            
             // Intentar con paplay sin especificar dispositivo para usar el default
             const paplay = spawn('paplay', ['--volume=65536', filePath]);
             let paplayTimeout = null;
@@ -719,16 +815,40 @@ class AudioManager extends EventEmitter {
                 stderr += data.toString();
             });
             
-            // Timeout extendido específicamente para alertas meteorológicas largas
+            // Timeout extendido para alertas meteorológicas muy largas (2 minutos)
             paplayTimeout = setTimeout(() => {
                 if (!paplay.killed) {
                     paplay.kill('SIGTERM');
+                    
+                    // SIMPLEX: Reanudar escucha después de timeout
+                    if (wasRecording && !this.isRecording) {
+                        setTimeout(() => {
+                            this.resumeRecording();
+                            this.logger.debug('SIMPLEX: Escucha reanudada post-timeout alerta');
+                        }, 100);
+                    }
+                    
                     reject(new Error('paplay timeout para alerta meteorológica'));
                 }
-            }, 45000); // 45 segundos para alertas meteorológicas completas
+            }, 120000); // 2 minutos para alertas meteorológicas muy largas
             
             paplay.on('close', (code) => {
                 if (paplayTimeout) clearTimeout(paplayTimeout);
+                
+                // SIMPLEX: Reanudar escucha después de transmisión
+                if (wasRecording && !this.isRecording) {
+                    setTimeout(() => {
+                        this.resumeRecording();
+                        this.logger.debug('SIMPLEX: Escucha reanudada post-alerta meteorológica');
+                    }, 100); // 100ms delay
+                }
+                
+                // Emitir evento de transmisión terminada
+                this.emit('transmission_ended', {
+                    type: 'weather_alert',
+                    file: path.basename(filePath),
+                    timestamp: Date.now()
+                });
                 
                 if (code === 0) {
                     this.logger.debug('paplay para alerta meteorológica completado exitosamente');
@@ -744,6 +864,15 @@ class AudioManager extends EventEmitter {
             
             paplay.on('error', (err) => {
                 if (paplayTimeout) clearTimeout(paplayTimeout);
+                
+                // SIMPLEX: Reanudar escucha después de error
+                if (wasRecording && !this.isRecording) {
+                    setTimeout(() => {
+                        this.resumeRecording();
+                        this.logger.debug('SIMPLEX: Escucha reanudada post-error alerta');
+                    }, 100);
+                }
+                
                 reject(err);
             });
         });
@@ -1138,6 +1267,11 @@ class AudioManager extends EventEmitter {
                this.audioQueue.length === 0;
     }
 
+    isTransmitting() {
+        // Verificar si está transmitiendo (procesando audio o hay elementos en cola)
+        return this.isProcessingAudio || this.audioQueue.length > 0;
+    }
+
     // ===== DEBUG AUDIO =====
     
     async saveDebugAudio() {
@@ -1361,43 +1495,43 @@ class AudioManager extends EventEmitter {
         
         // Estado de grabación
         if (status.audio.isRecording) {
-            this.logger.info('✅ Grabación: ACTIVA');
+            this.logger.info('Grabación: ACTIVA');
         } else {
-            this.logger.warn('❌ Grabación: INACTIVA');
+            this.logger.warn('Grabación: INACTIVA');
         }
         
         // Cola de audio
-        this.logger.info(`🎵 Cola de audio: ${status.audio.audioQueueLength} elementos`);
+        this.logger.info(`Cola de audio: ${status.audio.audioQueueLength} elementos`);
         
         // Estado del canal
         if (status.channel.isActive) {
-            this.logger.info('📻 Canal: OCUPADO');
+            this.logger.info('Canal: OCUPADO');
         } else {
-            this.logger.info('📻 Canal: LIBRE');
+            this.logger.info('Canal: LIBRE');
         }
         
         // Roger Beep
         if (status.rogerBeep.enabled) {
-            this.logger.info('🔊 Roger Beep: HABILITADO');
+            this.logger.info('Roger Beep: HABILITADO');
             // Test Roger Beep si está disponible
             if (this.rogerBeep) {
                 try {
                     const testResult = await this.testRogerBeep();
                     if (testResult) {
-                        this.logger.info('✅ Roger Beep Test: EXITOSO');
+                        this.logger.info('Roger Beep Test: EXITOSO');
                     } else {
-                        this.logger.warn('❌ Roger Beep Test: FALLIDO');
+                        this.logger.warn('Roger Beep Test: FALLIDO');
                     }
                 } catch (error) {
-                    this.logger.error('❌ Roger Beep Test: ERROR -', error.message);
+                    this.logger.error('Roger Beep Test: ERROR -', error.message);
                 }
             }
         } else {
-            this.logger.info('🔊 Roger Beep: DESHABILITADO');
+            this.logger.info('Roger Beep: DESHABILITADO');
         }
         
         // Estado general del módulo
-        this.logger.info(`📊 Estado general: ${this.state}`);
+        this.logger.info(`Estado general: ${this.state}`);
         this.logger.info('=== Fin Health Check ===');
         
         return status;
@@ -1434,7 +1568,7 @@ class AudioManager extends EventEmitter {
             let totalCleaned = 0;
             let totalSize = 0;
             
-            this.logger.info('🧹 Iniciando cleanup automático de archivos temporales...');
+            this.logger.info('Iniciando cleanup automático de archivos temporales...');
             
             // 1. Limpiar directorio temp principal
             const tempCleaned = await this.cleanupDirectory(this.tempDir, 'temp');
@@ -1458,9 +1592,9 @@ class AudioManager extends EventEmitter {
             const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
             
             if (totalCleaned > 0) {
-                this.logger.info(`✅ Cleanup completado: ${totalCleaned} archivos eliminados (${sizeMB}MB) en ${duration}ms`);
+                this.logger.info(`Cleanup completado: ${totalCleaned} archivos eliminados (${sizeMB}MB) en ${duration}ms`);
             } else {
-                this.logger.debug(`✅ Cleanup completado: directorio temp limpio en ${duration}ms`);
+                this.logger.debug(`Cleanup completado: directorio temp limpio en ${duration}ms`);
             }
             
         } catch (error) {
@@ -1497,7 +1631,7 @@ class AudioManager extends EventEmitter {
                         cleaned++;
                         freedSize += fileSize;
                         
-                        this.logger.debug(`🗑️  ${name}: ${file} (${(fileSize / 1024).toFixed(1)}KB, ${Math.round(age / (60 * 1000))} min)`);
+                        this.logger.debug(`${name}: ${file} (${(fileSize / 1024).toFixed(1)}KB, ${Math.round(age / (60 * 1000))} min)`);
                     }
                 } catch (fileError) {
                     this.logger.debug(`Error procesando ${filePath}:`, fileError.message);
@@ -1584,7 +1718,7 @@ class AudioManager extends EventEmitter {
                                 cleaned++;
                                 freedSize += fileSize;
                                 
-                                this.logger.debug(`🗑️  sistema: ${file} (${(fileSize / 1024).toFixed(1)}KB)`);
+                                this.logger.debug(`sistema: ${file} (${(fileSize / 1024).toFixed(1)}KB)`);
                             }
                         } catch (fileError) {
                             // Ignorar errores de permisos

@@ -9,8 +9,9 @@ const GoogleTTSManager = require('../../google-tts-capture/GoogleTTSManager');
  * Prioridad: Google TTS -> Espeak robótico
  */
 class HybridVoiceManager {
-    constructor() {
+    constructor(audioManager = null) {
         this.logger = createLogger('[HybridVoiceManager]');
+        this.audioManager = audioManager;
         
         this.config = {
             googleTTS: {
@@ -81,7 +82,7 @@ class HybridVoiceManager {
                 const audioFile = await this.generateGoogleSpeech(cleanText, options);
                 if (audioFile) {
                     this.stats.googleSuccess++;
-                    this.logger.info('🌐 Voz generada exitosamente con Google TTS');
+                    this.logger.info('Voz generada exitosamente con Google TTS');
                     return audioFile;
                 }
             } catch (error) {
@@ -95,7 +96,7 @@ class HybridVoiceManager {
             try {
                 const audioFile = await this.generateEspeakSpeech(cleanText, options);
                 this.stats.espeakUsed++;
-                this.logger.info('🤖 Fallback a espeak exitoso');
+                this.logger.info('Fallback a espeak exitoso');
                 return audioFile;
             } catch (error) {
                 this.logger.error('Espeak también falló:', error.message);
@@ -200,7 +201,7 @@ class HybridVoiceManager {
                 const audioFile = await this.googleTTS.generateLongSpeech(text, options);
                 if (audioFile) {
                     this.stats.googleSuccess++;
-                    this.logger.info('🌐 Texto largo procesado con Google TTS');
+                    this.logger.info('Texto largo procesado con Google TTS');
                     return audioFile;
                 }
             } catch (error) {
@@ -240,8 +241,20 @@ class HybridVoiceManager {
             return false;
         }
 
+        // Si tenemos AudioManager, usar su sistema de reproducción (lógica simplex)
+        if (this.audioManager) {
+            try {
+                await this.audioManager.playWeatherAlertWithPaplay(audioFile);
+                return true;
+            } catch (error) {
+                this.logger.error('Error reproduciendo con AudioManager:', error.message);
+                return false;
+            }
+        }
+
+        // Fallback al método directo si no hay AudioManager
         return new Promise((resolve) => {
-            this.logger.debug('Reproduciendo audio...');
+            this.logger.debug('Reproduciendo audio directamente...');
             const paplay = spawn('paplay', [audioFile]);
             
             paplay.on('close', (code) => {
@@ -351,7 +364,7 @@ class HybridVoiceManager {
 
             results.overallSuccess = results.googleTTS || results.espeakTTS;
             
-            this.logger.info(`Test completado - Google: ${results.googleTTS ? '✅' : '❌'}, Espeak: ${results.espeakTTS ? '✅' : '❌'}`);
+            this.logger.info(`Test completado - Google: ${results.googleTTS ? 'OK' : 'FAIL'}, Espeak: ${results.espeakTTS ? 'OK' : 'FAIL'}`);
             
             return results;
         } catch (error) {

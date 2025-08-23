@@ -159,7 +159,7 @@ TXTAIL 1
 
             if (this.process && !this.process.killed) {
                 this.isRunning = true;
-                this.logger.info('📻 TNC Direwolf: 1200 baud AFSK, KISS:8001, Audio:default');
+                this.logger.info('TNC Direwolf: 1200 baud AFSK, KISS:8001, Audio:default');
                 return true;
             } else {
                 throw new Error('Proceso Direwolf terminó inesperadamente');

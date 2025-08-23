@@ -29,7 +29,7 @@ class DateTime {
         moment.locale('es');
         
         // Inicializar sistema híbrido de voz
-        this.voiceManager = new HybridVoiceManager();
+        this.voiceManager = new HybridVoiceManager(this.audioManager);
     }
 
     /**
@@ -216,11 +216,11 @@ class DateTime {
      */
     async speakWithHybridVoice(text, options = {}) {
         try {
-            // Generar audio con sistema híbrido (Google TTS -> espeak fallback)
+            // Generar y reproducir audio usando el HybridVoiceManager (que ya integra con AudioManager)
             const audioFile = await this.voiceManager.generateSpeech(text, options);
             
-            // Reproducir usando paplay directamente
-            await this.playAudioFile(audioFile);
+            // Reproducir usando el HybridVoiceManager (que usa AudioManager correctamente)
+            await this.voiceManager.playAudio(audioFile);
             
             // Ejecutar roger beep después de la reproducción
             if (this.audioManager.rogerBeep && this.audioManager.rogerBeep.enabled) {

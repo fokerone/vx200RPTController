@@ -84,7 +84,7 @@ class WeatherAlerts extends EventEmitter {
         this.voiceManager = null;
         if (this.config.useGoogleTTS) {
             try {
-                this.voiceManager = new HybridVoiceManager();
+                this.voiceManager = new HybridVoiceManager(this.audioManager);
                 this.logger.info('Google TTS habilitado para alertas');
             } catch (error) {
                 this.logger.warn('Google TTS no disponible, usando fallback:', error.message);
@@ -152,7 +152,7 @@ class WeatherAlerts extends EventEmitter {
         }
         
         try {
-            this.logger.info('🔍 Verificando alertas SMN Argentina...');
+            this.logger.info('Verificando alertas SMN Argentina...');
             
             const feedData = await this.fetchAlertsFeed();
             if (!feedData || !feedData.rss || !feedData.rss.channel) {
@@ -163,13 +163,13 @@ class WeatherAlerts extends EventEmitter {
             const alerts = this.parseAlerts(feedData.rss.channel);
             const mendozaAlerts = await this.filterMendozaAlerts(alerts);
             
-            this.logger.info(`📊 Alertas encontradas: ${alerts.length}, para Mendoza: ${mendozaAlerts.length}`);
+            this.logger.info(`Alertas encontradas: ${alerts.length}, para Mendoza: ${mendozaAlerts.length}`);
       
             // Procesar nuevas alertas
             const newAlerts = this.processNewAlerts(mendozaAlerts);
             
             if (newAlerts.length > 0) {
-                this.logger.info(`🚨 ${newAlerts.length} nueva(s) alerta(s) para Mendoza`);
+                this.logger.info(`${newAlerts.length} nueva(s) alerta(s) para Mendoza`);
                 await this.announceNewAlerts(newAlerts);
                 await this.updateAPRSComment();
                 this.scheduleRepeatAnnouncements();
@@ -179,7 +179,7 @@ class WeatherAlerts extends EventEmitter {
             this.cleanExpiredAlerts();
             this.lastCheck = Date.now();
             
-            this.logger.info('✅ Verificación de alertas completada exitosamente');
+            this.logger.info('Verificación de alertas completada exitosamente');
             
         } catch (error) {
             this.logger.error('Error verificando alertas:', error.message);
@@ -201,7 +201,7 @@ class WeatherAlerts extends EventEmitter {
         
         try {
             const response = await axios.get(this.config.mainFeedUrl, {
-                timeout: 10000,
+                timeout: 30000, // Aumentar timeout a 30 segundos
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'
                 }
@@ -459,12 +459,12 @@ class WeatherAlerts extends EventEmitter {
             const message = this.buildAlertMessage(alerts);
             const cleanMessage = sanitizeTextForTTS(message);
             
-            this.logger.info(`🔊 Anunciando alertas: ${cleanMessage.substring(0, 50)}...`);
+            this.logger.info(`Anunciando alertas: ${cleanMessage.substring(0, 50)}...`);
             
             // Usar Google TTS si está disponible (con soporte para textos largos)
             if (this.voiceManager) {
                 const audioFile = await this.voiceManager.generateLongSpeech(cleanMessage);
-                await this.audioManager.playWeatherAlertWithPaplay(audioFile);
+                await this.voiceManager.playAudio(audioFile);
             } else {
                 await this.audioManager.speak(cleanMessage, { voice: 'es+f3' });
             }
@@ -634,7 +634,7 @@ class WeatherAlerts extends EventEmitter {
         this.weatherUpdateTimer = setTimeout(async () => {
             try {
                 await this.updateAPRSComment();
-                this.logger.debug('🌤️ Clima APRS actualizado automáticamente');
+                this.logger.debug('Clima APRS actualizado automáticamente');
                 this.scheduleWeatherUpdates(); // Reprogramar
             } catch (error) {
                 this.logger.debug('Error actualizando clima APRS:', error.message);
@@ -688,7 +688,7 @@ class WeatherAlerts extends EventEmitter {
             
             // Si el comando es *0, forzar verificación de alertas
             if (command === '*0') {
-                this.logger.info('🔄 Forzando verificación manual de alertas SMN...');
+                this.logger.info('Forzando verificación manual de alertas SMN...');
                 await this.checkForAlerts();
                 return;
             }
@@ -702,7 +702,7 @@ class WeatherAlerts extends EventEmitter {
                 
                 if (this.voiceManager) {
                     const audioFile = await this.voiceManager.generateLongSpeech(cleanMessage);
-                    await this.audioManager.playWeatherAlertWithPaplay(audioFile);
+                    await this.voiceManager.playAudio(audioFile);
                 } else {
                     await this.audioManager.speak(cleanMessage, { voice: 'es+f3' });
                 }

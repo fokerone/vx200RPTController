@@ -43,7 +43,7 @@ class WeatherVoice {
         this.cityMatcher = getMendozaCityMatcher();
         
         // Inicializar sistema híbrido de voz
-        this.voiceManager = new HybridVoiceManager();
+        this.voiceManager = new HybridVoiceManager(this.audioManager);
     }
 
     /**
@@ -175,7 +175,7 @@ class WeatherVoice {
                     const selectedCity = this.config.cityMenu[lastDigit];
                     
                     if (selectedCity) {
-                        this.logger.info(`✅ Ciudad seleccionada: ${lastDigit} - ${selectedCity.name}`);
+                        this.logger.info(`Ciudad seleccionada: ${lastDigit} - ${selectedCity.name}`);
                         
                         // Limpiar listeners y timeout
                         clearTimeout(timeout);
@@ -187,12 +187,12 @@ class WeatherVoice {
                 }
                 
                 // Si no es válida, informar y seguir esperando
-                this.logger.debug(`⚠️ Selección no válida: "${dtmfSequence}" (esperando 1-5)`);
+                this.logger.debug(`Selección no válida: "${dtmfSequence}" (esperando 1-5)`);
             };
             
             // Configurar timeout de 20 segundos (más tiempo para el operador)
             timeout = setTimeout(() => {
-                this.logger.warn('⏰ Timeout esperando selección de ciudad');
+                this.logger.warn('Timeout esperando selección de ciudad');
                 this.audioManager.removeListener('dtmf', dtmfHandler);
                 resolve(null);
             }, 20000);
@@ -200,7 +200,7 @@ class WeatherVoice {
             // Escuchar eventos DTMF
             this.audioManager.on('dtmf', dtmfHandler);
             
-            this.logger.info('🎧 Esperando selección DTMF (1-5)...');
+            this.logger.info('Esperando selección DTMF (1-5)...');
             this.logger.debug(`Detector DTMF habilitado: ${this.audioManager.dtmfDecoder.isEnabled()}`);
         });
     }
@@ -537,8 +537,8 @@ class WeatherVoice {
             // Generar audio con sistema híbrido (Google TTS -> espeak fallback)
             const audioFile = await this.voiceManager.generateSpeech(text, options);
             
-            // Reproducir usando paplay directamente
-            await this.playAudioFile(audioFile);
+            // Reproducir usando HybridVoiceManager (con lógica simplex)
+            await this.voiceManager.playAudio(audioFile);
             
             // Ejecutar roger beep después de la reproducción
             if (this.audioManager.rogerBeep && this.audioManager.rogerBeep.enabled) {

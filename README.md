@@ -1,10 +1,19 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Headless v2.7.0
+## 📡 Sistema de Control para Repetidora Headless v2.8.0
 
-Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. **Versión Headless** con interfaz APRS liviana, decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados y monitoreo sísmico INPRES en tiempo real.
+Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. **Versión Headless** con interfaz APRS liviana, decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, monitoreo sísmico INPRES en tiempo real y **sistema TTS híbrido con Google TTS**.
 
-**🚀 Versión 2.7.0 - Sistema Headless con Mapa APRS Completo**
+**🚀 Versión 2.8.0 - Sistema TTS Híbrido y Mejoras de Estabilidad**
+
+### 📅 **Novedades v2.8.0** (Agosto 2025)
+- **🎙️ Sistema TTS Híbrido**: Google TTS como motor principal con fallback automático a espeak
+- **🔀 Lógica Simplex Completa**: Sistema simplex real que pausa recepción durante transmisión
+- **❌ Sin Falsos Positivos DTMF**: Eliminados completamente los falsos positivos durante transmisiones TTS
+- **⏱️ Timeout Extendido**: Alertas meteorológicas con timeout de 2 minutos para contenido largo
+- **🗺️ Marcadores Optimizados**: Eliminadas animaciones pulsantes y emojis internos en marcadores APRS
+- **🐛 Fix Duplicación**: Solucionado problema de duplicación infinita del marcador de repetidora
+- **📡 DuckDNS Integrado**: Sistema DNS dinámico completamente funcional con actualización automática
 
 ### 📅 **Novedades v2.7.0** (Agosto 2025)
 - **🖥️ Sistema Completamente Headless**: Eliminado dashboard web completo, ahora funciona solo por consola
@@ -49,9 +58,19 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - Grabación en tiempo real con soporte ALSA/PulseAudio
 - **Decodificador DTMF Profesional** con `dtmf-detection-stream`
 - **Anti-falsos positivos** con detección de voz integrada
+- **Lógica Simplex Completa** - pausa recepción durante transmisión
 - Configuración de sensibilidad (Low/Medium/High)
 - Modo debug para desarrollo y pruebas
 - Roger Beep estilo Kenwood configurable
+
+### 🎙️ **Sistema TTS Híbrido Avanzado**
+- **Google TTS como motor principal** con calidad de voz natural
+- **Fallback automático a espeak** para máxima confiabilidad
+- **Fragmentación inteligente** para textos largos con ffmpeg
+- **Integración con lógica simplex** para evitar falsos positivos DTMF
+- **Timeout extendido** (2 minutos) para alertas meteorológicas largas
+- **Estadísticas de uso** con tasa de éxito de cada motor TTS
+- **Limpieza automática** de archivos temporales
 
 ### 📡 **Sistema APRS Completo con Análisis de Cobertura**
 - **TNC Software** integrado con Direwolf
@@ -226,6 +245,7 @@ vx200RPTController/
 │   ├── audio/
 │   │   ├── audioManager.js      # Gestor de audio completo
 │   │   ├── dtmfDecoder.js       # Decodificador DTMF profesional
+│   │   ├── HybridVoiceManager.js # Sistema TTS híbrido Google+espeak
 │   │   └── rogerBeep.js         # Roger Beep Kenwood
 │   ├── modules/
 │   │   ├── baliza.js            # Módulo de baliza
@@ -361,6 +381,50 @@ npm start  # Ver logs en consola
 
 ## 📋 Changelog
 
+### v2.8.0 - Sistema TTS Híbrido y Mejoras de Estabilidad 🎙️
+
+#### 🎙️ **Sistema TTS Híbrido Avanzado**
+- [x] **Google TTS como motor principal**
+  - [x] Implementado HybridVoiceManager con Google TTS prioritario
+  - [x] Calidad de voz natural superior para anuncios
+  - [x] Fragmentación inteligente para textos largos con ffmpeg
+  - [x] Limpieza automática de archivos temporales
+- [x] **Fallback automático a espeak**
+  - [x] Sistema de fallback robusto en caso de fallo Google TTS
+  - [x] Mantiene operatividad 24/7 sin interrupciones
+  - [x] Estadísticas de uso con tasa de éxito por motor
+  - [x] Configuración de timeout y parámetros de voz
+
+#### 🔀 **Lógica Simplex Completa Implementada**
+- [x] **Fix crítico falsos positivos DTMF**
+  - [x] Implementada lógica simplex real que pausa recepción durante transmisión
+  - [x] Eliminados completamente falsos positivos DTMF durante TTS
+  - [x] Integración completa con todos los módulos (weather, datetime, inpres)
+  - [x] Múltiples capas de protección anti-falsos positivos
+- [x] **Integración AudioManager**
+  - [x] Método playWeatherAlertWithPaplay() con lógica simplex
+  - [x] Pausar/reanudar grabación automática durante transmisiones
+  - [x] Eventos de transmisión para monitoreo del estado
+  - [x] Timeout extendido (2 minutos) para alertas meteorológicas largas
+
+#### 🗺️ **Mejoras Mapa APRS**
+- [x] **Marcadores optimizados**
+  - [x] Eliminadas animaciones pulsantes para mejor rendimiento
+  - [x] Removidos emojis internos de marcadores de estación
+  - [x] Marcadores estáticos más limpios y profesionales
+  - [x] Fix duplicación infinita del marcador de repetidora
+- [x] **Limpieza de código**
+  - [x] clearMarkers() mejorado elimina todos los elementos
+  - [x] Gestión correcta de coverageCircle y repeaterMarker
+  - [x] Sin elementos duplicados en el mapa
+
+#### 📡 **DuckDNS Completamente Funcional**
+- [x] **DNS dinámico integrado**
+  - [x] Actualización automática cada 5 minutos
+  - [x] Dominio vx200-yoshua.duckdns.org operativo
+  - [x] Resolución DNS correcta verificada
+  - [x] Integración con sistema de logs
+
 ### v2.7.0 - Sistema Headless con Mapa APRS Completo 🖥️
 
 #### 🚀 **Transformación Headless**
@@ -448,13 +512,13 @@ npm start  # Ver logs en consola
 
 ## 🎯 Próximas Versiones
 
-### v2.8 - Planificado
+### v2.9 - Planificado
 - [ ] **Contenedorización Docker** para despliegue fácil
 - [ ] **Métricas Prometheus** para monitoreo avanzado
 - [ ] **API GraphQL** para consultas flexibles
 - [ ] **Multi-repetidora** con sincronización
 
-### v2.9 - Futuro
+### v3.0 - Futuro
 - [ ] **App móvil nativa** con React Native
 - [ ] **Integración LoRa** para enlaces remotos
 - [ ] **Machine Learning** para predicción de tráfico
@@ -487,4 +551,4 @@ Este proyecto está bajo la Licencia MIT. Ver archivo `LICENSE` para más detall
 
 ---
 
-**✨ VX200 Controller v2.7.0 - Sistema Headless Moderno con Mapa APRS Completo 📡🚀**
+**✨ VX200 Controller v2.8.0 - Sistema TTS Híbrido con Lógica Simplex Avanzada 📡🎙️**

@@ -86,7 +86,7 @@ class InpresSismic extends EventEmitter {
         
         // Voice Manager para Google TTS
         // Inicializar sistema híbrido de voz
-        this.voiceManager = new HybridVoiceManager();
+        this.voiceManager = new HybridVoiceManager(this.audioManager);
         if (this.config.useGoogleTTS) {
             try {
                 // TTS habilitado via audioManager
@@ -123,7 +123,7 @@ class InpresSismic extends EventEmitter {
             this.state = MODULE_STATES.ACTIVE;
             
             // Verificación inicial
-            this.logger.info('🔍 Verificando sismos INPRES...');
+            this.logger.info('Verificando sismos INPRES...');
             await this.checkSeisms();
             
             // Configurar monitoreo automático cada 20 minutos
@@ -133,7 +133,7 @@ class InpresSismic extends EventEmitter {
                 });
             }, this.config.checkInterval);
             
-            this.logger.info(`✅ Monitoreo INPRES iniciado - cada ${this.config.checkInterval / 60000} minutos`);
+            this.logger.info(`Monitoreo INPRES iniciado - cada ${this.config.checkInterval / 60000} minutos`);
             this.emit('started', { checkInterval: this.config.checkInterval });
             
         } catch (error) {
@@ -196,7 +196,7 @@ class InpresSismic extends EventEmitter {
             await this.processNewSeisms(seisms);
             
             this.lastCheck = new Date();
-            this.logger.debug(`📊 ${seisms.length} sismos encontrados, ${this.todaySeisms.length} de hoy`);
+            this.logger.debug(`${seisms.length} sismos encontrados, ${this.todaySeisms.length} de hoy`);
             
             return seisms;
             
@@ -452,7 +452,7 @@ class InpresSismic extends EventEmitter {
      */
     async announceSeism(seism) {
         try {
-            this.logger.info(`🚨 Anunciando sismo: Mag ${seism.magnitude} en ${seism.location}`);
+            this.logger.info(`Anunciando sismo: Mag ${seism.magnitude} en ${seism.location}`);
             
             // Construir mensaje TTS
             const magnitude = seism.magnitude.toFixed(1);
@@ -476,7 +476,7 @@ class InpresSismic extends EventEmitter {
                 await this.audioManager.speak(sanitizedMessage);
             }
             
-            this.logger.info(`📢 Sismo anunciado: ${magnitude} en ${seism.location}`);
+            this.logger.info(`Sismo anunciado: ${magnitude} en ${seism.location}`);
             this.emit('seism_announced', seism);
             
         } catch (error) {
@@ -534,8 +534,8 @@ class InpresSismic extends EventEmitter {
             // Generar audio con sistema híbrido (Google TTS -> espeak fallback)
             const audioFile = await this.voiceManager.generateSpeech(text, options);
             
-            // Reproducir usando paplay directamente
-            await this.playAudioFile(audioFile);
+            // Reproducir usando HybridVoiceManager (con lógica simplex)
+            await this.voiceManager.playAudio(audioFile);
             
             // Ejecutar roger beep después de la reproducción
             if (this.audioManager.rogerBeep && this.audioManager.rogerBeep.enabled) {

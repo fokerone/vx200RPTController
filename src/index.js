@@ -7,6 +7,7 @@ const InpresSismic = require('./modules/inpres');
 const APRS = require('./modules/aprs');
 const DirewolfManager = require('./utils/direwolfManager');
 const APRSMapServer = require('./aprs-map/server');
+const DDNSManager = require('./modules/ddns');
 const { Config } = require('./config');
 const { createLogger } = require('./logging/Logger');
 const { getSystemOutput } = require('./logging/SystemOutput');
@@ -34,34 +35,46 @@ class VX200Controller {
     async initializeSystem() {
         try {
             this.state = MODULE_STATES.ACTIVE;
+            this.logger.info('Iniciando secuencia de inicialización ordenada...');
             
-            this.logger.debug('Inicializando AudioManager...');
+            // FASE 1: AudioManager (base crítica del sistema)
+            this.logger.info('FASE 1: Inicializando sistema de audio...');
             await this.initializeAudio();
             
-            this.logger.debug('Inicializando Módulos...');
-            await this.initializeModules();
+            // FASE 2: Direwolf TNC (requerido para APRS)
+            this.logger.info('FASE 2: Inicializando Direwolf TNC...');
+            await this.initializeDirewolf();
             
+            // FASE 3: Módulos básicos (no dependen de TNC)
+            this.logger.info('FASE 3: Inicializando módulos básicos...');
+            await this.initializeBasicModules();
             
-            this.logger.debug('Configurando event handlers...');
+            // FASE 4: Módulos que requieren TNC
+            this.logger.info('FASE 4: Inicializando módulos APRS...');
+            await this.initializeAPRSModules();
+            
+            // FASE 5: Módulos de monitoreo
+            this.logger.info('FASE 5: Inicializando módulos de monitoreo...');
+            await this.initializeMonitoringModules();
+            
+            // FASE 6: Servicios auxiliares
+            this.logger.info('FASE 6: Inicializando servicios auxiliares...');
+            await this.initializeAuxiliaryServices();
+            
+            // FASE 7: Configuración final
+            this.logger.info('FASE 7: Aplicando configuración final...');
             this.setupEventHandlers();
-            
-            this.logger.debug('Inicializando servidor mapa APRS...');
-            await this.initializeAPRSMapServer();
-            
-            this.logger.debug('Configurando desde archivo...');
             this.configureFromFile();
-            
-            this.logger.debug('Ejecutando cleanup inicial...');
             this.performInitialCleanup();
             
             if (this.initializationErrors.length > 0) {
                 this.logger.warn(`Sistema inicializado con ${this.initializationErrors.length} errores: ${this.initializationErrors.join(', ')}`);
                 this.state = MODULE_STATES.ERROR;
             } else {
-                this.logger.info('🔥 VX200 REPETIDORA OPERATIVA - Audio: LISTO, APRS: ACTIVO');
+                this.logger.info('VX200 REPETIDORA OPERATIVA - Audio: LISTO, APRS: ACTIVO');
                 if (this.aprsMapServer && this.aprsMapServer.isRunning) {
                     const mapPort = process.env.APRS_MAP_PORT || 8080;
-                    this.logger.info(`🗺️ Mapa APRS: http://localhost:${mapPort}`);
+                    this.logger.info(`Mapa APRS: http://localhost:${mapPort}`);
                 }
             }
             
@@ -87,38 +100,46 @@ class VX200Controller {
         }
     }
 
-    async initializeModules() {
-        this.modules.baliza = new Baliza(this.audio);
-        this.modules.datetime = new DateTime(this.audio);
-        this.modules.weather = new Weather(this.audio);
-        
-        // Inicializar WeatherAlerts después del módulo APRS
-        this.modules.weatherAlerts = null; // Se inicializa después de APRS
-        
-        // Inicializar Direwolf primero
+    async initializeDirewolf() {
         try {
+            this.logger.info('Inicializando Direwolf TNC...');
             this.direwolf = new DirewolfManager();
-            this.logger.info('Iniciando Direwolf TNC...');
+            
             const direwolfStarted = await this.direwolf.start();
             if (direwolfStarted) {
-                // Direwolf TNC iniciado
-                // Esperar un momento para que se establezca la conexión
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                this.logger.info('Direwolf TNC iniciado exitosamente');
+                // Esperar estabilización del TNC
+                await new Promise(resolve => setTimeout(resolve, 2000));
             } else {
                 this.logger.warn('Error iniciando Direwolf TNC');
                 this.initializationErrors.push('Direwolf');
             }
         } catch (error) {
-            this.logger.error('Error inicializando Direwolf:', error.message);
+            this.logger.error('Error crítico inicializando Direwolf:', error.message);
             this.initializationErrors.push('Direwolf');
         }
+    }
+
+    async initializeBasicModules() {
+        // Módulos que solo requieren AudioManager
+        this.logger.info('Inicializando módulos básicos...');
         
-        // Inicializar APRS después de Direwolf (solo inicializar, no iniciar)
+        this.modules.baliza = new Baliza(this.audio);
+        this.modules.datetime = new DateTime(this.audio);
+        this.modules.weather = new Weather(this.audio);
+        
+        this.logger.info('Módulos básicos inicializados');
+    }
+
+    async initializeAPRSModules() {
+        // Módulos que requieren Direwolf TNC
+        this.logger.info('Inicializando módulo APRS...');
+        
         this.modules.aprs = new APRS(this.audio);
         try {
             const aprsInitialized = await this.modules.aprs.initialize();
             if (aprsInitialized) {
-                // APRS inicializado
+                this.logger.info('Módulo APRS inicializado');
             } else {
                 this.logger.warn('Error inicializando módulo APRS');
                 this.initializationErrors.push('APRS');
@@ -127,38 +148,53 @@ class VX200Controller {
             this.logger.error('Error inicializando APRS:', error.message);
             this.initializationErrors.push('APRS');
         }
+    }
+
+    async initializeMonitoringModules() {
+        this.logger.info('Inicializando módulos de monitoreo...');
         
-        // Inicializar WeatherAlerts con referencia a APRS y Weather
+        // WeatherAlerts con referencia a APRS y Weather
         try {
             this.modules.weatherAlerts = new WeatherAlerts(this.audio, this.modules.aprs, this.modules.weather);
-            // WeatherAlerts inicializado
+            this.logger.info('WeatherAlerts inicializado');
         } catch (error) {
             this.logger.error('Error inicializando WeatherAlerts:', error.message);
             this.initializationErrors.push('WeatherAlerts');
         }
         
-        // Inicializar INPRES - Monitoreo Sísmico
+        // INPRES - Monitoreo Sísmico
         try {
             this.modules.inpres = new InpresSismic(this.audio);
-            // INPRES inicializado
+            this.logger.info('INPRES inicializado');
         } catch (error) {
             this.logger.error('Error inicializando INPRES:', error.message);
             this.initializationErrors.push('INPRES');
         }
-        
-        // Todos los módulos procesados
     }
 
-    async initializeAPRSMapServer() {
+    async initializeAuxiliaryServices() {
+        this.logger.info('Inicializando servicios auxiliares...');
+        
+        // DDNS Manager
+        try {
+            this.modules.ddns = new DDNSManager(this);
+            this.logger.info('DDNS Manager inicializado');
+        } catch (error) {
+            this.logger.error('Error inicializando DDNS:', error.message);
+            this.initializationErrors.push('DDNS');
+        }
+        
+        // APRS Map Server
         try {
             this.aprsMapServer = new APRSMapServer(this);
-            this.logger.info('Servidor mapa APRS inicializado correctamente');
+            this.logger.info('Servidor mapa APRS inicializado');
         } catch (error) {
             this.logger.error('Error inicializando servidor mapa APRS:', error.message);
             this.initializationErrors.push('APRS Map Server');
             this.aprsMapServer = null;
         }
     }
+
 
     configureFromFile() {
         if (Config.rogerBeepEnabled) {
@@ -180,7 +216,7 @@ class VX200Controller {
             try {
                 if (this.audio && typeof this.audio.performCleanup === 'function') {
                     await this.audio.performCleanup();
-                    this.logger.info('✅ Cleanup inicial completado');
+                    this.logger.info('Cleanup inicial completado');
                 }
             } catch (error) {
                 this.logger.warn('Error en cleanup inicial:', error.message);
@@ -396,37 +432,33 @@ class VX200Controller {
                 try {
                     await this.aprsMapServer.start();
                     const status = this.aprsMapServer.getStatus();
-                    this.logger.info(`🗺️ Mapa APRS disponible en: ${status.url}`);
+                    this.logger.info(`Mapa APRS disponible en: ${status.url}`);
                 } catch (error) {
                     this.logger.warn('Error iniciando servidor mapa APRS:', error.message);
                 }
             }
             
-            // Inicializar monitoreo de alertas meteorológicas
-            if (this.modules.weatherAlerts) {
+            // Iniciar DDNS Manager
+            if (this.modules.ddns) {
                 try {
-                    await this.modules.weatherAlerts.start();
-                    this.logger.info('Alertas meteorológicas activas');
+                    const ddnsStarted = await this.modules.ddns.initialize();
+                    if (ddnsStarted) {
+                        this.logger.info('DDNS Manager activo');
+                    } else {
+                        this.logger.info('DDNS Manager deshabilitado (configurar DUCKDNS_DOMAIN y DUCKDNS_TOKEN)');
+                    }
                 } catch (error) {
-                    this.logger.warn('Error iniciando alertas meteorológicas:', error.message);
+                    this.logger.warn('Error iniciando DDNS:', error.message);
                 }
             }
-            
-            // Iniciar módulo INPRES - Monitoreo Sísmico
-            if (this.modules.inpres) {
-                try {
-                    await this.modules.inpres.start();
-                    this.logger.info('Monitoreo sísmico INPRES activo');
-                } catch (error) {
-                    this.logger.warn('Error iniciando monitoreo INPRES:', error.message);
-                }
-            }
-            
             
             this.isRunning = true;
             this.state = MODULE_STATES.ACTIVE;
             
             this.printStartupInfo();
+            
+            // Inicializar monitoreo en background DESPUÉS del arranque completo
+            this.startMonitoringServices();
             
         } catch (error) {
             this.logger.error('Error iniciando sistema:', error.message);
@@ -502,6 +534,10 @@ class VX200Controller {
             this.modules.inpres.stop();
         }
         
+        if (this.modules.ddns) {
+            this.modules.ddns.stop();
+        }
+        
         if (this.direwolf) {
             this.direwolf.stop();
         }
@@ -569,6 +605,44 @@ class VX200Controller {
                 lastSequence: 'Esperando...'
             }
         };
+    }
+
+    /**
+     * Iniciar servicios de monitoreo de forma asíncrona
+     * Se ejecuta después del arranque completo del sistema
+     */
+    async startMonitoringServices() {
+        // Esperar 3 segundos para que el sistema se estabilice completamente
+        setTimeout(async () => {
+            try {
+                this.logger.info('Iniciando módulos de monitoreo...');
+                
+                // Inicializar monitoreo de alertas meteorológicas
+                if (this.modules.weatherAlerts) {
+                    try {
+                        await this.modules.weatherAlerts.start();
+                        this.logger.info('Alertas meteorológicas activas');
+                    } catch (error) {
+                        this.logger.warn('Error iniciando alertas meteorológicas:', error.message);
+                    }
+                }
+                
+                // Iniciar módulo INPRES - Monitoreo Sísmico
+                if (this.modules.inpres) {
+                    try {
+                        await this.modules.inpres.start();
+                        this.logger.info('Monitoreo sísmico INPRES activo');
+                    } catch (error) {
+                        this.logger.warn('Error iniciando monitoreo INPRES:', error.message);
+                    }
+                }
+                
+                this.logger.info('Módulos de monitoreo inicializados');
+                
+            } catch (error) {
+                this.logger.error('Error iniciando módulos de monitoreo:', error.message);
+            }
+        }, 3000);
     }
 
     getDetailedStatus() {
@@ -653,10 +727,10 @@ class VX200Controller {
             
             // Alertar si hay demasiados archivos temporales
             if (tempStats.total.files > 50) {
-                this.logger.warn(`  ⚠️  Muchos archivos temporales: ${tempStats.total.files}`);
+                this.logger.warn(`  Muchos archivos temporales: ${tempStats.total.files}`);
             }
             if (parseFloat(tempStats.total.sizeMB) > 50) {
-                this.logger.warn(`  ⚠️  Uso alto de espacio temp: ${tempStats.total.sizeMB}MB`);
+                this.logger.warn(`  Uso alto de espacio temp: ${tempStats.total.sizeMB}MB`);
             }
         }
         

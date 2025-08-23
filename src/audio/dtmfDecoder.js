@@ -3,8 +3,9 @@ const { Readable, Transform } = require('stream');
 const { createLogger } = require('../logging/Logger');
 
 class DTMFDecoder {
-    constructor(sampleRate = 48000) {
+    constructor(sampleRate = 48000, audioManager = null) {
         this.sampleRate = sampleRate;
+        this.audioManager = audioManager;
         this.logger = createLogger('[DTMF]');
         
         // Buffer para acumular datos de audio
@@ -45,7 +46,7 @@ class DTMFDecoder {
         
         // Escuchar eventos de detección
         this.dtmfStream.on('dtmf', (data) => {
-            this.logger.info(`🎵 DTMF detectado por stream: ${data.digit} (${data.timestamp}s)`);
+            this.logger.info(`DTMF detectado por stream: ${data.digit} (${data.timestamp}s)`);
             this.handleDetection(data.digit);
         });
         
@@ -59,12 +60,24 @@ class DTMFDecoder {
         if (!this.enabled) {
             return;
         }
+
+        // Si está transmitiendo, pausar detección DTMF para evitar falsos positivos
+        if (this.audioManager && this.audioManager.isTransmitting()) {
+            this.logger.debug(`DTMF ignorado durante transmisión: ${tone}`);
+            return;
+        }
+        
+        // También verificar si no está grabando (paused por simplex)
+        if (this.audioManager && !this.audioManager.isRecording) {
+            this.logger.debug(`DTMF ignorado: grabación pausada (simplex): ${tone}`);
+            return;
+        }
         
         const now = Date.now();
         
         // Verificar si hay demasiada actividad de voz
         if (this.consecutiveVoiceFrames > this.maxVoiceFramesBeforeDisable) {
-            this.logger.info(`🔇 DTMF ignorado por actividad de voz: ${tone} (frames: ${this.consecutiveVoiceFrames})`);
+            this.logger.info(`DTMF ignorado por actividad de voz: ${tone} (frames: ${this.consecutiveVoiceFrames})`);
             return;
         }
         
@@ -128,7 +141,7 @@ class DTMFDecoder {
             return true;
         }
         
-        this.logger.info(`⏳ DTMF pendiente validación: ${tone} (${history.length}/${this.minDetectionCount})`);
+        this.logger.info(`DTMF pendiente validación: ${tone} (${history.length}/${this.minDetectionCount})`);
         return false;
     }
     
@@ -295,12 +308,12 @@ class DTMFDecoder {
     setDebugMode(enabled) {
         this.debugMode = enabled;
         if (enabled) {
-            this.logger.warn('🐛 DTMF en modo DEBUG - validaciones deshabilitadas');
+            this.logger.warn('DTMF en modo DEBUG - validaciones deshabilitadas');
             this.minDetectionCount = 1;
             this.maxVoiceFramesBeforeDisable = 1000; // Muy alto
             this.detectionDelay = 100; // Muy bajo
         } else {
-            this.logger.info('🔧 DTMF saliendo de modo DEBUG');
+            this.logger.info('DTMF saliendo de modo DEBUG');
             this.setSensitivity('medium'); // Restaurar configuración
         }
     }

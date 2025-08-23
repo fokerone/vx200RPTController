@@ -41,6 +41,7 @@
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             position: relative;
+            z-index: 1;
         }
         
         .info-card {
@@ -116,7 +117,7 @@
             position: fixed;
             top: 15px;
             right: 15px;
-            z-index: 1000;
+            z-index: 2000;
         }
         
         .filter-controls {
@@ -138,6 +139,26 @@
             border: none !important;
         }
         
+        /* Font Awesome Map Marker styles */
+        .fa-map-marker-alt {
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            transition: transform 0.2s ease;
+        }
+        
+        .fa-map-marker-alt:hover {
+            transform: scale(1.1);
+        }
+        
+        .repeater-marker-icon {
+            color: #e74c3c;
+            font-size: 40px;
+        }
+        
+        .station-marker-icon {
+            color: #3498db;
+            font-size: 36px;
+        }
+        
         /* Mobile optimizations */
         @media (max-width: 768px) {
             .header {
@@ -156,6 +177,7 @@
                 height: 45vh;
                 min-height: 300px;
                 border-radius: 4px;
+                z-index: 1;
             }
             
             .info-card {
@@ -211,6 +233,7 @@
             #map {
                 height: 40vh;
                 min-height: 280px;
+                z-index: 1;
             }
             
             .stats-grid {
@@ -252,35 +275,12 @@
         }
         
         /* Animations */
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-        
-        @keyframes repeater-pulse {
-            0% { 
-                transform: scale(1);
-                box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
-            }
-            50% { 
-                transform: scale(1.1);
-                box-shadow: 0 6px 16px rgba(231, 76, 60, 0.6);
-            }
-            100% { 
-                transform: scale(1);
-                box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
-            }
-        }
         
         @keyframes status-blink {
             0%, 50% { opacity: 1; }
             51%, 100% { opacity: 0.3; }
         }
         
-        .loading-pulse {
-            animation: pulse 1.5s infinite;
-        }
         
         /* Status indicator */
         .status-indicator {
@@ -394,7 +394,7 @@
             <div class="row align-items-center">
                 <div class="col">
                     <h1 class="mb-0">
-                        <span class="h1-icon">📡</span>
+                        <span class="h1-icon"></span>
                         VX200Controller APRS MAP
                     </h1>
                     <small class="opacity-75">Mapa en tiempo real de posiciones APRS</small>
@@ -428,7 +428,7 @@
                     <div class="row align-items-center">
                         <div class="col-md-6">
                             <div class="d-flex align-items-center flex-wrap">
-                                <label class="form-label me-2 mb-1 mb-md-0">🔍 Filtrar:</label>
+                                <label class="form-label me-2 mb-1 mb-md-0">Filtrar:</label>
                                 <select id="station-filter" class="form-select form-select-sm flex-grow-1">
                                     <option value="">Todas las estaciones</option>
                                 </select>
@@ -437,10 +437,10 @@
                         <div class="col-md-6 text-md-end">
                             <div class="btn-group btn-group-sm" role="group">
                                 <button id="reset-filter" class="btn btn-outline-secondary">
-                                    🔄 Reset
+                                    Reset
                                 </button>
                                 <button id="center-map" class="btn btn-outline-primary">
-                                    🎯 Centrar
+                                    Centrar
                                 </button>
                             </div>
                         </div>
@@ -452,12 +452,12 @@
                 
                 <!-- Station Details Panel -->
                 <div class="info-card mt-3" id="station-details" style="display: none;">
-                    <h5 class="mb-3">📡 Detalles de Estación</h5>
+                    <h5 class="mb-3">Detalles de Estación</h5>
                     <div class="row">
                         <!-- Basic Info -->
                         <div class="col-md-6">
                             <div class="detail-section">
-                                <h6>🔢 Información Básica</h6>
+                                <h6>📋 Información Básica</h6>
                                 <div class="detail-grid">
                                     <div class="detail-item">
                                         <span class="detail-label">Indicativo:</span>
@@ -501,7 +501,7 @@
                         <!-- Movement Info -->
                         <div class="col-md-4">
                             <div class="detail-section">
-                                <h6>🚗 Movimiento</h6>
+                                <h6>🏃 Movimiento</h6>
                                 <div class="detail-grid">
                                     <div class="detail-item">
                                         <span class="detail-label">Velocidad:</span>
@@ -518,7 +518,7 @@
                         <!-- Signal Info -->
                         <div class="col-md-4">
                             <div class="detail-section">
-                                <h6>📶 Señal RF</h6>
+                                <h6>📡 Señal RF</h6>
                                 <div class="detail-grid">
                                     <div class="detail-item">
                                         <span class="detail-label">Nivel:</span>
@@ -554,7 +554,7 @@
                     <div class="row mt-3">
                         <div class="col-12">
                             <div class="detail-section">
-                                <h6>📈 Perfil de Altitud</h6>
+                                <h6>⛰️ Perfil de Altitud</h6>
                                 <div class="altitude-chart-container">
                                     <canvas id="altitude-chart" width="400" height="100"></canvas>
                                 </div>
@@ -565,7 +565,7 @@
                     <!-- Close Button -->
                     <div class="text-end mt-3">
                         <button class="btn btn-outline-secondary btn-sm" onclick="closeStationDetails()">
-                            ✖️ Cerrar
+                            Cerrar
                         </button>
                     </div>
                 </div>
@@ -575,30 +575,30 @@
             <div class="col-lg-4">
                 <!-- Statistics -->
                 <div class="info-card">
-                    <h5 class="mb-3">📊 Estadísticas</h5>
+                    <h5 class="mb-3">Estadísticas</h5>
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-value" id="total-stations">-</div>
-                            <div class="stat-label">🏘️ Estaciones</div>
+                            <div class="stat-label">Estaciones</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="max-distance">-</div>
-                            <div class="stat-label">📏 Más Lejana</div>
+                            <div class="stat-label">Más Lejana</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="last-station">-</div>
-                            <div class="stat-label">📻 Última</div>
+                            <div class="stat-label">Última</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="coverage-radius">-</div>
-                            <div class="stat-label">📡 Cobertura</div>
+                            <div class="stat-label">Cobertura</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Station List -->
                 <div class="info-card">
-                    <h5 class="mb-3">📋 Estaciones Recibidas</h5>
+                    <h5 class="mb-3">Estaciones Recibidas</h5>
                     <div class="station-list" id="station-list">
                         <div class="loading">
                             <div class="spinner-border text-primary" role="status">
@@ -618,8 +618,8 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <!-- Font Awesome for icons -->
-    <script src="https://kit.fontawesome.com/yourkitcode.js" crossorigin="anonymous"></script>
+    <!-- Font Awesome for map markers -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css">
     
     <script>
         class APRSMap {
@@ -706,38 +706,21 @@
                 if (this.repeaterLocation) {
                     const repeaterIcon = L.divIcon({
                         html: `
-                            <div style="position: relative;">
-                                <div style="
-                                    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); 
-                                    width: 32px; 
-                                    height: 32px; 
-                                    border-radius: 50%; 
-                                    border: 4px solid white; 
-                                    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
-                                    display: flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                    font-size: 16px;
-                                    animation: repeater-pulse 3s infinite;
-                                ">
-                                    🏗️
-                                </div>
+                            <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+                                <i class="fas fa-map-marker-alt repeater-marker-icon"></i>
                                 <div style="
                                     position: absolute;
-                                    top: -3px;
-                                    right: -3px;
-                                    background: #27ae60;
-                                    width: 12px;
-                                    height: 12px;
-                                    border-radius: 50%;
-                                    border: 2px solid white;
-                                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-                                    animation: status-blink 2s infinite;
-                                "></div>
+                                    top: 3px;
+                                    left: 50%;
+                                    transform: translateX(-50%);
+                                    font-size: 18px;
+                                    color: white;
+                                    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+                                ">📡</div>
                             </div>
                         `,
                         iconSize: [40, 40],
-                        iconAnchor: [20, 20],
+                        iconAnchor: [20, 40],
                         className: 'repeater-marker'
                     });
 
@@ -748,10 +731,10 @@
                     this.repeaterMarker.bindPopup(`
                         <div style="text-align: center; min-width: 250px;">
                             <h5 style="margin: 0 0 10px 0; color: #e74c3c;">
-                                🏗️ Repetidora VX200
+                                📡 Repetidora VX200
                             </h5>
                             <div style="margin-bottom: 8px;">
-                                📻 <strong>${this.repeaterLocation.callsign || 'YOSHUA'}</strong>
+                                 <strong>${this.repeaterLocation.callsign || 'YOSHUA'}</strong>
                             </div>
                             <div style="margin-bottom: 8px;">
                                 📍 ${this.repeaterLocation.name || 'Guaymallén, Mendoza'}
@@ -794,100 +777,15 @@
                 const courseArrow = this.getCourseArrow(station.course);
                 const signalIndicator = this.getSignalIndicator(station.audioLevel);
                 
-                // Create modern marker with station icon and indicators
+                // Create FontAwesome marker for stations
                 const icon = L.divIcon({
                     html: `
-                        <div style="position: relative;">
-                            <!-- Main marker -->
-                            <div style="
-                                background: linear-gradient(135deg, ${color} 0%, ${this.darkenColor(color)} 100%); 
-                                width: 32px; 
-                                height: 32px; 
-                                border-radius: 50%; 
-                                border: 4px solid white; 
-                                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                                font-size: 14px;
-                                color: white;
-                                font-weight: bold;
-                                transition: transform 0.2s ease;
-                            ">
-                                📻
-                            </div>
-                            
-                            <!-- Signal quality indicator -->
-                            <div style="
-                                position: absolute;
-                                top: -2px;
-                                right: -2px;
-                                background: ${signalIndicator.color};
-                                width: 8px;
-                                height: 8px;
-                                border-radius: 50%;
-                                border: 2px solid white;
-                                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-                            "></div>
-                            
-                            <!-- Speed indicator -->
-                            ${station.speed !== null && station.speed > 1 ? `
-                                <div style="
-                                    position: absolute;
-                                    bottom: -5px;
-                                    left: -5px;
-                                    background: ${speedIndicator.color};
-                                    width: 14px;
-                                    height: 14px;
-                                    border-radius: 50%;
-                                    border: 2px solid white;
-                                    font-size: 10px;
-                                    display: flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                    color: white;
-                                ">
-                                    ${speedIndicator.icon}
-                                </div>
-                            ` : ''}
-                            
-                            <!-- Course arrow -->
-                            ${station.course !== null ? `
-                                <div style="
-                                    position: absolute;
-                                    top: -15px;
-                                    left: 50%;
-                                    transform: translateX(-50%) rotate(${station.course}deg);
-                                    color: #2c3e50;
-                                    font-size: 12px;
-                                    text-shadow: 0 0 3px white;
-                                ">
-                                    ⬆️
-                                </div>
-                            ` : ''}
-                            
-                            <!-- Altitude badge -->
-                            ${station.altitude !== null ? `
-                                <div style="
-                                    position: absolute;
-                                    top: 25px;
-                                    left: 50%;
-                                    transform: translateX(-50%);
-                                    background: rgba(44, 62, 80, 0.8);
-                                    color: white;
-                                    font-size: 8px;
-                                    padding: 1px 3px;
-                                    border-radius: 8px;
-                                    white-space: nowrap;
-                                    font-weight: bold;
-                                ">
-                                    ${station.altitude.toFixed(0)}m
-                                </div>
-                            ` : ''}
+                        <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-map-marker-alt station-marker-icon"></i>
                         </div>
                     `,
-                    iconSize: [50, 60],
-                    iconAnchor: [25, 30],
+                    iconSize: [36, 36],
+                    iconAnchor: [18, 36],
                     className: 'station-marker'
                 });
 
@@ -896,13 +794,13 @@
                 const popupContent = `
                     <div style="text-align: center; min-width: 200px;">
                         <h6 style="margin: 0 0 8px 0; color: #2c3e50;">
-                            📻 ${station.callsign}
+                            📡 ${station.callsign}
                         </h6>
                         <div style="margin-bottom: 8px;">
-                            ${station.comment ? `💬 ${station.comment}` : '💬 Sin comentario'}
+                            ${station.comment ? ` ${station.comment}` : ' Sin comentario'}
                         </div>
                         <small style="color: #7f8c8d;">
-                            🕒 ${new Date(station.timestamp).toLocaleString()}<br>
+                            🕐 ${new Date(station.timestamp).toLocaleString()}<br>
                             📏 ${station.distance ? station.distance.toFixed(2) + ' km' : 'N/A'}
                         </small>
                     </div>
@@ -916,8 +814,8 @@
                 // Keep simple popup for quick info
                 marker.bindPopup(`
                     <div style="text-align: center;">
-                        <strong>📻 ${station.callsign}</strong><br>
-                        <small>Click para más detalles</small>
+                        <strong>📡 ${station.callsign}</strong><br>
+                        <small>👆 Click para más detalles</small>
                     </div>
                 `, {
                     maxWidth: 200,
@@ -980,7 +878,7 @@
                 const callsigns = this.getUniqueCallsigns();
                 
                 if (callsigns.length === 0) {
-                    container.innerHTML = '<p class="text-muted text-center">📭 No hay estaciones recibidas</p>';
+                    container.innerHTML = '<p class="text-muted text-center">📡 No hay estaciones recibidas</p>';
                     return;
                 }
 
@@ -995,10 +893,10 @@
                     div.innerHTML = `
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                📻 <strong>${callsign}</strong>
+                                📡 <strong>${callsign}</strong>
                                 <br>
                                 <small class="text-muted">
-                                    🕒 ${new Date(latest.timestamp).toLocaleTimeString()}
+                                    🕐 ${new Date(latest.timestamp).toLocaleTimeString()}
                                 </small>
                             </div>
                             <div class="text-end">
@@ -1108,13 +1006,13 @@
                 }
                 
                 if (speed < 5) {
-                    return { color: '#27ae60', icon: '🚶' }; // Walking
+                    return { color: '#27ae60', icon: '' }; // Walking
                 } else if (speed < 25) {
-                    return { color: '#f39c12', icon: '🚴' }; // Cycling
+                    return { color: '#f39c12', icon: '' }; // Cycling
                 } else if (speed < 60) {
-                    return { color: '#e67e22', icon: '🚗' }; // Car
+                    return { color: '#e67e22', icon: '' }; // Car
                 } else {
-                    return { color: '#e74c3c', icon: '✈️' }; // Fast
+                    return { color: '#e74c3c', icon: '^' }; // Fast
                 }
             }
 
@@ -1122,7 +1020,7 @@
                 if (course === null || course === undefined) {
                     return '';
                 }
-                return `⬆️`; // Arrow will be rotated via CSS transform
+                return ``; // Arrow will be rotated via CSS transform
             }
 
             getSignalIndicator(audioLevel) {
@@ -1147,8 +1045,21 @@
             }
 
             clearMarkers() {
+                // Clear station markers
                 this.stationMarkers.forEach(marker => this.map.removeLayer(marker));
                 this.stationMarkers = [];
+                
+                // Clear repeater marker to prevent duplication
+                if (this.repeaterMarker) {
+                    this.map.removeLayer(this.repeaterMarker);
+                    this.repeaterMarker = null;
+                }
+                
+                // Clear coverage circle if exists
+                if (this.coverageCircle) {
+                    this.map.removeLayer(this.coverageCircle);
+                    this.coverageCircle = null;
+                }
             }
 
             startAutoUpdate() {

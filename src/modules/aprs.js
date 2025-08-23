@@ -127,13 +127,13 @@ class APRS extends EventEmitter {
             });
             
             this.kissSocket.on('close', () => {
-                this.logger.warn('❌ Desconectado de Direwolf KISS TNC');
+                this.logger.warn('Desconectado de Direwolf KISS TNC');
                 this.tncConnection = false;
                 this.emit('tnc_disconnected');
             });
             
             this.kissSocket.on('data', (data) => {
-                this.logger.info('📡 Datos KISS recibidos:', data.length, 'bytes, hex:', data.toString('hex').substring(0, 100));
+                this.logger.info('Datos KISS recibidos:', data.length, 'bytes, hex:', data.toString('hex').substring(0, 100));
                 
                 // Si recibimos datos, significa que estamos conectados
                 if (!this.tncConnection) {
@@ -172,7 +172,7 @@ class APRS extends EventEmitter {
             // CMD: 0x00 = data frame canal 0
             const FEND = 0xC0;
             
-            this.logger.info('🔍 Frame KISS raw:', kissData.toString('hex'));
+            this.logger.info('Frame KISS raw:', kissData.toString('hex'));
             
             // Buscar inicio de frame (FEND)
             let start = -1;
@@ -197,7 +197,7 @@ class APRS extends EventEmitter {
                 // Procesar frame AX.25
                 this.handleReceivedFrame(ax25Data);
             } else {
-                this.logger.warn('⚠️ Frame KISS malformado o incompleto');
+                this.logger.warn('Frame KISS malformado o incompleto');
             }
             
         } catch (error) {
@@ -261,51 +261,51 @@ class APRS extends EventEmitter {
             // Tabla primaria (/)
             '/!': '👮 Policía/Sheriff',
             '/"': '📋 Reservado', 
-            '/#': '🔄 DIGI (centro blanco)',
-            '/$': '☎️ Teléfono',
-            '/%': '📡 DX Cluster',
-            '/&': '⚡ Gateway HF',
-            '/\'': '🛩️ Avión pequeño',
-            '/(': '📡 Estación satelital móvil',
+            '/#': 'DIGI (centro blanco)',
+            '/$': 'Teléfono',
+            '/%': 'DX Cluster',
+            '/&': 'Gateway HF',
+            '/\'': 'Avión pequeño',
+            '/(': 'Estación satelital móvil',
             '/)': '♿ Silla de ruedas',
             '/*': '🛷 Moto de nieve',
-            '/+': '❤️ Cruz Roja',
+            '/+': 'Cruz Roja',
             '/,': '👦 Boy Scouts',
             '/-': '🏠 Casa QTH (VHF)',
-            '/.': '❌ X',
+            '/.': 'X',
             '//': '🔴 Punto rojo',
             '/0': '⭕ Círculo',
-            '/1': '1️⃣ Uno',
-            '/2': '2️⃣ Dos', 
-            '/3': '3️⃣ Tres',
-            '/4': '4️⃣ Cuatro',
-            '/5': '5️⃣ Cinco',
-            '/6': '6️⃣ Seis',
-            '/7': '7️⃣ Siete',
-            '/8': '8️⃣ Ocho',
-            '/9': '9️⃣ Nueve',
-            '/:': '🔥 Fuego',
+            '/1': 'Uno',
+            '/2': 'Dos', 
+            '/3': 'Tres',
+            '/4': 'Cuatro',
+            '/5': 'Cinco',
+            '/6': 'Seis',
+            '/7': 'Siete',
+            '/8': 'Ocho',
+            '/9': 'Nueve',
+            '/:': 'Fuego',
             '/;': '⛺ Campamento',
-            '/<': '🏍️ Motocicleta',
+            '/<': 'Motocicleta',
             '/=': '🚂 Tren',
             '/>': '🚗 Auto',
-            '/?': '📡 Servidor',
+            '/?': 'Servidor',
             '/@': '🚁 Helicóptero',
             '/A': '📦 Caja',
             '/B': '💨 BBS',
             '/C': '⛵ Canoa',
             '/D': '🔧 Herramienta',
-            '/E': '👁️ Ojo (eventos)',
+            '/E': 'Ojo (eventos)',
             '/F': '🚒 Camión de bomberos',
-            '/G': '🛩️ Planeador',
+            '/G': 'Planeador',
             '/H': '🏥 Hospital',
-            '/I': '🌐 TCP-IP',
-            '/J': '📡 Node',
+            '/I': 'TCP-IP',
+            '/J': 'Node',
             '/K': '🏫 Escuela',
             '/L': '💡 Laptop/PC',
             '/M': '📍 Mic-E Repetidor',
-            '/N': '📡 NTS Station',
-            '/O': '🎈 Globo',
+            '/N': 'NTS Station',
+            '/O': 'Globo',
             '/P': '👮 Policía',
             '/Q': '🔺 TBD',
             '/R': '🚁 RV',
@@ -313,25 +313,25 @@ class APRS extends EventEmitter {
             '/T': '📞 Camión',
             '/U': '🚌 Bus',
             '/V': '🚐 Van',
-            '/W': '🌐 Estación de agua',
+            '/W': 'Estación de agua',
             '/X': '🚁 Helicóptero',
             '/Y': '⛵ Velero',
             '/Z': '📱 Casa móvil',
             '/[': '👤 Humano/Persona',
             '/\\': '🔺 Triángulo DF',
             '/]': '📮 Oficina de correos',
-            '/^': '✈️ Avión',
-            '/_': '🌡️ Estación meteorológica',
+            '/^': 'Avión',
+            '/_': 'Estación meteorológica',
             '/`': '🚁 Plato satelital',
             '/a': '🚑 Ambulancia',
             '/b': '🚲 Bicicleta',
             '/c': '🏠 Incidente command post',
-            '/d': '🔥 Departamento de bomberos',
+            '/d': 'Departamento de bomberos',
             '/e': '🏠 Casa (HF)',
             '/f': '🚒 Camión de bomberos',
-            '/g': '🛩️ Planeador',
+            '/g': 'Planeador',
             '/h': '🏥 Hospital',
-            '/i': 'ℹ️ Información',
+            '/i': 'Información',
             '/j': '🚙 Jeep',
             '/k': '🚗 Camión',
             '/l': '💻 Laptop',
@@ -340,7 +340,7 @@ class APRS extends EventEmitter {
             '/o': '🚗 EOC',
             '/p': '👤 Perro',
             '/q': '🏠 Grid Square',
-            '/r': '📻 Repetidor',
+            '/r': 'Repetidor',
             '/s': '⛵ Barco',
             '/t': '📞 Camión',
             '/u': '🚌 Bus',
@@ -351,73 +351,73 @@ class APRS extends EventEmitter {
             '/z': '📱 Reservado',
             '/|': '🏠 Estación TNC Stream',
             '/~': '🏠 Estación TNC Stream Switch',
-            '/`': '📡 Mic-E (Kenwood, Yaesu, etc.)',
+            '/`': 'Mic-E (Kenwood, Yaesu, etc.)',
 
             // Tabla alternativa (\)
             '\\!': '🚨 Emergencia',
             '\\"': '📋 Reservado',
-            '\\#': '🔄 DIGI (overlaid)',
+            '\\#': 'DIGI (overlaid)',
             '\\$': '💰 Banco',
-            '\\%': '📡 DX Cluster',
+            '\\%': 'DX Cluster',
             '\\&': '💎 Diamante',
             '\\\'': '🚁 Avión (pequeño)',
-            '\\(': '☁️ Nube',
+            '\\(': 'Nube',
             '\\)': '♿ Accesible',
-            '\\*': '❄️ Nieve',
+            '\\*': 'Nieve',
             '\\+': '⛪ Iglesia',
             '\\,': '👦 Scout',
             '\\-': '🏛️ Casa (HF)',
             '\\.': '🔴 Punto',
             '\\/': '🔺 Triángulo',
             '\\0': '⭕ Círculo (alt)',
-            '\\1': '1️⃣ Uno (alt)',
-            '\\2': '2️⃣ Dos (alt)',
-            '\\3': '3️⃣ Tres (alt)',
-            '\\4': '4️⃣ Cuatro (alt)',
-            '\\5': '5️⃣ Cinco (alt)',
-            '\\6': '6️⃣ Seis (alt)',
-            '\\7': '7️⃣ Siete (alt)',
-            '\\8': '8️⃣ Ocho (alt)',
-            '\\9': '9️⃣ Nueve (alt)',
-            '\\:': '🔥 Fuego (alt)',
+            '\\1': 'Uno (alt)',
+            '\\2': 'Dos (alt)',
+            '\\3': 'Tres (alt)',
+            '\\4': 'Cuatro (alt)',
+            '\\5': 'Cinco (alt)',
+            '\\6': 'Seis (alt)',
+            '\\7': 'Siete (alt)',
+            '\\8': 'Ocho (alt)',
+            '\\9': 'Nueve (alt)',
+            '\\:': 'Fuego (alt)',
             '\\;': '⛺ Campamento (alt)',
-            '\\<': '🏍️ Motocicleta (alt)',
+            '\\<': 'Motocicleta (alt)',
             '\\=': '🚂 Tren (alt)',
             '\\>': '🚗 Auto (alt)',
-            '\\?': '📡 Servidor (alt)',
+            '\\?': 'Servidor (alt)',
             '\\@': '🌀 Huracán',
             '\\A': '📦 Caja (alt)',
-            '\\B': '📡 Blizzard',
-            '\\C': '☁️ Costa Guard',
-            '\\D': '🌪️ Tornado',
+            '\\B': 'Blizzard',
+            '\\C': 'Costa Guard',
+            '\\D': 'Tornado',
             '\\E': '🚨 Humo',
-            '\\F': '🌫️ Niebla',
-            '\\G': '❄️ Nieve',
-            '\\H': '🌩️ Tormenta',
-            '\\I': '⛈️ Lluvia',
-            '\\J': '⚡ Rayos',
-            '\\K': '🌨️ Granizo',
+            '\\F': 'Niebla',
+            '\\G': 'Nieve',
+            '\\H': 'Tormenta',
+            '\\I': 'Lluvia',
+            '\\J': 'Rayos',
+            '\\K': 'Granizo',
             '\\L': '🌟 Sol',
             '\\M': '📍 MARS',
-            '\\N': '📻 Red',
+            '\\N': 'Red',
             '\\O': '🌊 Tsunami',
             '\\P': '📞 Teléfono',
             '\\Q': '❓ Pregunta',
-            '\\R': '📻 Repetidor (alt)',
-            '\\S': '⛰️ Skyline',
+            '\\R': 'Repetidor (alt)',
+            '\\S': 'Skyline',
             '\\T': '📞 Teléfono (alt)',
             '\\U': '🚌 Bus (alt)',
             '\\V': '🚐 Van (alt)',
             '\\W': '🌊 Inundación',
-            '\\X': '⚠️ Peligroso',
+            '\\X': 'Peligroso',
             '\\Y': '⛵ Velero (alt)',
             '\\Z': '🏠 Shelter',
             '\\[': '📦 Caja humana',
             '\\\\': '🔺 DF Triángulo',
             '\\]': '📮 Correo (alt)',
-            '\\^': '✈️ Jet',
-            '\\_': '🌡️ WX Station',
-            '\\`': '📡 Antena'
+            '\\^': 'Jet',
+            '\\_': 'WX Station',
+            '\\`': 'Antena'
         };
         
         // Buscar símbolo exacto primero
@@ -441,12 +441,12 @@ class APRS extends EventEmitter {
             'k': '🚗 Auto', 
             'j': '🚙 Jeep',
             's': '⛵ Barco',
-            '^': '✈️ Avión',
+            '^': 'Avión',
             '[': '👤 Persona',
             'b': '🚲 Bici',
             'f': '🚒 Bomberos',
             'a': '🚑 Ambulancia',
-            'r': '📻 Radio'
+            'r': 'Radio'
         };
         
         if (charMap[secondChar]) {
@@ -514,7 +514,7 @@ class APRS extends EventEmitter {
             
             // Parser Mic-E - activar para cualquier info que empiece con ` (backtick)
             if (info && info[0] === '`') {
-                this.logger.info('🎯 Detectado posible MIC-E, iniciando parser específico...');
+                this.logger.info('Detectado posible MIC-E, iniciando parser específico...');
                 const micEResult = await this.parseMicE(info);
                 if (micEResult) {
                     this.logger.info(`📍 Coordenadas MIC-E parseadas: ${micEResult.lat.toFixed(6)}, ${micEResult.lon.toFixed(6)}`);
@@ -537,7 +537,7 @@ class APRS extends EventEmitter {
         try {
             // MIC-E siempre requiere leer desde logs de Direwolf
             // porque los datos están en formato binario comprimido
-            this.logger.info('🔍 Detectado MIC-E, leyendo coordenadas desde logs de Direwolf...');
+            this.logger.info('Detectado MIC-E, leyendo coordenadas desde logs de Direwolf...');
             return await this.parseFromDirewolfLogs();
             
         } catch (error) {
@@ -656,7 +656,7 @@ class APRS extends EventEmitter {
             }
             
             if (infoStart === -1) {
-                this.logger.info('⚡ Info field no encontrado - usando datos de Direwolf directamente');
+                this.logger.info('Info field no encontrado - usando datos de Direwolf directamente');
                 
                 // Fallback: usar directamente los logs de Direwolf que ya tienen las coordenadas
                 const coordinates = await this.parseFromDirewolfLogs();
@@ -696,7 +696,7 @@ class APRS extends EventEmitter {
                 symbolCode = symbolMatch[0];
             }
             
-            this.logger.info('📊 Callsign:', callsign, 'Comentario limpio:', cleanedComment, 'Símbolo:', symbolCode);
+            this.logger.info('Callsign:', callsign, 'Comentario limpio:', cleanedComment, 'Símbolo:', symbolCode);
             
             // Crear estructura APRS exitosa
             return {
@@ -767,7 +767,7 @@ class APRS extends EventEmitter {
      */
     async handleReceivedFrame(frame) {
         try {
-            this.logger.info('🔍 Procesando frame APRS...');
+            this.logger.info('Procesando frame APRS...');
             
             // Parser AX.25 básico
             const parsed = await this.parseBasicAX25(frame);
@@ -855,7 +855,7 @@ class APRS extends EventEmitter {
                 } else if (isNewLocation) {
                     this.logger.info(`📍 Nueva ubicación APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} - ${position.distance}km (ubicación #${existingPositions.length})`);
                 } else {
-                    this.logger.info(`🔄 Actualización APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} - ${position.distance}km`);
+                    this.logger.info(`Actualización APRS: ${position.callsign} @ ${position.lat.toFixed(4)}, ${position.lon.toFixed(4)} - ${position.distance}km`);
                 }
                 
                 // Guardar a archivo
@@ -903,7 +903,7 @@ class APRS extends EventEmitter {
             
             // Actualizar estadísticas basadas en todas las posiciones cargadas
             this.updateStatsFromLoadedPositions();
-            this.logger.info(`📚 Historial APRS cargado desde ${processedFiles} archivos de log`);
+            this.logger.info(`Historial APRS cargado desde ${processedFiles} archivos de log`);
             
         } catch (error) {
             this.logger.error('Error cargando historial de Direwolf:', error.message);
@@ -972,7 +972,7 @@ class APRS extends EventEmitter {
             
             if (newFilesProcessed > 0 || positionsAdded > 0) {
                 this.updateStatsFromLoadedPositions();
-                this.logger.info(`🔄 Revisión de logs: ${newFilesProcessed} archivos nuevos, ${positionsAdded} posiciones agregadas`);
+                this.logger.info(`Revisión de logs: ${newFilesProcessed} archivos nuevos, ${positionsAdded} posiciones agregadas`);
             }
             
         } catch (error) {
@@ -1117,7 +1117,7 @@ class APRS extends EventEmitter {
             this.stats.lastPosition = latestPosition;
         }
         
-        this.logger.info(`📊 Total de packets APRS recibidos: ${totalPacketsReceived}`);
+        this.logger.info(`Total de packets APRS recibidos: ${totalPacketsReceived}`);
     }
 
     /**

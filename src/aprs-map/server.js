@@ -10,11 +10,29 @@ class APRSMapServer {
         this.server = null;
         this.port = process.env.APRS_MAP_PORT || 3000;
         this.isRunning = false;
+        
+        // Rate limiting básico: máximo 100 requests por IP por minuto
+        this.rateLimiter = new Map();
+        this.rateLimitWindow = 60000; // 1 minuto
+        this.rateLimitMax = 100;
+        
+        // Limpiar rate limiter cada 5 minutos
+        setInterval(() => {
+            this.rateLimiter.clear();
+        }, 5 * 60000);
     }
 
     start() {
         return new Promise((resolve) => {
             this.server = http.createServer((req, res) => {
+                // Verificar rate limiting antes de procesar
+                if (!this.checkRateLimit(req, res)) {
+                    return;
+                }
+                
+                // Agregar headers de seguridad
+                this.setSecurityHeaders(res);
+                
                 this.handleRequest(req, res);
             });
 
@@ -48,6 +66,10 @@ class APRSMapServer {
             const ext = path.extname(filePath);
             const contentType = this.getContentType(ext);
             this.serveFile(res, filePath, contentType);
+        } else if (url === '/favicon.ico') {
+            // Simple favicon response to avoid 404s
+            res.writeHead(204);
+            res.end();
         } else {
             this.serve404(res);
         }
@@ -176,6 +198,64 @@ class APRSMapServer {
             port: this.port,
             url: `http://localhost:${this.port}`
         };
+    }
+    
+    // Verificar rate limiting por IP
+    checkRateLimit(req, res) {
+        const clientIP = req.connection.remoteAddress || 
+                        req.socket.remoteAddress || 
+                        (req.connection.socket ? req.connection.socket.remoteAddress : '');
+        
+        const now = Date.now();
+        const clientKey = clientIP;
+        
+        if (!this.rateLimiter.has(clientKey)) {
+            this.rateLimiter.set(clientKey, { count: 1, resetTime: now + this.rateLimitWindow });
+            return true;
+        }
+        
+        const clientData = this.rateLimiter.get(clientKey);
+        
+        // Reset si ha pasado la ventana de tiempo
+        if (now > clientData.resetTime) {
+            this.rateLimiter.set(clientKey, { count: 1, resetTime: now + this.rateLimitWindow });
+            return true;
+        }
+        
+        // Verificar si excede el límite
+        if (clientData.count >= this.rateLimitMax) {
+            this.logger.warn(`Rate limit exceeded for IP: ${clientIP}`);
+            res.writeHead(429, { 
+                'Content-Type': 'application/json',
+                'Retry-After': Math.ceil((clientData.resetTime - now) / 1000)
+            });
+            res.end(JSON.stringify({ 
+                error: 'Too Many Requests',
+                message: 'Rate limit exceeded. Try again later.'
+            }));
+            return false;
+        }
+        
+        // Incrementar contador
+        clientData.count++;
+        return true;
+    }
+    
+    // Agregar headers de seguridad básicos
+    setSecurityHeaders(res) {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('X-XSS-Protection', '1; mode=block');
+        res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+        res.setHeader('Content-Security-Policy', 
+            "default-src 'self'; " +
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; " +
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; " +
+            "style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; " +
+            "font-src 'self' https://cdn.jsdelivr.net data:; " +
+            "img-src 'self' data: https: http:; " +
+            "connect-src 'self';"
+        );
     }
 }
 
