@@ -15,10 +15,12 @@ class Baliza extends EventEmitter {
             enabled: true,
             interval: 60, // minutos (1 hora)
             tone: {
-                frequency: 1000, // Hz
-                duration: 500,   // ms
+                frequency: 1000, // Hz estándar para señales horarias (BBC pips)
+                shortDuration: 100,   // ms - duración tonos cortos
+                longDuration: 500,    // ms - duración tono largo final
                 volume: 0.7
             },
+            pattern: 'bbc-pips', // Patrón: 5 tonos cortos + 1 tono largo
             message: process.env.BALIZA_MESSAGE || "",
             autoStart: true,
             waitForFreeChannel: true
@@ -56,12 +58,18 @@ class Baliza extends EventEmitter {
             this.config.tone.frequency = 1000;
         }
 
-        if (this.config.tone.duration < 100 || this.config.tone.duration > 2000) {
-            this.logger.warn(`Duración de tono fuera de rango: ${this.config.tone.duration}ms, usando 500ms`);
-            this.config.tone.duration = 500;
+        // Validar duraciones de tonos para BBC pips
+        if (this.config.tone.shortDuration < 50 || this.config.tone.shortDuration > 200) {
+            this.logger.warn(`Duración tono corto fuera de rango: ${this.config.tone.shortDuration}ms, usando 100ms`);
+            this.config.tone.shortDuration = 100;
         }
 
-        // Baliza configurada para SOLO TONO - sin mensaje de voz
+        if (this.config.tone.longDuration < 300 || this.config.tone.longDuration > 1000) {
+            this.logger.warn(`Duración tono largo fuera de rango: ${this.config.tone.longDuration}ms, usando 500ms`);
+            this.config.tone.longDuration = 500;
+        }
+
+        // Baliza configurada con patrón BBC PIPS (5 cortos + 1 largo) - sin mensaje de voz
 
         return true;
     }
@@ -81,7 +89,7 @@ class Baliza extends EventEmitter {
         // Validar nueva configuración
         this.validateConfiguration();
         
-        this.logger.info(`Baliza reconfigurada: ${this.config.interval} min, tono ${this.config.tone.frequency}Hz`);
+        this.logger.info(`Baliza reconfigurada: ${this.config.interval} min, patrón ${this.config.pattern}, ${this.config.tone.frequency}Hz`);
         
         // Reiniciar si está corriendo y hay cambios significativos
         if (this.isRunning && (
@@ -119,18 +127,28 @@ class Baliza extends EventEmitter {
         this.state = MODULE_STATES.ACTIVE;
         this.transmissionCount = 0;
         
-        // COORDINACIÓN INICIAL: Delay de 5 minutos al arranque para evitar colisión inmediata
-        // Esto permite que APRS se establezca primero (7.5min) antes de la baliza
-        const initialDelay = 5 * 60 * 1000; // 5 minutos
+        // SINCRONIZACIÓN CON HORA DE RELOJ
+        // Calcular tiempo hasta la próxima hora en punto
+        const now = moment();
+        const nextHour = moment().add(1, 'hour').startOf('hour');
+        const timeToNextHour = nextHour.diff(now);
         
+        this.logger.info(`Baliza iniciada - Sincronizando con horas de reloj`);
+        this.logger.info(`Próxima baliza: ${nextHour.format('HH:mm:ss')} (en ${Math.round(timeToNextHour/1000/60)} minutos)`);
+        
+        // Programar primera baliza en la próxima hora en punto
         setTimeout(() => {
             if (this.isRunning) {
+                this.transmit();
                 this.scheduleNext();
             }
-        }, initialDelay);
+        }, timeToNextHour);
         
-        this.logger.info(`Baliza iniciada - Cada ${this.config.interval} minutos (inicio en 5min para coordinación)`);
-        this.emit('started', { interval: this.config.interval });
+        this.emit('started', { 
+            interval: this.config.interval,
+            nextTransmission: nextHour.format('HH:mm:ss'),
+            syncMode: 'clock-hour'
+        });
         return true;
     }
 
@@ -159,27 +177,25 @@ class Baliza extends EventEmitter {
     }
 
     /**
-     * Programar próxima transmisión
+     * Programar próxima transmisión sincronizada con horas de reloj
      */
     scheduleNext() {
         if (!this.isRunning) return;
 
-        const intervalMs = this.config.interval * 60 * 1000; // minutos a ms
-        
-        // OFFSET DE COORDINACIÓN: 2.5 minutos para evitar colisiones con APRS
-        // APRS transmite en X:07:30, X:22:30, X:37:30, X:52:30
-        // Baliza transmitirá en X:02:30 (evita colisión total)
-        const coordinationOffset = 2.5 * 60 * 1000; // 2.5 minutos
+        // SINCRONIZACIÓN CON HORAS DE RELOJ
+        // Calcular tiempo hasta la próxima hora en punto
+        const now = moment();
+        const nextHour = moment().add(1, 'hour').startOf('hour');
+        const timeToNextHour = nextHour.diff(now);
         
         this.timer = setTimeout(() => {
             if (this.isRunning) { // Verificar que siga activa
                 this.transmit();
                 this.scheduleNext(); // Programar la siguiente
             }
-        }, intervalMs + coordinationOffset);
+        }, timeToNextHour);
 
-        const nextTime = moment().add(this.config.interval + 2.5, 'minutes').format('HH:mm:ss');
-        this.logger.debug(`Próxima baliza programada para: ${nextTime} (coord. +2.5min)`);
+        this.logger.debug(`Próxima baliza programada para: ${nextHour.format('HH:mm:ss')} (en ${Math.round(timeToNextHour/1000/60)} min)`);
     }
 
     /**
@@ -229,18 +245,33 @@ class Baliza extends EventEmitter {
     }
 
     /**
-     * Reproducir secuencia completa de baliza - SOLO TONO
+     * Reproducir secuencia completa de baliza - PATRÓN BBC PIPS (5 cortos + 1 largo)
      */
     async playBalizaSequence() {
         try {
-            const { frequency, duration, volume } = this.config.tone;
-
-            // Tono de identificación característico ÚNICAMENTE
-            this.logger.debug(`Reproduciendo tono de baliza: ${frequency}Hz por ${duration}ms`);
-            await this.audioManager.playTone(frequency, duration, volume);
+            const { volume } = this.config.tone;
+            const frequency = 1000; // 1kHz estándar para señales horarias
+            
+            this.logger.debug('Reproduciendo secuencia BBC pips (5 cortos + 1 largo)');
+            
+            // 5 tonos cortos (100ms cada uno) con pausa de 900ms entre ellos
+            for (let i = 0; i < 5; i++) {
+                await this.audioManager.playTone(frequency, 100, volume);
+                if (i < 4) { // No pausar después del último tono corto
+                    await delay(900); // 900ms de silencio entre tonos
+                }
+            }
+            
+            // Pausa antes del tono largo
+            await delay(900);
+            
+            // 1 tono largo final (500ms) que marca la hora exacta
+            await this.audioManager.playTone(frequency, 500, volume);
+            
+            this.logger.debug('Secuencia BBC pips completada exitosamente');
 
         } catch (error) {
-            this.logger.error('Error en secuencia de baliza:', error.message);
+            this.logger.error('Error en secuencia de baliza BBC pips:', error.message);
             throw error; // Re-lanzar para manejo en transmit()
         }
     }
@@ -275,9 +306,10 @@ class Baliza extends EventEmitter {
             transmissionCount: this.transmissionCount,
             lastTransmission: this.lastTransmission,
             nextTransmission: this.timer ? 
-                moment().add(this.config.interval, 'minutes').format('HH:mm:ss') : 
+                moment().add(1, 'hour').startOf('hour').format('HH:mm:ss') : 
                 'No programada',
-            type: 'tone-only',
+            type: 'bbc-pips-sequence',
+            pattern: this.config.pattern,
             tone: { ...this.config.tone }, // Copia del objeto
             config: {
                 autoStart: this.config.autoStart,

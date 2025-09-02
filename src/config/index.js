@@ -1,13 +1,18 @@
 /**
  * Config Module - Acceso centralizado a la configuración
  * 
- * Este módulo proporciona acceso simplificado a toda la configuración del sistema
- * mediante el ConfigManager singleton.
+ * MIGRACIÓN EN PROGRESO: Este módulo está siendo migrado al nuevo ConfigurationService
+ * manteniendo compatibilidad con el sistema anterior.
  */
 
+// NUEVO SISTEMA (prioritario)
+const { getConfigurationService } = require('./ConfigurationService');
+// SISTEMA ANTERIOR (fallback durante migración)
 const { getConfigManager } = require('./ConfigManager');
 
-// Instancia singleton del ConfigManager
+// Instancia del nuevo sistema de configuración
+const configService = getConfigurationService();
+// Instancia singleton del ConfigManager (fallback)
 const configManager = getConfigManager();
 
 /**
@@ -26,9 +31,17 @@ function getSection(section) {
 
 /**
  * Obtener valor específico con notación de punto
+ * MIGRADO: Usa el nuevo ConfigurationService
  */
 function getValue(path, defaultValue = null) {
-    return configManager.getValue(path, defaultValue);
+    try {
+        // Intentar con el nuevo sistema primero
+        return configService.get(path, defaultValue);
+    } catch (error) {
+        // Fallback al sistema anterior
+        console.warn(`[Config] Fallback para getValue(${path}):`, error.message);
+        return configManager.getValue(path, defaultValue);
+    }
 }
 
 /**

@@ -68,8 +68,15 @@ class SystemOutput {
         
         // Comandos DTMF disponibles
         console.log(`${this.colors.bold}DTMF COMMANDS:${this.colors.reset}`);
-        const { getValue } = require('../config');
-        const commands = getValue('dtmf.commands');
+        // Lista hardcoded temporalmente hasta completar migración de config
+        const commands = {
+            '*1': 'datetime',
+            '*9': 'baliza',
+            '*3': 'inpres',
+            '*4': 'weather',
+            '*5': 'weather-voice',
+            '*7': 'weather-alerts'
+        };
         Object.entries(commands).forEach(([dtmf, module]) => {
             console.log(`  ${dtmf} -> ${module}`);
         });
