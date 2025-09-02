@@ -1,10 +1,18 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Headless v2.8.0
+## 📡 Sistema de Control para Repetidora Headless v2.9.0
 
 Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. **Versión Headless** con interfaz APRS liviana, decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, monitoreo sísmico INPRES en tiempo real y **sistema TTS híbrido con Google TTS**.
 
-**🚀 Versión 2.8.0 - Sistema TTS Híbrido y Mejoras de Estabilidad**
+**🚀 Versión 2.9.0 - Sistema Configuración Híbrido y Baliza BBC Pips**
+
+### 📅 **Novedades v2.9.0** (Septiembre 2025)
+- **⚙️ Sistema Configuración Híbrido**: Nuevo ConfigurationService con herencia y compatibilidad total con sistema anterior
+- **🔊 Baliza BBC Pips**: Implementación de secuencia BBC estándar (5 tonos cortos + 1 largo) sincronizada con horas de reloj
+- **🕐 Sincronización Horaria**: Baliza transmite exactamente en horas de reloj para máxima precisión
+- **🔄 ConfigCompat**: Capa de compatibilidad que permite migración gradual sin interrupciones
+- **🎯 Config Híbrido**: Sistema que usa ConfigurationService como prioritario con fallback al ConfigManager anterior
+- **🧹 Limpieza Archivos**: Eliminación automática de archivos temporales de audio para mantener espacio limpio
 
 ### 📅 **Novedades v2.8.0** (Agosto 2025)
 - **🎙️ Sistema TTS Híbrido**: Google TTS como motor principal con fallback automático a espeak
@@ -96,7 +104,7 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **APIs REST** para integración externa
 
 ### 🔊 **Sistema de Módulos**
-- **Baliza Inteligente**: Transmisión automática/manual (`*9`)
+- **🔊 Baliza BBC Pips**: Secuencia estándar 5 tonos cortos + 1 largo sincronizada con horas de reloj (`*9`)
 - **DateTime**: Anuncio de fecha y hora (`*1`)
 - **Weather**: Información meteorológica (`*4` actual, `*5` voz)
 - **🌦️ Weather Alerts**: Sistema de alertas SMN Argentina (`*7` consultar, `*0` forzar verificación)
@@ -380,6 +388,54 @@ npm start  # Ver logs en consola
 ---
 
 ## 📋 Changelog
+
+### v2.9.0 - Sistema Configuración Híbrido y Baliza BBC Pips ⚙️🔊
+
+#### ⚙️ **Sistema de Configuración Híbrido Implementado**
+- [x] **ConfigurationService completo**
+  - [x] Nuevo sistema de configuración con soporte de herencia
+  - [x] Método get() con notación de punto y valores por defecto
+  - [x] Extensión automática de configuración padre con override de propiedades
+  - [x] Validación de esquemas y manejo de errores robusto
+- [x] **ConfigCompat capa de compatibilidad**
+  - [x] Interfaz de compatibilidad para migración gradual del sistema anterior
+  - [x] Mapeo automático entre ConfigManager y ConfigurationService
+  - [x] Permite mantener código existente sin cambios durante migración
+  - [x] Logging de migraciones para seguimiento del proceso
+- [x] **Integración híbrida en src/config/index.js**
+  - [x] Sistema híbrido que usa ConfigurationService como prioritario
+  - [x] Fallback automático al ConfigManager anterior en caso de error
+  - [x] Compatibilidad total con código existente
+  - [x] Documentación clara del proceso de migración
+
+#### 🔊 **Baliza BBC Pips Estándar Implementada**
+- [x] **Secuencia BBC estándar**
+  - [x] 5 tonos cortos de 100ms a 1000Hz
+  - [x] 1 tono largo final de 500ms marca hora exacta
+  - [x] Patrón temporal: corto-900ms-corto-900ms-corto-900ms-corto-900ms-corto-900ms-largo
+  - [x] Frecuencia 1kHz estándar para señales horarias internacionales
+- [x] **Sincronización horaria perfecta**
+  - [x] Transmisión exacta en horas de reloj (00:00, 01:00, 02:00, etc.)
+  - [x] Cálculo automático de tiempo hasta próxima hora
+  - [x] Eliminado delay inicial fijo, ahora se sincroniza inmediatamente
+  - [x] Logs informativos del próximo tiempo de transmisión
+- [x] **Configuración avanzada**
+  - [x] Duraciones separadas para tonos cortos y largos configurables
+  - [x] Validación automática de rangos de duración (50-200ms cortos, 300-1000ms largos)
+  - [x] Modo de sincronización 'clock-hour' documentado en eventos
+  - [x] Patrón 'bbc-pips' identificado en configuración
+
+#### 🧹 **Limpieza y Mantenimiento**
+- [x] **Eliminación archivos temporales**
+  - [x] Removidos 8 archivos temporales MP3 de sistema TTS
+  - [x] Limpieza automática de directorio temp/ implementada
+  - [x] Gestión de espacio en disco mejorada
+  - [x] Tracking de archivos temporales en git ignore
+- [x] **Compatibilidad durante migración**
+  - [x] SystemOutput.js con comandos DTMF hardcoded temporalmente
+  - [x] Prevención de errores durante migración gradual de configuración  
+  - [x] Fallbacks robustos en todas las transiciones críticas
+  - [x] Documentación clara de estado de migración en comentarios
 
 ### v2.8.0 - Sistema TTS Híbrido y Mejoras de Estabilidad 🎙️
 
