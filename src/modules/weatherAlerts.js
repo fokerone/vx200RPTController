@@ -635,7 +635,8 @@ class WeatherAlerts extends EventEmitter {
         const currentTime = new Date().toLocaleTimeString('es-AR', { 
             timeZone: 'America/Argentina/Mendoza',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            hour12: false // Formato 24h para mejor TTS
         });
         
         if (alerts.length === 1) {
@@ -680,48 +681,40 @@ class WeatherAlerts extends EventEmitter {
                 }
             }
             
-            // Agregar timestamp
-            message += ` Información emitida a las ${currentTime}.`;
+            // Agregar timestamp y fuente
+            message += ` Información emitida a las ${currentTime}, fuente Servicio Meteorológico Nacional.`;
             
             return message;
             
         } else {
             // Para múltiples alertas, dar detalles específicos de cada una
-            let message = `Atención. Nuevas alertas meteorológicas para Mendoza. `;
+            let message = 'Atención. Nuevas alertas meteorológicas para Mendoza. ';
             
-            // Si son pocas alertas (2-3), mencionar cada una con detalles
+            // Si son pocas alertas (2-3), mencionar cada una de forma concisa
             if (alerts.length <= 3) {
                 const alertDetails = [];
                 
-                alerts.forEach((alert, index) => {
+                alerts.forEach((alert) => {
                     const cleanTitle = this.cleanAlertText(alert.title);
                     const affectedArea = alert.polygons ? 
                         this.identifyMendozaAreas(alert.polygons) : 'Mendoza';
                     
-                    // Procesar horarios para cada alerta
-                    const timeInfo = this.buildTimeInfo(alert.onset, alert.expires);
-                    
+                    // Construir cada alerta de forma completa y clara
                     let alertDetail = `${cleanTitle} para ${affectedArea}`;
+                    
+                    // Agregar horarios de forma separada para mejor flujo
+                    const timeInfo = this.buildTimeInfo(alert.onset, alert.expires);
                     if (timeInfo) {
-                        alertDetail += `, ${timeInfo.toLowerCase()}`;
+                        alertDetail += `. ${timeInfo}`;
                     }
                     
                     alertDetails.push(alertDetail);
                 });
                 
+                // Unir con pauses adecuadas entre alertas completas
                 message += alertDetails.join('. ') + '.';
                 
-                // Agregar instrucción de medidas de seguridad si hay alertas de viento
-                const windAlerts = alerts.filter(alert => 
-                    alert.title && alert.title.toLowerCase().includes('viento')
-                );
-                
-                if (windAlerts.length > 0 && windAlerts[0].instructions) {
-                    const safetyTips = this.extractSafetyTips(windAlerts[0].instructions, windAlerts[0].title);
-                    if (safetyTips) {
-                        message += ` Medidas de seguridad recomendadas: ${safetyTips}.`;
-                    }
-                }
+                // Omitir medidas de seguridad para múltiples alertas (evitar timeout)
                 
             } else {
                 // Para muchas alertas (4+), usar resumen por categorías
@@ -756,15 +749,14 @@ class WeatherAlerts extends EventEmitter {
                 }
             }
             
-            message += ` Información emitida a las ${currentTime}. `;
-            message += `Para más detalles use comando *7.`;
+            message += ` Información emitida a las ${currentTime}, fuente Servicio Meteorológico Nacional.`;
             
             return message;
         }
     }
     
     /**
-     * Construir información de horarios de validez
+     * Construir información de horarios de validez optimizada para TTS
      */
     buildTimeInfo(onset, expires) {
         try {
@@ -773,32 +765,57 @@ class WeatherAlerts extends EventEmitter {
             
             if (onset) {
                 const onsetDate = new Date(onset);
+                // Formato 24h sin "horas"
                 const onsetTime = onsetDate.toLocaleTimeString('es-AR', {
                     timeZone: 'America/Argentina/Mendoza',
                     hour: '2-digit',
-                    minute: '2-digit'
+                    minute: '2-digit',
+                    hour12: false // Formato 24h
                 });
                 
                 if (onsetDate > now) {
                     const today = now.toDateString() === onsetDate.toDateString();
-                    timeInfo = today ? `Vigente desde las ${onsetTime}` : `Vigente desde mañana a las ${onsetTime}`;
+                    if (today) {
+                        timeInfo = `vigente desde las ${onsetTime}`;
+                    } else {
+                        // Usar día específico en lugar de "mañana"
+                        const dayName = onsetDate.toLocaleDateString('es-AR', {
+                            timeZone: 'America/Argentina/Mendoza',
+                            weekday: 'long'
+                        });
+                        const dayNumber = onsetDate.getDate();
+                        timeInfo = `vigente desde ${dayName} ${dayNumber}, a las ${onsetTime}`;
+                    }
                 } else {
-                    timeInfo = 'Ya vigente';
+                    timeInfo = 'ya vigente';
                 }
             }
             
             if (expires) {
                 const expiresDate = new Date(expires);
+                // Formato 24h sin "horas"
                 const expiresTime = expiresDate.toLocaleTimeString('es-AR', {
                     timeZone: 'America/Argentina/Mendoza',
                     hour: '2-digit',
-                    minute: '2-digit'
+                    minute: '2-digit',
+                    hour12: false // Formato 24h
                 });
                 
                 const today = now.toDateString() === expiresDate.toDateString();
-                const expiresText = today ? `hasta las ${expiresTime}` : `hasta mañana a las ${expiresTime}`;
+                let expiresText;
+                if (today) {
+                    expiresText = `hasta las ${expiresTime}`;
+                } else {
+                    // Usar día específico en lugar de "mañana"
+                    const dayName = expiresDate.toLocaleDateString('es-AR', {
+                        timeZone: 'America/Argentina/Mendoza',
+                        weekday: 'long'
+                    });
+                    const dayNumber = expiresDate.getDate();
+                    expiresText = `hasta ${dayName} ${dayNumber}, a las ${expiresTime}`;
+                }
                 
-                timeInfo = timeInfo ? `${timeInfo} ${expiresText}` : `Vigente ${expiresText}`;
+                timeInfo = timeInfo ? `${timeInfo}, ${expiresText}` : `vigente ${expiresText}`;
             }
             
             return timeInfo;
@@ -900,7 +917,7 @@ class WeatherAlerts extends EventEmitter {
     }
     
     /**
-     * Limpiar texto de alerta para TTS
+     * Limpiar texto de alerta para TTS optimizado para pronunciación
      */
     cleanAlertText(text) {
         if (!text) return '';
@@ -910,8 +927,15 @@ class WeatherAlerts extends EventEmitter {
             .replace(/[\r\n]+/g, '. ') // Saltos de línea a puntos
             .replace(/\.\.+/g, '.') // Múltiples puntos a uno
             .replace(/([.!?])\s*([a-z])/g, '$1 $2') // Espacio después de puntuación
+            // Mejorar pronunciación de números y unidades
+            .replace(/(\d+)\s*(km\/h|kmh)/g, '$1 kilómetros por hora')
+            .replace(/(\d+)\s*(mm)/g, '$1 milímetros')
+            .replace(/(\d+)\s*(°C|°)/g, '$1 grados')
+            // Mejorar pausas en frases largas
+            .replace(/,\s*([a-z])/g, ', $1') // Asegurar espacios después de comas
+            .replace(/\b(entre|desde|hasta)\s+(\d+)/g, '$1, $2') // Pausas antes de números
+            // Convertir siglas/nombres a forma más legible para TTS
             .replace(/\b(SMN|MENDOZA|ARGENTINA)\b/g, (match) => {
-                // Convertir siglas/nombres a forma más legible para TTS
                 switch(match) {
                     case 'SMN': return 'Servicio Meteorológico Nacional';
                     case 'MENDOZA': return 'Mendoza';
@@ -919,6 +943,9 @@ class WeatherAlerts extends EventEmitter {
                     default: return match;
                 }
             })
+            // Asegurar que 'Zonda' se pronuncie claramente
+            .replace(/\bZonda\b/gi, 'Zonda')
+            .replace(/\bviento zonda\b/gi, 'viento Zonda')
             .trim();
     }
     
@@ -1024,82 +1051,41 @@ class WeatherAlerts extends EventEmitter {
      * Identificar área específica desde coordenadas
      */
     identifyAreaFromCoordinates(centerLat, centerLon, coords) {
-        // Áreas geográficas aproximadas de Mendoza
-        const mendozaAreas = {
-            // Zona metropolitana (Gran Mendoza)
-            'Gran Mendoza': {
-                lat: [-32.7, -33.0],
-                lon: [-68.7, -69.0],
-                priority: 3
-            },
-            // Norte de Mendoza
-            'Norte de Mendoza': {
-                lat: [-32.0, -32.7],
-                lon: [-68.0, -69.5],
-                priority: 2
-            },
-            // Valle de Uco
-            'Valle de Uco': {
-                lat: [-33.0, -34.0],
-                lon: [-68.8, -69.5],
-                priority: 3
-            },
-            // San Rafael y alrededores
-            'San Rafael': {
-                lat: [-34.0, -35.0],
-                lon: [-68.0, -69.0],
-                priority: 2
-            },
-            // Sur de Mendoza
-            'Sur de Mendoza': {
-                lat: [-35.0, -37.0],
-                lon: [-68.0, -70.0],
-                priority: 1
-            },
-            // Alta montaña y precordillera
-            'Alta Montaña': {
-                lat: [-32.0, -35.0],
-                lon: [-69.5, -70.5],
-                priority: 2
-            },
-            // Este de Mendoza
-            'Este de Mendoza': {
-                lat: [-32.5, -36.0],
-                lon: [-67.0, -68.5],
-                priority: 1
-            }
-        };
+        // Simplificar identificación de áreas de Mendoza
+        this.logger.debug(`Identificando área para coordenadas: ${centerLat}, ${centerLon}`);
         
-        let bestMatch = null;
-        let bestScore = 0;
-        
-        for (const [areaName, bounds] of Object.entries(mendozaAreas)) {
-            // Verificar si el centro está dentro de los límites
-            const inLat = centerLat >= bounds.lat[0] && centerLat <= bounds.lat[1];
-            const inLon = centerLon >= bounds.lon[0] && centerLon <= bounds.lon[1];
-            
-            if (inLat && inLon) {
-                // Calcular qué porcentaje de puntos del polígono caen en esta área
-                let pointsInArea = 0;
-                for (const coord of coords) {
-                    const coordInLat = coord.lat >= bounds.lat[0] && coord.lat <= bounds.lat[1];
-                    const coordInLon = coord.lon >= bounds.lon[0] && coord.lon <= bounds.lon[1];
-                    if (coordInLat && coordInLon) {
-                        pointsInArea++;
-                    }
-                }
-                
-                const coverage = pointsInArea / coords.length;
-                const score = coverage * bounds.priority;
-                
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestMatch = areaName;
-                }
-            }
+        // Área metropolitana (Gran Mendoza) - zona más poblada
+        if (centerLat >= -33.0 && centerLat <= -32.7 && centerLon >= -69.0 && centerLon <= -68.7) {
+            return 'Gran Mendoza';
         }
         
-        return bestMatch || null;
+        // Norte de Mendoza 
+        if (centerLat >= -32.7 && centerLat <= -32.0) {
+            return 'Norte de Mendoza';
+        }
+        
+        // Valle de Uco - sur del área metropolitana
+        if (centerLat >= -34.0 && centerLat <= -33.0 && centerLon >= -69.5 && centerLon <= -68.8) {
+            return 'Valle de Uco';
+        }
+        
+        // San Rafael - más al sur
+        if (centerLat >= -35.0 && centerLat <= -34.0) {
+            return 'San Rafael';
+        }
+        
+        // Alta Montaña - oeste
+        if (centerLon <= -69.5) {
+            return 'Alta Montaña';
+        }
+        
+        // Este de Mendoza
+        if (centerLon >= -68.0) {
+            return 'Este de Mendoza';
+        }
+        
+        // Por defecto, devolver centro de Mendoza si no coincide con ninguna área específica
+        return 'Gran Mendoza';
     }
     
     /**
