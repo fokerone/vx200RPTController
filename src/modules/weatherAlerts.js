@@ -325,10 +325,15 @@ class WeatherAlerts extends EventEmitter {
                 if (alert.link && alert.link.includes('.xml')) {
                     const capData = await this.fetchCAPDetails(alert.link);
                     if (capData && this.isAlertForMendoza(capData)) {
+                        // Incorporar todos los datos CAP a la alerta
                         alert.severity = capData.severity;
                         alert.expires = capData.expires;
+                        alert.onset = capData.onset;
                         alert.polygons = capData.polygons;
+                        alert.areaDescriptions = capData.areaDescriptions;
                         alert.instructions = capData.instructions;
+                        alert.event = capData.event;
+                        alert.headline = capData.headline;
                         mendozaAlerts.push(alert);
                     }
                 } else {
@@ -381,23 +386,33 @@ class WeatherAlerts extends EventEmitter {
             if (capData.alert && capData.alert.info) {
                 const info = Array.isArray(capData.alert.info) ? capData.alert.info[0] : capData.alert.info;
                 
-                // Extraer todos los polígonos de todas las áreas con validación
+                // Extraer todos los polígonos y áreas con validación
                 let polygons = [];
+                let areaDescriptions = [];
                 if (info.area) {
                     const areas = Array.isArray(info.area) ? info.area : [info.area];
-                    polygons = areas
-                        .map(area => area.polygon)
-                        .filter(polygon => polygon && typeof polygon === 'string' && polygon.trim().length > 0);
+                    areas.forEach(area => {
+                        if (area.polygon && typeof area.polygon === 'string' && area.polygon.trim().length > 0) {
+                            polygons.push(area.polygon);
+                        }
+                        if (area.areaDesc && area.areaDesc.trim().length > 0) {
+                            areaDescriptions.push(area.areaDesc.trim());
+                        }
+                    });
                 }
                 
                 const capDetails = {
                     severity: info.severity || 'Unknown',
                     expires: info.expires || null,
+                    onset: info.onset || null,
                     polygons: polygons,
-                    instructions: info.instruction || null
+                    areaDescriptions: areaDescriptions,
+                    instructions: info.instruction || null,
+                    event: info.event || null,
+                    headline: info.headline || null
                 };
                 
-                this.logger.debug(`Detalles CAP obtenidos: ${polygons.length} polígonos, severidad: ${capDetails.severity}`);
+                this.logger.debug(`Detalles CAP obtenidos: ${polygons.length} polígonos, ${areaDescriptions.length} descripciones de área, severidad: ${capDetails.severity}`);
                 return capDetails;
             } else {
                 this.logger.debug('Estructura CAP inválida - no contiene info');
@@ -614,7 +629,7 @@ class WeatherAlerts extends EventEmitter {
     }
     
     /**
-     * Construir mensaje de alerta para TTS
+     * Construir mensaje de alerta para TTS mejorado con área, horarios e instrucciones
      */
     buildAlertMessage(alerts) {
         const currentTime = new Date().toLocaleTimeString('es-AR', { 
@@ -630,35 +645,63 @@ class WeatherAlerts extends EventEmitter {
             const cleanTitle = this.cleanAlertText(alert.title);
             const cleanDescription = this.cleanAlertText(alert.description);
             
-            // Extraer nivel de severidad si está disponible
+            // Extraer nivel de severidad
             const severity = alert.severity ? this.translateSeverity(alert.severity) : '';
             const severityText = severity ? ` Nivel: ${severity}.` : '';
             
-            // Construir mensaje estructurado
-            let message = `Atención. Nueva alerta meteorológica para Mendoza.${severityText} ${cleanTitle}.`;
+            // Identificar área afectada desde polígonos
+            const affectedArea = alert.polygons ? 
+                this.identifyMendozaAreas(alert.polygons) : 'Mendoza';
             
-            // Agregar descripción si es diferente del título y no es muy larga
-            if (cleanDescription && 
-                cleanDescription.toLowerCase() !== cleanTitle.toLowerCase() && 
-                cleanDescription.length < 300) {
-                message += ` ${cleanDescription}.`;
+            // Procesar horarios de validez
+            const timeInfo = this.buildTimeInfo(alert.onset, alert.expires);
+            
+            // Construir mensaje estructurado
+            let message = `Atención. Nueva alerta meteorológica.${severityText} ${cleanTitle} para ${affectedArea}.`;
+            
+            // Agregar horarios de validez
+            if (timeInfo) {
+                message += ` ${timeInfo}.`;
+            }
+            
+            // Agregar descripción mejorada (sin repetir el área)
+            if (cleanDescription) {
+                const improvedDescription = this.improveDescription(cleanDescription, cleanTitle);
+                if (improvedDescription && improvedDescription.length < 300) {
+                    message += ` ${improvedDescription}.`;
+                }
+            }
+            
+            // Agregar instrucciones de seguridad resumidas
+            if (alert.instructions) {
+                const safetyTips = this.extractSafetyTips(alert.instructions, cleanTitle);
+                if (safetyTips) {
+                    message += ` Medidas de seguridad: ${safetyTips}.`;
+                }
             }
             
             // Agregar timestamp
-            message += ` Hora de emisión: ${currentTime}.`;
+            message += ` Información emitida a las ${currentTime}.`;
             
             return message;
             
         } else {
-            // Para múltiples alertas, dar resumen conciso
-            let message = `Atención. Múltiples alertas meteorológicas para Mendoza. Total: ${alerts.length} alertas activas. `;
+            // Para múltiples alertas, dar resumen conciso con áreas
+            let message = `Atención. Múltiples alertas meteorológicas activas. Total: ${alerts.length} alertas. `;
             
-            // Categorizar alertas por tipo
+            // Categorizar alertas por tipo y área
             const alertTypes = new Map();
+            const affectedAreas = new Set();
+            
             alerts.forEach(alert => {
                 const cleanTitle = this.cleanAlertText(alert.title);
                 const type = this.categorizeAlert(cleanTitle);
                 alertTypes.set(type, (alertTypes.get(type) || 0) + 1);
+                
+                if (alert.polygons) {
+                    const area = this.identifyMendozaAreas(alert.polygons);
+                    affectedAreas.add(area);
+                }
             });
             
             // Enumerar tipos
@@ -667,11 +710,155 @@ class WeatherAlerts extends EventEmitter {
                 .join(', ');
             
             message += `Tipos: ${typesList}. `;
-            message += `Hora de emisión: ${currentTime}. `;
+            
+            // Enumerar áreas afectadas
+            if (affectedAreas.size > 0) {
+                const areasList = Array.from(affectedAreas).slice(0, 3).join(', ');
+                const moreAreas = affectedAreas.size > 3 ? ' y otras zonas' : '';
+                message += `Áreas: ${areasList}${moreAreas}. `;
+            }
+            
+            message += `Información de las ${currentTime}. `;
             message += `Use comando *7 para consultar detalles de cada alerta.`;
             
             return message;
         }
+    }
+    
+    /**
+     * Construir información de horarios de validez
+     */
+    buildTimeInfo(onset, expires) {
+        try {
+            let timeInfo = '';
+            const now = new Date();
+            
+            if (onset) {
+                const onsetDate = new Date(onset);
+                const onsetTime = onsetDate.toLocaleTimeString('es-AR', {
+                    timeZone: 'America/Argentina/Mendoza',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                if (onsetDate > now) {
+                    const today = now.toDateString() === onsetDate.toDateString();
+                    timeInfo = today ? `Vigente desde las ${onsetTime}` : `Vigente desde mañana a las ${onsetTime}`;
+                } else {
+                    timeInfo = 'Ya vigente';
+                }
+            }
+            
+            if (expires) {
+                const expiresDate = new Date(expires);
+                const expiresTime = expiresDate.toLocaleTimeString('es-AR', {
+                    timeZone: 'America/Argentina/Mendoza',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                const today = now.toDateString() === expiresDate.toDateString();
+                const expiresText = today ? `hasta las ${expiresTime}` : `hasta mañana a las ${expiresTime}`;
+                
+                timeInfo = timeInfo ? `${timeInfo} ${expiresText}` : `Vigente ${expiresText}`;
+            }
+            
+            return timeInfo;
+            
+        } catch (error) {
+            this.logger.debug('Error construyendo información de horarios:', error.message);
+            return null;
+        }
+    }
+    
+    /**
+     * Mejorar descripción eliminando redundancias
+     */
+    improveDescription(description, title) {
+        if (!description) return '';
+        
+        let improved = description;
+        
+        // Remover frases redundantes comunes
+        improved = improved.replace(/^El área (será|podrá ser) afectada? por /i, '');
+        improved = improved.replace(/^Se esperan? /i, '');
+        improved = improved.replace(/^La zona (será|podrá ser) afectada? por /i, '');
+        
+        // Si comienza igual que el título, remover esa parte
+        const titleWords = title.toLowerCase().split(' ');
+        const descWords = improved.toLowerCase().split(' ');
+        
+        if (descWords[0] === titleWords[0] && titleWords.length > 1) {
+            const wordsToRemove = titleWords.filter(word => 
+                descWords.slice(0, 3).includes(word) && word.length > 3
+            ).length;
+            
+            if (wordsToRemove >= 1) {
+                improved = improved.split(' ').slice(wordsToRemove).join(' ');
+            }
+        }
+        
+        // Capitalizar primera letra
+        improved = improved.charAt(0).toUpperCase() + improved.slice(1);
+        
+        return improved.trim();
+    }
+    
+    /**
+     * Extraer tips de seguridad más importantes (resumidos para TTS)
+     */
+    extractSafetyTips(instructions, alertType) {
+        if (!instructions || typeof instructions !== 'string') return null;
+        
+        const tips = [];
+        const lines = instructions.split('\n').map(line => line.trim()).filter(Boolean);
+        
+        // Extraer tips más relevantes según tipo de alerta
+        const isWindAlert = alertType.toLowerCase().includes('viento') || 
+                           alertType.toLowerCase().includes('zonda');
+        const isRainAlert = alertType.toLowerCase().includes('lluvia');
+        
+        for (const line of lines.slice(0, 5)) { // Máximo 5 líneas
+            const cleanLine = line.replace(/^\d+[-.)\s]*/, '').trim();
+            
+            if (cleanLine.length < 10) continue;
+            
+            // Priorizar tips según tipo de alerta
+            if (isWindAlert) {
+                if (cleanLine.includes('asegur') || cleanLine.includes('elementos') ||
+                    cleanLine.includes('árboles') || cleanLine.includes('vehículo')) {
+                    tips.push(this.simplifySafetyTip(cleanLine));
+                }
+            } else if (isRainAlert) {
+                if (cleanLine.includes('no manejes') || cleanLine.includes('no circules') ||
+                    cleanLine.includes('evitá') || cleanLine.includes('refugiáte')) {
+                    tips.push(this.simplifySafetyTip(cleanLine));
+                }
+            } else {
+                // Tips generales
+                if (cleanLine.includes('emergencia') || cleanLine.includes('segur') ||
+                    cleanLine.includes('evitá') || cleanLine.includes('mantenete')) {
+                    tips.push(this.simplifySafetyTip(cleanLine));
+                }
+            }
+            
+            if (tips.length >= 2) break; // Máximo 2 tips para TTS
+        }
+        
+        return tips.length > 0 ? tips.join(', ') : null;
+    }
+    
+    /**
+     * Simplificar tip de seguridad para TTS
+     */
+    simplifySafetyTip(tip) {
+        return tip
+            .replace(/Asegurá/g, 'Asegurar')
+            .replace(/Mantenete/g, 'Mantenerse')
+            .replace(/No estaciones/g, 'No estacionar')
+            .replace(/comunicate/g, 'comunicarse')
+            .substring(0, 80) // Limitar longitud
+            .trim();
     }
     
     /**
@@ -720,7 +907,7 @@ class WeatherAlerts extends EventEmitter {
         if (titleLower.includes('lluvia') || titleLower.includes('precipitación')) {
             return 'lluvia';
         }
-        if (titleLower.includes('viento') || titleLower.includes('ráfaga')) {
+        if (titleLower.includes('viento') || titleLower.includes('ráfaga') || titleLower.includes('zonda')) {
             return 'viento';
         }
         if (titleLower.includes('tormenta') || titleLower.includes('eléctrica')) {
@@ -740,6 +927,141 @@ class WeatherAlerts extends EventEmitter {
         }
         
         return 'meteorológica general';
+    }
+    
+    /**
+     * Identificar áreas geográficas de Mendoza desde polígonos
+     */
+    identifyMendozaAreas(polygons) {
+        if (!polygons || polygons.length === 0) {
+            return 'provincia de Mendoza';
+        }
+        
+        const areas = new Set();
+        
+        for (const polygon of polygons) {
+            try {
+                // Parsear coordenadas del polígono
+                const coords = polygon.split(' ').map(coord => {
+                    const [lat, lon] = coord.split(',').map(parseFloat);
+                    return { lat, lon };
+                }).filter(coord => !isNaN(coord.lat) && !isNaN(coord.lon));
+                
+                if (coords.length === 0) continue;
+                
+                // Calcular centro del polígono
+                const centerLat = coords.reduce((sum, c) => sum + c.lat, 0) / coords.length;
+                const centerLon = coords.reduce((sum, c) => sum + c.lon, 0) / coords.length;
+                
+                // Identificar área basada en coordenadas
+                const area = this.identifyAreaFromCoordinates(centerLat, centerLon, coords);
+                if (area) {
+                    areas.add(area);
+                }
+                
+            } catch (error) {
+                this.logger.debug('Error procesando polígono para identificar área:', error.message);
+            }
+        }
+        
+        if (areas.size === 0) {
+            return 'zonas de Mendoza';
+        }
+        
+        const areaList = Array.from(areas).sort();
+        
+        if (areaList.length === 1) {
+            return areaList[0];
+        } else if (areaList.length === 2) {
+            return `${areaList[0]} y ${areaList[1]}`;
+        } else if (areaList.length <= 4) {
+            const lastArea = areaList.pop();
+            return `${areaList.join(', ')} y ${lastArea}`;
+        } else {
+            return 'múltiples zonas de Mendoza';
+        }
+    }
+    
+    /**
+     * Identificar área específica desde coordenadas
+     */
+    identifyAreaFromCoordinates(centerLat, centerLon, coords) {
+        // Áreas geográficas aproximadas de Mendoza
+        const mendozaAreas = {
+            // Zona metropolitana (Gran Mendoza)
+            'Gran Mendoza': {
+                lat: [-32.7, -33.0],
+                lon: [-68.7, -69.0],
+                priority: 3
+            },
+            // Norte de Mendoza
+            'Norte de Mendoza': {
+                lat: [-32.0, -32.7],
+                lon: [-68.0, -69.5],
+                priority: 2
+            },
+            // Valle de Uco
+            'Valle de Uco': {
+                lat: [-33.0, -34.0],
+                lon: [-68.8, -69.5],
+                priority: 3
+            },
+            // San Rafael y alrededores
+            'San Rafael': {
+                lat: [-34.0, -35.0],
+                lon: [-68.0, -69.0],
+                priority: 2
+            },
+            // Sur de Mendoza
+            'Sur de Mendoza': {
+                lat: [-35.0, -37.0],
+                lon: [-68.0, -70.0],
+                priority: 1
+            },
+            // Alta montaña y precordillera
+            'Alta Montaña': {
+                lat: [-32.0, -35.0],
+                lon: [-69.5, -70.5],
+                priority: 2
+            },
+            // Este de Mendoza
+            'Este de Mendoza': {
+                lat: [-32.5, -36.0],
+                lon: [-67.0, -68.5],
+                priority: 1
+            }
+        };
+        
+        let bestMatch = null;
+        let bestScore = 0;
+        
+        for (const [areaName, bounds] of Object.entries(mendozaAreas)) {
+            // Verificar si el centro está dentro de los límites
+            const inLat = centerLat >= bounds.lat[0] && centerLat <= bounds.lat[1];
+            const inLon = centerLon >= bounds.lon[0] && centerLon <= bounds.lon[1];
+            
+            if (inLat && inLon) {
+                // Calcular qué porcentaje de puntos del polígono caen en esta área
+                let pointsInArea = 0;
+                for (const coord of coords) {
+                    const coordInLat = coord.lat >= bounds.lat[0] && coord.lat <= bounds.lat[1];
+                    const coordInLon = coord.lon >= bounds.lon[0] && coord.lon <= bounds.lon[1];
+                    if (coordInLat && coordInLon) {
+                        pointsInArea++;
+                    }
+                }
+                
+                const coverage = pointsInArea / coords.length;
+                const score = coverage * bounds.priority;
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMatch = areaName;
+                }
+            }
+        }
+        
+        return bestMatch || null;
     }
     
     /**
