@@ -64,8 +64,9 @@ class InpresSismic extends EventEmitter {
             useGoogleTTS: true,
             fallbackTTS: 'espeak',
             
-            // Cache
-            cacheDuration: 10 * 60 * 1000, // 10 minutos
+            // Cache optimizado
+            cacheDuration: 15 * 60 * 1000, // 15 minutos
+            cacheMaxAge: 60 * 60 * 1000, // 1 hora máximo para cache expirado
             
             // User Agent para web scraping
             userAgent: 'Mozilla/5.0 (compatible; VX200Controller/2.5.0; +radioaficionado)'
@@ -111,7 +112,7 @@ class InpresSismic extends EventEmitter {
     }
     
     /**
-     * Iniciar monitoreo automático de sismos
+     * Iniciar monitoreo automático de sismos con manejo de errores mejorado
      */
     async start() {
         if (this.state === MODULE_STATES.ACTIVE) {
@@ -120,26 +121,44 @@ class InpresSismic extends EventEmitter {
         }
         
         try {
+            this.logger.info('🚀 Iniciando módulo INPRES...');
             this.state = MODULE_STATES.ACTIVE;
             
-            // Verificación inicial
-            this.logger.info('Verificando sismos INPRES...');
-            await this.checkSeisms();
+            // Verificación inicial con manejo graceful de errores
+            this.logger.info('🔍 Verificación inicial de sismos INPRES...');
+            try {
+                await this.checkSeisms();
+                this.logger.info('✅ Verificación inicial exitosa');
+            } catch (error) {
+                this.logger.warn('⚠️ Verificación inicial falló, continuando con monitoreo:', error.message);
+                // No fallar el inicio por un error inicial, el timer se encargará de reintentar
+            }
             
             // Configurar monitoreo automático cada 20 minutos
-            this.checkTimer = setInterval(() => {
-                this.checkSeisms().catch(error => {
-                    this.logger.error('Error en verificación automática:', error.message);
-                });
+            this.checkTimer = setInterval(async () => {
+                try {
+                    await this.checkSeisms();
+                } catch (error) {
+                    this.logger.error('❌ Error en verificación automática:', error.message);
+                    // El estado ya se maneja dentro de checkSeisms()
+                }
             }, this.config.checkInterval);
             
-            this.logger.info(`Monitoreo INPRES iniciado - cada ${this.config.checkInterval / 60000} minutos`);
-            this.emit('started', { checkInterval: this.config.checkInterval });
+            const intervalMinutes = Math.round(this.config.checkInterval / 60000);
+            this.logger.info(`✅ Monitoreo INPRES iniciado - verificando cada ${intervalMinutes} minutos`);
+            this.logger.info(`🎯 Filtros: Magnitud >${this.config.magnitudeThreshold}, Estados: ${this.config.announceStates.join(', ')}`);
+            
+            this.emit('started', { 
+                checkInterval: this.config.checkInterval,
+                magnitudeThreshold: this.config.magnitudeThreshold,
+                announceStates: this.config.announceStates
+            });
             
         } catch (error) {
             this.state = MODULE_STATES.ERROR;
-            this.logger.error('Error iniciando módulo INPRES:', error.message);
+            this.logger.error('🔥 Error crítico iniciando módulo INPRES:', error.message);
             this.emit('error', error);
+            throw error; // Re-lanzar para que el controlador principal lo maneje
         }
     }
     
@@ -162,108 +181,315 @@ class InpresSismic extends EventEmitter {
     }
     
     /**
-     * Verificar sismos desde INPRES
+     * Verificar sismos desde INPRES con manejo de errores mejorado
      */
     async checkSeisms() {
-        try {
-            this.logger.debug('Verificando sismos desde INPRES...');
-            
-            // Verificar cache
-            const now = Date.now();
-            if (this.cache.data && (now - this.cache.timestamp) < this.config.cacheDuration) {
-                this.logger.debug('Usando datos desde cache');
-                return this.cache.data;
+        const maxRetries = 3;
+        const retryDelay = 2000; // 2 segundos
+        let lastError = null;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                this.logger.debug(`Verificando sismos desde INPRES... (intento ${attempt}/${maxRetries})`);
+                
+                // Verificar cache
+                const now = Date.now();
+                if (this.cache.data && (now - this.cache.timestamp) < this.config.cacheDuration) {
+                    this.logger.debug('Usando datos desde cache');
+                    return this.cache.data;
+                }
+                
+                // Hacer request a INPRES con timeout y headers mejorados
+                const response = await axios.get(this.config.inpresUrl, {
+                    headers: {
+                        'User-Agent': this.config.userAgent,
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'es-AR,es;q=0.8,en;q=0.5',
+                        'Accept-Encoding': 'gzip, deflate',
+                        'Connection': 'keep-alive',
+                        'Upgrade-Insecure-Requests': '1'
+                    },
+                    timeout: 20000, // Aumentado a 20 segundos
+                    maxRedirects: 3,
+                    validateStatus: (status) => status >= 200 && status < 500
+                });
+                
+                // Verificar respuesta válida
+                if (!response.data || typeof response.data !== 'string') {
+                    throw new Error(`Respuesta inválida del servidor INPRES (${typeof response.data})`);
+                }
+                
+                if (response.status !== 200) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                // Verificar que contiene datos sísmicos
+                if (!response.data.includes('sismos') && !response.data.includes('Magnitud')) {
+                    throw new Error('La respuesta no contiene tabla de sismos esperada');
+                }
+                
+                // Parsear HTML
+                const seisms = this.parseSeismsFromHTML(response.data);
+                
+                // Actualizar cache solo si se obtuvieron datos válidos
+                this.cache = {
+                    data: seisms,
+                    timestamp: now
+                };
+                
+                // Procesar sismos nuevos
+                await this.processNewSeisms(seisms);
+                
+                this.lastCheck = new Date();
+                this.logger.info(`✅ Sismos verificados: ${seisms.length} encontrados, ${this.todaySeisms.length} de hoy`);
+                
+                // Si llegamos aquí, el intento fue exitoso
+                if (this.state === MODULE_STATES.ERROR) {
+                    this.state = MODULE_STATES.ACTIVE;
+                    this.logger.info('Módulo INPRES recuperado de estado de error');
+                }
+                
+                return seisms;
+                
+            } catch (error) {
+                lastError = error;
+                const errorType = error.code || error.name || 'Unknown';
+                this.logger.warn(`❌ Intento ${attempt}/${maxRetries} fallido [${errorType}]: ${error.message}`);
+                
+                // Si es el último intento, cambiar estado a ERROR
+                if (attempt === maxRetries) {
+                    this.state = MODULE_STATES.ERROR;
+                    this.logger.error(`🔥 Error crítico en INPRES después de ${maxRetries} intentos`);
+                }
+                
+                // Esperar antes del siguiente intento (excepto el último)
+                if (attempt < maxRetries) {
+                    await this.delay(retryDelay * attempt); // Backoff exponencial
+                }
             }
-            
-            // Hacer request a INPRES
-            const response = await axios.get(this.config.inpresUrl, {
-                headers: {
-                    'User-Agent': this.config.userAgent
-                },
-                timeout: 15000
-            });
-            
-            // Parsear HTML
-            const seisms = this.parseSeismsFromHTML(response.data);
-            
-            // Actualizar cache
-            this.cache = {
-                data: seisms,
-                timestamp: now
-            };
-            
-            // Procesar sismos nuevos
-            await this.processNewSeisms(seisms);
-            
-            this.lastCheck = new Date();
-            this.logger.debug(`${seisms.length} sismos encontrados, ${this.todaySeisms.length} de hoy`);
-            
-            return seisms;
-            
-        } catch (error) {
-            this.logger.error('Error verificando sismos INPRES:', error.message);
-            throw error;
         }
+        
+        // Si llegamos aquí, todos los intentos fallaron
+        // Intentar usar cache expirado si está disponible y no muy antiguo
+        if (this.cache.data) {
+            const age = Date.now() - this.cache.timestamp;
+            const ageMinutes = Math.round(age / 60000);
+            
+            // Solo usar cache si no es demasiado antiguo (máximo 1 hora)
+            if (age < this.config.cacheMaxAge) {
+                this.logger.warn(`⚠️ Usando cache expirado (${ageMinutes} minutos de antigüedad)`);
+                return this.cache.data;
+            } else {
+                this.logger.error(`🚫 Cache demasiado antiguo (${ageMinutes} minutos), descartando`);
+            }
+        }
+        
+        // Sin cache disponible, lanzar error
+        throw new Error(`INPRES no disponible después de ${maxRetries} intentos: ${lastError.message}`);
     }
     
     /**
-     * Parsear sismos desde HTML de INPRES
+     * Función auxiliar para delay
+     */
+    async delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
+    /**
+     * Parsear sismos desde HTML de INPRES con detección mejorada
      */
     parseSeismsFromHTML(html) {
         const $ = cheerio.load(html);
         const seisms = [];
         
         try {
-            // Buscar tabla de sismos (estructura puede variar)
-            // Intentar diferentes selectores comunes
-            const tableSelectors = [
-                'table tr',
-                '.seismic-event',
-                '[class*="sismo"]',
-                'tr:contains("Magnitud")',
-                'tr:contains("Profundidad")'
-            ];
+            this.logger.debug('Iniciando parsing de HTML de INPRES...');
             
-            let rows = null;
-            for (const selector of tableSelectors) {
-                const found = $(selector);
-                if (found.length > 0) {
-                    rows = found;
-                    this.logger.debug(`Usando selector: ${selector} (${found.length} elementos)`);
-                    break;
-                }
+            // Buscar la tabla específica de sismos con ID "sismos"
+            let seismicTable = $('#sismos');
+            
+            if (seismicTable.length === 0) {
+                // Fallback: buscar tabla que contenga headers de sismos
+                seismicTable = $('table:contains("Magnitud"), table:contains("Profundidad"), table:contains("Fecha")').first();
             }
             
-            if (!rows || rows.length === 0) {
-                this.logger.warn('No se encontraron filas de sismos en el HTML');
+            if (seismicTable.length === 0) {
+                // Último fallback: buscar cualquier tabla con datos numéricos que parezcan sísmicos
+                seismicTable = $('table').filter((_, table) => {
+                    const text = $(table).text();
+                    return text.includes('Magnitud') || 
+                           text.includes('Profundidad') || 
+                           (text.match(/\d+\.\d+/g) && text.match(/\d{2}\/\d{2}\/\d{4}/));
+                }).first();
+            }
+            
+            if (seismicTable.length === 0) {
+                this.logger.warn('❌ No se encontró tabla de sismos en INPRES');
                 return seisms;
             }
             
-            // Parsear cada fila
+            this.logger.debug(`✅ Tabla de sismos encontrada`);
+            
+            // Buscar filas con datos sísmicos (excluyendo header)
+            const rows = seismicTable.find('tr').filter((index, row) => {
+                const rowText = $(row).text().trim();
+                // Filtrar filas que contienen datos numéricos (no headers)
+                return rowText.match(/\d+\.\d+/) && 
+                       !rowText.toLowerCase().includes('magnitud') && 
+                       !rowText.toLowerCase().includes('profundidad') &&
+                       rowText.length > 20; // Evitar filas vacías
+            });
+            
+            this.logger.debug(`Procesando ${rows.length} filas de datos sísmicos`);
+            
+            // Parsear cada fila de datos
             rows.each((index, element) => {
                 try {
                     const row = $(element);
-                    const text = row.text().trim();
-                    
-                    // Buscar patrones de datos sísmicos
-                    // Formato típico: fecha, hora, profundidad, magnitud, lat, lon, ubicación
-                    const seismData = this.extractSeismicData(row, text);
+                    const seismData = this.extractSeismicDataImproved(row);
                     
                     if (seismData && this.isValidSeism(seismData)) {
                         seisms.push(seismData);
+                        this.logger.debug(`✅ Sismo válido: Mag ${seismData.magnitude} - ${seismData.location}`);
+                    } else if (seismData) {
+                        this.logger.debug(`❌ Sismo filtrado: Mag ${seismData.magnitude || 'N/A'} - ${seismData.location || 'N/A'}`);
                     }
                     
                 } catch (error) {
-                    this.logger.debug(`Error parseando fila ${index}:`, error.message);
+                    this.logger.debug(`⚠️ Error parseando fila ${index}:`, error.message);
                 }
             });
             
-            this.logger.debug(`Parseados ${seisms.length} sismos válidos`);
+            this.logger.info(`📊 Parsing completado: ${seisms.length} sismos válidos de ${rows.length} filas procesadas`);
             return seisms;
             
         } catch (error) {
-            this.logger.error('Error parseando HTML de INPRES:', error.message);
+            this.logger.error('🔥 Error crítico parseando HTML de INPRES:', error.message);
             return seisms;
+        }
+    }
+    
+    /**
+     * Extraer datos sísmicos mejorado para estructura INPRES actual
+     * Formato esperado: N°, Fecha, Hora, Profundidad, Magnitud, Latitud, Longitud, Provincia
+     */
+    extractSeismicDataImproved(row) {
+        try {
+            const cells = row.find('td');
+            if (cells.length < 7) {
+                return null; // No suficientes columnas
+            }
+            
+            // Extraer datos de cada celda
+            const cellData = [];
+            cells.each((_, cell) => {
+                const text = $(cell).text().trim();
+                cellData.push(text);
+            });
+            
+            // Mapear según estructura esperada de INPRES
+            // [N°, Fecha, Hora, Profundidad, Magnitud, Latitud, Longitud, Provincia]
+            const [
+                numero,
+                fecha,
+                hora, 
+                profundidad,
+                magnitud,
+                latitud,
+                longitud,
+                provincia
+            ] = cellData;
+            
+            // Validar campos críticos
+            const mag = parseFloat(magnitud);
+            const depth = parseFloat(profundidad);
+            const lat = parseFloat(latitud);
+            const lon = parseFloat(longitud);
+            
+            if (isNaN(mag) || !fecha || !provincia) {
+                return null;
+            }
+            
+            // Determinar color/estado del sismo
+            const color = this.getSeismColorFromRow(row);
+            
+            // Crear ID único más robusto
+            const dateStr = fecha.replace(/[^\d]/g, '');
+            const timeStr = (hora || '000000').replace(/[^\d]/g, '');
+            const id = `${dateStr}_${timeStr}_${mag.toString().replace('.', '')}`;
+            
+            // Determinar zona dentro de Mendoza
+            const zone = this.determineZone(lat, lon);
+            
+            const seismData = {
+                id,
+                date: fecha,
+                time: hora || '00:00:00',
+                magnitude: mag,
+                depth: isNaN(depth) ? null : depth,
+                latitude: isNaN(lat) ? null : lat,
+                longitude: isNaN(lon) ? null : lon,
+                province: provincia || 'Desconocida',
+                location: zone,
+                color: color,
+                state: this.getSeismState(color),
+                rawData: cellData.join(' | '), // Para debugging
+                timestamp: new Date(),
+                numero: numero || null
+            };
+            
+            return seismData;
+            
+        } catch (error) {
+            this.logger.debug('Error extrayendo datos sísmicos mejorado:', error.message);
+            return null;
+        }
+    }
+    
+    /**
+     * Obtener color del sismo desde la fila HTML (mejorado)
+     */
+    getSeismColorFromRow(row) {
+        try {
+            const rowHtml = row.html().toLowerCase();
+            const rowText = row.text().toLowerCase();
+            
+            // Buscar indicadores de color en HTML y texto
+            if (rowHtml.includes('color:blue') || rowHtml.includes('color: blue') ||
+                rowHtml.includes('#0000ff') || rowHtml.includes('blue') ||
+                rowText.includes('azul')) {
+                return 'azul';
+            }
+            
+            if (rowHtml.includes('color:red') || rowHtml.includes('color: red') ||
+                rowHtml.includes('#ff0000') || rowHtml.includes('red') ||
+                rowText.includes('rojo')) {
+                return 'rojo';
+            }
+            
+            if (rowHtml.includes('color:black') || rowHtml.includes('color: black') ||
+                rowHtml.includes('#000000') || rowHtml.includes('black') ||
+                rowText.includes('negro')) {
+                return 'negro';
+            }
+            
+            // Buscar por clases CSS específicas
+            if (row.hasClass('preliminary') || row.hasClass('blue')) {
+                return 'azul';
+            }
+            if (row.hasClass('reviewed') || row.hasClass('black')) {
+                return 'negro';
+            }
+            if (row.hasClass('felt') || row.hasClass('red')) {
+                return 'rojo';
+            }
+            
+            // Por defecto, asumir preliminar (azul)
+            return 'azul';
+            
+        } catch (error) {
+            this.logger.debug('Error detectando color del sismo:', error.message);
+            return 'azul';
         }
     }
     
@@ -448,40 +674,96 @@ class InpresSismic extends EventEmitter {
     }
     
     /**
-     * Anunciar sismo por TTS
+     * Anunciar sismo por TTS mejorado
      */
     async announceSeism(seism) {
         try {
-            this.logger.info(`Anunciando sismo: Mag ${seism.magnitude} en ${seism.location}`);
+            this.logger.info(`📢 Anunciando sismo: Mag ${seism.magnitude} en ${seism.location}`);
             
-            // Construir mensaje TTS
+            // Esperar canal libre antes de transmitir
+            await this.waitForFreeChannel();
+            
+            // Tono de alerta sísmica
+            await this.audioManager.playTone(600, 300, 0.8);
+            await this.delay(200);
+            await this.audioManager.playTone(800, 300, 0.8);
+            await this.delay(500);
+            
+            // Construir mensaje TTS mejorado
             const magnitude = seism.magnitude.toFixed(1);
-            const depth = seism.depth ? `${seism.depth} kilómetros` : 'profundidad desconocida';
-            const time = seism.time || 'hora desconocida';
-            const date = seism.date || 'fecha desconocida';
+            const depth = seism.depth ? `${seism.depth.toFixed(0)} kilómetros` : 'profundidad no determinada';
+            const time = seism.time || 'hora no determinada';
+            const date = seism.date || 'fecha no determinada';
+            const state = seism.state || 'estado desconocido';
             
-            const message = 'Nuevo sismo detectado. ' +
-                          `Fecha ${date}, hora ${time}. ` +
-                          `Profundidad ${depth}. ` +
-                          `Magnitud ${magnitude}. ` +
-                          `Zona ${seism.location}.`;
+            // Mensaje estructurado y claro
+            let message = 'Atención. Nuevo sismo detectado por INPRES. ';
+            message += `Estado: ${state}. `;
+            message += `Magnitud ${magnitude}. `;
+            message += `Profundidad ${depth}. `;
+            message += `Ubicación ${seism.location}. `;
+            
+            // Agregar información temporal
+            const currentTime = new Date().toLocaleTimeString('es-AR', { 
+                timeZone: 'America/Argentina/Mendoza',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            message += `Detección INPRES fecha ${date} hora ${time}. `;
+            message += `Información emitida a las ${currentTime}, fuente Instituto Nacional de Prevención Sísmica.`;
             
             const sanitizedMessage = sanitizeTextForTTS(message);
             
-            // Usar Google TTS si está disponible
-            if (this.audioManager) {
-                await this.audioManager.speak(sanitizedMessage);
-            } else {
-                // Fallback a TTS del sistema
-                await this.audioManager.speak(sanitizedMessage);
-            }
+            this.logger.debug(`💬 Mensaje TTS (${sanitizedMessage.length} chars): ${sanitizedMessage.substring(0, 100)}...`);
             
-            this.logger.info(`Sismo anunciado: ${magnitude} en ${seism.location}`);
+            // Usar sistema TTS híbrido
+            await this.speak(sanitizedMessage);
+            
+            this.logger.info(`✅ Sismo anunciado exitosamente: Mag ${magnitude} en ${seism.location}`);
             this.emit('seism_announced', seism);
             
         } catch (error) {
-            this.logger.error('Error anunciando sismo:', error.message);
+            this.logger.error('❌ Error anunciando sismo:', error.message);
+            this.emit('seism_announce_failed', { seism, error: error.message });
         }
+    }
+    
+    /**
+     * Esperar canal libre para transmisión
+     */
+    async waitForFreeChannel(timeout = 30000) {
+        if (!this.audioManager || typeof this.audioManager.isSafeToTransmit !== 'function') {
+            this.logger.debug('isSafeToTransmit no disponible, usando delay simple');
+            await this.delay(1000);
+            return;
+        }
+        
+        const startTime = Date.now();
+        
+        return new Promise((resolve) => {
+            // Verificar inmediatamente
+            if (this.audioManager.isSafeToTransmit()) {
+                resolve();
+                return;
+            }
+            
+            this.logger.debug('📻 Canal ocupado, esperando...');
+            
+            const checkInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                
+                if (this.audioManager.isSafeToTransmit()) {
+                    clearInterval(checkInterval);
+                    this.logger.debug(`📻 Canal libre después de ${elapsed}ms`);
+                    resolve();
+                } else if (elapsed > timeout) {
+                    clearInterval(checkInterval);
+                    this.logger.warn(`⚠️ Timeout esperando canal libre (${timeout}ms)`);
+                    resolve(); // Continuar incluso si timeout
+                }
+            }, 500); // Verificar cada 500ms
+        });
     }
     
     /**
@@ -607,22 +889,40 @@ class InpresSismic extends EventEmitter {
     }
 
     /**
-     * Obtener estado del módulo
+     * Obtener estado del módulo con información detallada
      */
     getStatus() {
+        const now = new Date();
+        const cacheAge = this.cache.timestamp ? 
+            Math.round((now.getTime() - this.cache.timestamp) / 60000) : null;
+        
         return {
             enabled: this.config.enabled,
             state: this.state,
             running: this.state === MODULE_STATES.ACTIVE,
             checkInterval: this.config.checkInterval,
-            lastCheck: this.lastCheck,
+            checkIntervalMinutes: Math.round(this.config.checkInterval / 60000),
+            lastCheck: this.lastCheck ? this.lastCheck.toLocaleString('es-AR') : 'Nunca',
+            lastCheckTimestamp: this.lastCheck,
             detectedSeisms: this.detectedSeisms.size,
             todaySeisms: this.todaySeisms.length,
             announcedSeisms: this.announcedSeisms.size,
             magnitudeThreshold: this.config.magnitudeThreshold,
-            nextCheck: this.checkTimer ? 
-                new Date(Date.now() + this.config.checkInterval).toLocaleTimeString() : 
-                'No programado',
+            announceStates: this.config.announceStates,
+            nextCheck: this.checkTimer && this.lastCheck ? 
+                new Date(this.lastCheck.getTime() + this.config.checkInterval).toLocaleTimeString('es-AR') : 
+                'Calculando...',
+            cache: {
+                valid: cacheAge !== null && cacheAge < (this.config.cacheDuration / 60000),
+                ageMinutes: cacheAge,
+                maxAgeMinutes: Math.round(this.config.cacheMaxAge / 60000)
+            },
+            connection: {
+                status: this.state === MODULE_STATES.ACTIVE ? 'Conectado' : 
+                       this.state === MODULE_STATES.ERROR ? 'Error' : 'Desconectado',
+                userAgent: this.config.userAgent,
+                timeout: 20000
+            },
             seismsList: this.getTodaySeisms()
         };
     }
