@@ -686,40 +686,78 @@ class WeatherAlerts extends EventEmitter {
             return message;
             
         } else {
-            // Para múltiples alertas, dar resumen conciso con áreas
-            let message = `Atención. Múltiples alertas meteorológicas activas. Total: ${alerts.length} alertas. `;
+            // Para múltiples alertas, dar detalles específicos de cada una
+            let message = `Atención. Nuevas alertas meteorológicas para Mendoza. `;
             
-            // Categorizar alertas por tipo y área
-            const alertTypes = new Map();
-            const affectedAreas = new Set();
-            
-            alerts.forEach(alert => {
-                const cleanTitle = this.cleanAlertText(alert.title);
-                const type = this.categorizeAlert(cleanTitle);
-                alertTypes.set(type, (alertTypes.get(type) || 0) + 1);
+            // Si son pocas alertas (2-3), mencionar cada una con detalles
+            if (alerts.length <= 3) {
+                const alertDetails = [];
                 
-                if (alert.polygons) {
-                    const area = this.identifyMendozaAreas(alert.polygons);
-                    affectedAreas.add(area);
+                alerts.forEach((alert, index) => {
+                    const cleanTitle = this.cleanAlertText(alert.title);
+                    const affectedArea = alert.polygons ? 
+                        this.identifyMendozaAreas(alert.polygons) : 'Mendoza';
+                    
+                    // Procesar horarios para cada alerta
+                    const timeInfo = this.buildTimeInfo(alert.onset, alert.expires);
+                    
+                    let alertDetail = `${cleanTitle} para ${affectedArea}`;
+                    if (timeInfo) {
+                        alertDetail += `, ${timeInfo.toLowerCase()}`;
+                    }
+                    
+                    alertDetails.push(alertDetail);
+                });
+                
+                message += alertDetails.join('. ') + '.';
+                
+                // Agregar instrucción de medidas de seguridad si hay alertas de viento
+                const windAlerts = alerts.filter(alert => 
+                    alert.title && alert.title.toLowerCase().includes('viento')
+                );
+                
+                if (windAlerts.length > 0 && windAlerts[0].instructions) {
+                    const safetyTips = this.extractSafetyTips(windAlerts[0].instructions, windAlerts[0].title);
+                    if (safetyTips) {
+                        message += ` Medidas de seguridad recomendadas: ${safetyTips}.`;
+                    }
                 }
-            });
-            
-            // Enumerar tipos
-            const typesList = Array.from(alertTypes.entries())
-                .map(([type, count]) => count > 1 ? `${count} de ${type}` : type)
-                .join(', ');
-            
-            message += `Tipos: ${typesList}. `;
-            
-            // Enumerar áreas afectadas
-            if (affectedAreas.size > 0) {
-                const areasList = Array.from(affectedAreas).slice(0, 3).join(', ');
-                const moreAreas = affectedAreas.size > 3 ? ' y otras zonas' : '';
-                message += `Áreas: ${areasList}${moreAreas}. `;
+                
+            } else {
+                // Para muchas alertas (4+), usar resumen por categorías
+                const alertTypes = new Map();
+                const affectedAreas = new Set();
+                
+                alerts.forEach(alert => {
+                    const cleanTitle = this.cleanAlertText(alert.title);
+                    const type = this.categorizeAlert(cleanTitle);
+                    alertTypes.set(type, (alertTypes.get(type) || 0) + 1);
+                    
+                    if (alert.polygons) {
+                        const area = this.identifyMendozaAreas(alert.polygons);
+                        affectedAreas.add(area);
+                    }
+                });
+                
+                message += `Total: ${alerts.length} alertas. `;
+                
+                // Enumerar tipos
+                const typesList = Array.from(alertTypes.entries())
+                    .map(([type, count]) => count > 1 ? `${count} de ${type}` : type)
+                    .join(', ');
+                
+                message += `Tipos: ${typesList}. `;
+                
+                // Enumerar áreas afectadas
+                if (affectedAreas.size > 0) {
+                    const areasList = Array.from(affectedAreas).slice(0, 3).join(', ');
+                    const moreAreas = affectedAreas.size > 3 ? ' y otras zonas' : '';
+                    message += `Áreas: ${areasList}${moreAreas}. `;
+                }
             }
             
-            message += `Información de las ${currentTime}. `;
-            message += `Use comando *7 para consultar detalles de cada alerta.`;
+            message += ` Información emitida a las ${currentTime}. `;
+            message += `Para más detalles use comando *7.`;
             
             return message;
         }
