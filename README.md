@@ -1,10 +1,19 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Headless v2.9.0
+## 📡 Sistema de Control para Repetidora Headless v2.9.1
 
 Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. **Versión Headless** con interfaz APRS liviana, decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, monitoreo sísmico INPRES en tiempo real y **sistema TTS híbrido con Google TTS**.
 
-**🚀 Versión 2.9.0 - Sistema Configuración Híbrido y Baliza BBC Pips**
+**🚀 Versión 2.9.1 - Mejoras Críticas en Alertas Meteorológicas TTS**
+
+### 📅 **Novedades v2.9.1** (Septiembre 2025)
+- **🎙️ Mejora Flujo TTS Multiple Alertas**: Corregido flujo de mensaje para múltiples alertas meteorológicas
+- **⏸️ Pausas Mejoradas**: Implementadas pausas adecuadas entre alertas usando puntos en lugar de comas
+- **🔄 Estructura Mensaje Optimizada**: Eliminados saltos abruptos de timing a fuente SMN
+- **🕐 Formato 24h Perfeccionado**: Sin palabra "horas" para pronunciación TTS más natural
+- **📅 Días Específicos**: Reemplazado "mañana" por nombres de días específicos (ej: "miércoles 10")
+- **📡 Fuente SMN Consistente**: Agregada fuente SMN al final de todos los anuncios
+- **🗺️ Áreas Geográficas Precisas**: Identificación específica de zonas dentro de Mendoza
 
 ### 📅 **Novedades v2.9.0** (Septiembre 2025)
 - **⚙️ Sistema Configuración Híbrido**: Nuevo ConfigurationService con herencia y compatibilidad total con sistema anterior
@@ -389,6 +398,25 @@ npm start  # Ver logs en consola
 
 ## 📋 Changelog
 
+### v2.9.1 - Mejoras Críticas en Alertas Meteorológicas TTS 🎙️
+
+#### 🎙️ **Sistema de Alertas Meteorológicas Mejorado**
+- [x] **Flujo de mensaje optimizado para múltiples alertas**
+  - [x] Corregida estructura de mensaje para eliminar saltos abruptos
+  - [x] Implementadas pausas adecuadas entre alertas usando puntos (.) en lugar de comas (,)
+  - [x] Cada alerta ahora tiene pausas naturales después de su información de timing
+  - [x] Transición suave hacia la información de fuente SMN al final
+- [x] **Mejoras de pronunciación TTS**
+  - [x] Formato 24h sin palabra "horas" para pronunciación más natural
+  - [x] Nombres de días específicos en lugar de "mañana" (ej: "miércoles 10")
+  - [x] Fuente SMN agregada consistentemente al final de todos los anuncios
+  - [x] Identificación específica de áreas geográficas dentro de Mendoza
+- [x] **Estructura de mensaje mejorada**
+  - [x] Separación clara entre información de alerta y timing
+  - [x] Pausas apropiadas para permitir comprensión completa
+  - [x] Eliminados problemas de flujo de mensaje reportados por usuarios
+  - [x] Optimización para diferentes cantidades de alertas simultáneas
+
 ### v2.9.0 - Sistema Configuración Híbrido y Baliza BBC Pips ⚙️🔊
 
 #### ⚙️ **Sistema de Configuración Híbrido Implementado**
@@ -607,4 +635,4 @@ Este proyecto está bajo la Licencia MIT. Ver archivo `LICENSE` para más detall
 
 ---
 
-**✨ VX200 Controller v2.8.0 - Sistema TTS Híbrido con Lógica Simplex Avanzada 📡🎙️**
+**✨ VX200 Controller v2.9.1 - Mejoras Críticas en Alertas Meteorológicas TTS 📡🎙️**
