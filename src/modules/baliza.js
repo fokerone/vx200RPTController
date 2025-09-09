@@ -21,7 +21,7 @@ class Baliza extends EventEmitter {
                 volume: 0.7
             },
             pattern: 'bbc-pips', // Patrón: 5 tonos cortos + 1 tono largo
-            message: process.env.BALIZA_MESSAGE || "",
+            message: process.env.BALIZA_MESSAGE || '',
             autoStart: true,
             waitForFreeChannel: true
         };
@@ -133,7 +133,7 @@ class Baliza extends EventEmitter {
         const nextHour = moment().add(1, 'hour').startOf('hour');
         const timeToNextHour = nextHour.diff(now);
         
-        this.logger.info(`Baliza iniciada - Sincronizando con horas de reloj`);
+        this.logger.info('Baliza iniciada - Sincronizando con horas de reloj');
         this.logger.info(`Próxima baliza: ${nextHour.format('HH:mm:ss')} (en ${Math.round(timeToNextHour/1000/60)} minutos)`);
         
         // Programar primera baliza en la próxima hora en punto
@@ -180,7 +180,7 @@ class Baliza extends EventEmitter {
      * Programar próxima transmisión sincronizada con horas de reloj
      */
     scheduleNext() {
-        if (!this.isRunning) return;
+        if (!this.isRunning) {return;}
 
         // SINCRONIZACIÓN CON HORAS DE RELOJ
         // Calcular tiempo hasta la próxima hora en punto

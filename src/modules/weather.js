@@ -213,7 +213,7 @@ class Weather {
         if (lluviaProb > 20) {
             mensaje += `Probabilidad de lluvia ${Math.round(lluviaProb)} por ciento.`;
         } else {
-            mensaje += `Sin precipitaciones esperadas.`;
+            mensaje += 'Sin precipitaciones esperadas.';
         }
 
         const mensajeLimpio = sanitizeTextForTTS(mensaje);
@@ -234,7 +234,7 @@ class Weather {
      * Convertir grados de viento a dirección cardinal
      */
     getWindDirection(degrees) {
-        if (!degrees && degrees !== 0) return '';
+        if (!degrees && degrees !== 0) {return '';}
         
         const directions = [
             'del norte', 'del noreste', 'del este', 'del sureste',
@@ -250,7 +250,7 @@ class Weather {
      */
     isCacheValid(cacheKey) {
         const cached = this.cache[cacheKey];
-        if (!cached.data || !cached.timestamp) return false;
+        if (!cached.data || !cached.timestamp) {return false;}
         
         const age = Date.now() - cached.timestamp;
         return age < this.config.cacheDuration;

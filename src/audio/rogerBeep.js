@@ -262,7 +262,7 @@ class RogerBeep {
             return;
         }
 
-        let changes = [];
+        const changes = [];
 
         if (typeof config.enabled === 'boolean' && config.enabled !== this.enabled) {
             this.setEnabled(config.enabled);
@@ -276,7 +276,7 @@ class RogerBeep {
 
         if (typeof config.duration === 'number' && config.duration !== this.config.duration) {
             this.config.duration = Math.max(ROGER_BEEP.MIN_DURATION, 
-                                          Math.min(ROGER_BEEP.MAX_DURATION, config.duration));
+                Math.min(ROGER_BEEP.MAX_DURATION, config.duration));
             changes.push(`duration: ${this.config.duration}ms`);
         }
         

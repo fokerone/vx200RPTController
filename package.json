@@ -8,7 +8,17 @@
     "start:prod": "npm run start",
     "dev": "node src/index.js",
     "test": "node src/test-complete.js",
-    "health": "node -e \"console.log('VX200 Health Check:', new Date().toISOString())\""
+    "health": "node -e \"console.log('VX200 Health Check:', new Date().toISOString())\"",
+    
+    "lint": "eslint src/ --ext .js",
+    "lint:fix": "eslint src/ --ext .js --fix",
+    "lint:check": "eslint src/ --ext .js --max-warnings 0",
+    
+    "format": "prettier --write \"src/**/*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\"",
+    
+    "code-quality": "npm run lint:check && npm run format:check",
+    "code-fix": "npm run lint:fix && npm run format"
   },
   "dependencies": {
     "axios": "^1.11.0",
@@ -19,5 +29,15 @@
     "moment-timezone": "^0.6.0",
     "node-record-lpcm16": "^1.0.1",
     "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "eslint": "^9.34.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsdoc": "^54.2.1",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-promise": "^7.2.1",
+    "eslint-plugin-security": "^3.0.1",
+    "prettier": "^3.6.2"
   }
 }

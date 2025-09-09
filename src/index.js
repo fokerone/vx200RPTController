@@ -496,7 +496,7 @@ class VX200Controller {
                 enabled: this.modules.inpres && this.modules.inpres.state === MODULE_STATES.ACTIVE,
                 details: this.modules.inpres && this.modules.inpres.state === MODULE_STATES.ACTIVE ? 
                     'Seismic monitoring active' : 'Monitoring stopped'
-            },
+            }
         };
 
         this.systemOutput.printModuleStatus(moduleStatus);

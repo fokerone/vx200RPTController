@@ -57,7 +57,7 @@ class WeatherAlerts extends EventEmitter {
             fallbackTTS: 'espeak',
             
             // Cache
-            cacheDuration: 15 * 60 * 1000, // 15 minutos
+            cacheDuration: 15 * 60 * 1000 // 15 minutos
         };
         
         // Estado de alertas
@@ -124,23 +124,34 @@ class WeatherAlerts extends EventEmitter {
     stop() {
         this.state = MODULE_STATES.DISABLED;
         
-        if (this.checkTimer) {
-            clearTimeout(this.checkTimer);
-            this.checkTimer = null;
-        }
-        
-        if (this.repeatTimer) {
-            clearTimeout(this.repeatTimer);
-            this.repeatTimer = null;
-        }
-        
-        if (this.weatherUpdateTimer) {
-            clearTimeout(this.weatherUpdateTimer);
-            this.weatherUpdateTimer = null;
-        }
+        // Limpiar todos los timers de forma segura
+        this.clearAllTimers();
         
         this.logger.info('Monitoreo de alertas detenido');
         this.emit('stopped');
+    }
+    
+    /**
+     * Limpiar todos los timers de forma segura
+     */
+    clearAllTimers() {
+        const timers = [
+            { name: 'checkTimer', timer: this.checkTimer },
+            { name: 'repeatTimer', timer: this.repeatTimer },
+            { name: 'weatherUpdateTimer', timer: this.weatherUpdateTimer }
+        ];
+        
+        timers.forEach(({ name, timer }) => {
+            if (timer) {
+                try {
+                    clearTimeout(timer);
+                    this[name] = null;
+                    this.logger.debug(`Timer ${name} limpiado`);
+                } catch (error) {
+                    this.logger.warn(`Error limpiando timer ${name}:`, error.message);
+                }
+            }
+        });
     }
     
     /**
@@ -149,6 +160,12 @@ class WeatherAlerts extends EventEmitter {
     async checkForAlerts() {
         if (!this.config.enabled) {
             return;
+        }
+        
+        // Limpiar timer existente para evitar duplicados
+        if (this.checkTimer) {
+            clearTimeout(this.checkTimer);
+            this.checkTimer = null;
         }
         
         try {
@@ -185,7 +202,10 @@ class WeatherAlerts extends EventEmitter {
             this.logger.error('Error verificando alertas:', error.message);
             this.state = MODULE_STATES.ERROR;
         } finally {
-            this.scheduleNextCheck();
+            // Reprogramar siempre, incluso si hubo error
+            if (this.state === MODULE_STATES.ACTIVE || this.state === MODULE_STATES.ERROR) {
+                this.scheduleNextCheck();
+            }
         }
     }
     
@@ -199,28 +219,76 @@ class WeatherAlerts extends EventEmitter {
             return this.feedCache.data;
         }
         
-        try {
-            const response = await axios.get(this.config.mainFeedUrl, {
-                timeout: 30000, // Aumentar timeout a 30 segundos
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'
+        let lastError = null;
+        const maxRetries = 3;
+        const retryDelay = 2000; // 2 segundos
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                this.logger.debug(`Intento ${attempt}/${maxRetries} obteniendo feed SMN`);
+                
+                const response = await axios.get(this.config.mainFeedUrl, {
+                    timeout: 30000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'
+                    },
+                    validateStatus: (status) => status >= 200 && status < 500 // No fallar en errores HTTP 4xx
+                });
+                
+                // Verificar respuesta válida
+                if (!response.data || response.data.length < 100) {
+                    throw new Error(`Respuesta inválida o vacía (${response.data ? response.data.length : 0} bytes)`);
                 }
-            });
-            
-            const xmlData = await this.xmlParser.parseStringPromise(response.data);
-            
-            // Guardar en cache
-            this.feedCache = {
-                data: xmlData,
-                timestamp: Date.now()
-            };
-            
-            return xmlData;
-            
-        } catch (error) {
-            this.logger.error('Error obteniendo feed SMN:', error.message);
-            throw error;
+                
+                if (response.status !== 200) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const xmlData = await this.xmlParser.parseStringPromise(response.data);
+                
+                if (!xmlData || !xmlData.rss) {
+                    throw new Error('Estructura XML inválida - no contiene RSS');
+                }
+                
+                // Guardar en cache solo si es válido
+                this.feedCache = {
+                    data: xmlData,
+                    timestamp: Date.now()
+                };
+                
+                this.logger.debug(`Feed SMN obtenido exitosamente en intento ${attempt}`);
+                return xmlData;
+                
+            } catch (error) {
+                lastError = error;
+                const errorType = error.code || error.name || 'Unknown';
+                this.logger.warn(`Intento ${attempt}/${maxRetries} fallido [${errorType}]: ${error.message}`);
+                
+                // No reintentar en errores de parsing XML o respuestas inválidas
+                if (error.message.includes('XML') || error.message.includes('Estructura')) {
+                    break;
+                }
+                
+                // Esperar antes del siguiente intento (excepto el último)
+                if (attempt < maxRetries) {
+                    await delay(retryDelay * attempt); // Backoff exponencial
+                }
+            }
         }
+        
+        // Si llegó aquí, todos los intentos fallaron
+        this.logger.error(`Error obteniendo feed SMN después de ${maxRetries} intentos:`, lastError.message);
+        
+        // Retornar cache si está disponible (aunque sea viejo)
+        if (this.feedCache.data) {
+            const age = Date.now() - this.feedCache.timestamp;
+            this.logger.warn(`Usando cache expirado (${Math.round(age / 60000)} minutos de antigüedad)`);
+            return this.feedCache.data;
+        }
+        
+        // Si no hay cache, retornar null en lugar de lanzar error para evitar crash
+        this.logger.error('No se pudo obtener feed SMN y no hay cache disponible');
+        return null;
     }
     
     /**
@@ -281,36 +349,70 @@ class WeatherAlerts extends EventEmitter {
      * Obtener detalles CAP de una alerta específica
      */
     async fetchCAPDetails(capUrl) {
+        if (!capUrl || typeof capUrl !== 'string') {
+            this.logger.debug('URL CAP inválida');
+            return null;
+        }
+        
         try {
+            this.logger.debug(`Obteniendo detalles CAP: ${capUrl}`);
+            
             const response = await axios.get(capUrl, {
-                timeout: 5000,
+                timeout: 8000, // Aumentar timeout
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'
-                }
+                },
+                validateStatus: (status) => status === 200, // Solo aceptar respuestas 200
+                maxRedirects: 3 // Limitar redirecciones
             });
             
+            if (!response.data) {
+                this.logger.debug('Respuesta CAP vacía');
+                return null;
+            }
+            
             const capData = await this.xmlParser.parseStringPromise(response.data);
+            
+            if (!capData || !capData.alert) {
+                this.logger.debug('Estructura CAP inválida - no contiene alert');
+                return null;
+            }
             
             if (capData.alert && capData.alert.info) {
                 const info = Array.isArray(capData.alert.info) ? capData.alert.info[0] : capData.alert.info;
                 
-                // Extraer todos los polígonos de todas las áreas
+                // Extraer todos los polígonos de todas las áreas con validación
                 let polygons = [];
                 if (info.area) {
                     const areas = Array.isArray(info.area) ? info.area : [info.area];
-                    polygons = areas.map(area => area.polygon).filter(Boolean);
+                    polygons = areas
+                        .map(area => area.polygon)
+                        .filter(polygon => polygon && typeof polygon === 'string' && polygon.trim().length > 0);
                 }
                 
-                return {
-                    severity: info.severity,
-                    expires: info.expires,
-                    polygons: polygons, // Array de polígonos en lugar de uno solo
-                    instructions: info.instruction
+                const capDetails = {
+                    severity: info.severity || 'Unknown',
+                    expires: info.expires || null,
+                    polygons: polygons,
+                    instructions: info.instruction || null
                 };
+                
+                this.logger.debug(`Detalles CAP obtenidos: ${polygons.length} polígonos, severidad: ${capDetails.severity}`);
+                return capDetails;
+            } else {
+                this.logger.debug('Estructura CAP inválida - no contiene info');
             }
             
         } catch (error) {
-            this.logger.debug('Error obteniendo detalles CAP:', error.message);
+            const errorType = error.code || error.name || 'Unknown';
+            this.logger.debug(`Error obteniendo detalles CAP [${errorType}]: ${error.message}`);
+            
+            // Log más detallado para errores de red
+            if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+                this.logger.debug(`Timeout obteniendo CAP: ${capUrl}`);
+            } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+                this.logger.debug(`Error de conexión obteniendo CAP: ${capUrl}`);
+            }
         }
         
         return null;
@@ -327,7 +429,7 @@ class WeatherAlerts extends EventEmitter {
         try {
             // Verificar cada polígono - si cualquiera intersecta con Mendoza, la alerta aplica
             for (const polygon of capData.polygons) {
-                if (!polygon) continue;
+                if (!polygon) {continue;}
                 
                 // Parse polygon coordinates
                 const coords = polygon.split(' ').map(coord => {
@@ -443,7 +545,7 @@ class WeatherAlerts extends EventEmitter {
      * Anunciar nuevas alertas por TTS
      */
     async announceNewAlerts(alerts) {
-        if (alerts.length === 0) return;
+        if (alerts.length === 0) {return;}
         
         try {
             // Esperar canal libre
@@ -461,12 +563,41 @@ class WeatherAlerts extends EventEmitter {
             
             this.logger.info(`Anunciando alertas: ${cleanMessage.substring(0, 50)}...`);
             
-            // Usar Google TTS si está disponible (con soporte para textos largos)
+            // Usar Google TTS si está disponible (con soporte para textos largos y timeout extendido)
             if (this.voiceManager) {
-                const audioFile = await this.voiceManager.generateLongSpeech(cleanMessage);
-                await this.voiceManager.playAudio(audioFile);
+                try {
+                    this.logger.debug(`Generando TTS para ${cleanMessage.length} caracteres...`);
+                    
+                    // Calcular timeout dinámico basado en longitud del texto
+                    const baseTimeout = 30000; // 30 segundos base
+                    const extraTime = Math.ceil(cleanMessage.length / 100) * 5000; // 5s por cada 100 chars
+                    const dynamicTimeout = Math.min(baseTimeout + extraTime, 180000); // Máximo 3 minutos
+                    
+                    this.logger.debug(`Timeout calculado: ${dynamicTimeout}ms para texto de ${cleanMessage.length} chars`);
+                    
+                    // Generar audio con timeout extendido
+                    const audioFile = await Promise.race([
+                        this.voiceManager.generateLongSpeech(cleanMessage),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout generando TTS')), dynamicTimeout))
+                    ]);
+                    
+                    // Reproducir con timeout extendido también
+                    await this.voiceManager.playAudio(audioFile);
+                    
+                } catch (error) {
+                    this.logger.warn(`Error con TTS híbrido (${error.message}), usando fallback espeak`);
+                    // Fallback a espeak con texto más corto si es muy largo
+                    const fallbackText = cleanMessage.length > 500 ? 
+                        `${cleanMessage.substring(0, 450)}... mensaje completo disponible en consulta manual` : 
+                        cleanMessage;
+                    await this.audioManager.speak(fallbackText, { voice: 'es+f3' });
+                }
             } else {
-                await this.audioManager.speak(cleanMessage, { voice: 'es+f3' });
+                // Si no hay voiceManager, truncar texto largo para espeak
+                const espeakText = cleanMessage.length > 500 ? 
+                    `${cleanMessage.substring(0, 450)}... mensaje completo disponible con comando *7` : 
+                    cleanMessage;
+                await this.audioManager.speak(espeakText, { voice: 'es+f3' });
             }
             
             // Marcar como anunciadas
@@ -486,26 +617,136 @@ class WeatherAlerts extends EventEmitter {
      * Construir mensaje de alerta para TTS
      */
     buildAlertMessage(alerts) {
+        const currentTime = new Date().toLocaleTimeString('es-AR', { 
+            timeZone: 'America/Argentina/Mendoza',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
         if (alerts.length === 1) {
             const alert = alerts[0];
-            return `Nueva alerta meteorológica para Mendoza. ${alert.title}. ${alert.description}`;
-        } else {
-            // Para múltiples alertas, leer cada una con su descripción
-            let message = `Nuevas alertas meteorológicas para Mendoza. Se han emitido ${alerts.length} alertas. `;
             
-            alerts.forEach((alert, index) => {
-                message += `Alerta ${index + 1}: ${alert.title}. ${alert.description}. `;
+            // Limpiar y mejorar el contenido de la alerta
+            const cleanTitle = this.cleanAlertText(alert.title);
+            const cleanDescription = this.cleanAlertText(alert.description);
+            
+            // Extraer nivel de severidad si está disponible
+            const severity = alert.severity ? this.translateSeverity(alert.severity) : '';
+            const severityText = severity ? ` Nivel: ${severity}.` : '';
+            
+            // Construir mensaje estructurado
+            let message = `Atención. Nueva alerta meteorológica para Mendoza.${severityText} ${cleanTitle}.`;
+            
+            // Agregar descripción si es diferente del título y no es muy larga
+            if (cleanDescription && 
+                cleanDescription.toLowerCase() !== cleanTitle.toLowerCase() && 
+                cleanDescription.length < 300) {
+                message += ` ${cleanDescription}.`;
+            }
+            
+            // Agregar timestamp
+            message += ` Hora de emisión: ${currentTime}.`;
+            
+            return message;
+            
+        } else {
+            // Para múltiples alertas, dar resumen conciso
+            let message = `Atención. Múltiples alertas meteorológicas para Mendoza. Total: ${alerts.length} alertas activas. `;
+            
+            // Categorizar alertas por tipo
+            const alertTypes = new Map();
+            alerts.forEach(alert => {
+                const cleanTitle = this.cleanAlertText(alert.title);
+                const type = this.categorizeAlert(cleanTitle);
+                alertTypes.set(type, (alertTypes.get(type) || 0) + 1);
             });
+            
+            // Enumerar tipos
+            const typesList = Array.from(alertTypes.entries())
+                .map(([type, count]) => count > 1 ? `${count} de ${type}` : type)
+                .join(', ');
+            
+            message += `Tipos: ${typesList}. `;
+            message += `Hora de emisión: ${currentTime}. `;
+            message += `Use comando *7 para consultar detalles de cada alerta.`;
             
             return message;
         }
     }
     
     /**
+     * Limpiar texto de alerta para TTS
+     */
+    cleanAlertText(text) {
+        if (!text) return '';
+        
+        return text
+            .replace(/\s+/g, ' ') // Múltiples espacios a uno
+            .replace(/[\r\n]+/g, '. ') // Saltos de línea a puntos
+            .replace(/\.\.+/g, '.') // Múltiples puntos a uno
+            .replace(/([.!?])\s*([a-z])/g, '$1 $2') // Espacio después de puntuación
+            .replace(/\b(SMN|MENDOZA|ARGENTINA)\b/g, (match) => {
+                // Convertir siglas/nombres a forma más legible para TTS
+                switch(match) {
+                    case 'SMN': return 'Servicio Meteorológico Nacional';
+                    case 'MENDOZA': return 'Mendoza';
+                    case 'ARGENTINA': return 'Argentina';
+                    default: return match;
+                }
+            })
+            .trim();
+    }
+    
+    /**
+     * Traducir nivel de severidad
+     */
+    translateSeverity(severity) {
+        const severityMap = {
+            'Minor': 'Menor',
+            'Moderate': 'Moderado', 
+            'Severe': 'Severo',
+            'Extreme': 'Extremo',
+            'Unknown': 'Desconocido'
+        };
+        return severityMap[severity] || severity;
+    }
+    
+    /**
+     * Categorizar alerta por tipo
+     */
+    categorizeAlert(title) {
+        const titleLower = title.toLowerCase();
+        
+        if (titleLower.includes('lluvia') || titleLower.includes('precipitación')) {
+            return 'lluvia';
+        }
+        if (titleLower.includes('viento') || titleLower.includes('ráfaga')) {
+            return 'viento';
+        }
+        if (titleLower.includes('tormenta') || titleLower.includes('eléctrica')) {
+            return 'tormenta';
+        }
+        if (titleLower.includes('granizo')) {
+            return 'granizo';
+        }
+        if (titleLower.includes('nieve') || titleLower.includes('nevada')) {
+            return 'nieve';
+        }
+        if (titleLower.includes('temperatura') || titleLower.includes('calor') || titleLower.includes('frío')) {
+            return 'temperatura';
+        }
+        if (titleLower.includes('niebla') || titleLower.includes('visibilidad')) {
+            return 'visibilidad';
+        }
+        
+        return 'meteorológica general';
+    }
+    
+    /**
      * Actualizar comment de APRS con clima actual y alertas activas
      */
     async updateAPRSComment() {
-        if (!this.aprsModule) return;
+        if (!this.aprsModule) {return;}
         
         const alertComment = this.getActiveAlertComment();
         const weatherComment = await this.getCurrentWeatherComment();
@@ -540,7 +781,7 @@ class WeatherAlerts extends EventEmitter {
      * Obtener comment de clima actual para APRS
      */
     async getCurrentWeatherComment() {
-        if (!this.weatherModule) return null;
+        if (!this.weatherModule) {return null;}
         
         try {
             // Obtener clima actual para Mendoza
@@ -550,14 +791,31 @@ class WeatherAlerts extends EventEmitter {
                 lon: -68.84
             };
             
+            // Verificar que el método existe antes de llamarlo
+            if (typeof this.weatherModule.getCurrentWeatherForCity !== 'function') {
+                this.logger.debug('Método getCurrentWeatherForCity no disponible en weatherModule');
+                return null;
+            }
+            
             const weatherData = await this.weatherModule.getCurrentWeatherForCity(mendozaCity);
             
-            // Formato compacto para APRS: T:23°C H:65% V:15km/h
-            const temp = Math.round(weatherData.temperature);
-            const humidity = Math.round(weatherData.humidity);
-            const windSpeed = Math.round(weatherData.wind_speed);
+            if (!weatherData) {
+                this.logger.debug('No se obtuvo data de clima');
+                return null;
+            }
             
-            return `${temp}C ${humidity}% ${windSpeed}km/h`;
+            // Formato compacto para APRS con validación de campos
+            const temp = weatherData.temperature ? Math.round(weatherData.temperature) : 'N/A';
+            const humidity = weatherData.humidity ? Math.round(weatherData.humidity) : 'N/A';
+            const windSpeed = weatherData.wind_speed ? Math.round(weatherData.wind_speed) : 'N/A';
+            
+            // Solo incluir datos válidos
+            const parts = [];
+            if (temp !== 'N/A') parts.push(`${temp}C`);
+            if (humidity !== 'N/A') parts.push(`${humidity}%`);
+            if (windSpeed !== 'N/A') parts.push(`${windSpeed}km/h`);
+            
+            return parts.length > 0 ? parts.join(' ') : null;
             
         } catch (error) {
             this.logger.debug('Error obteniendo clima para APRS:', error.message);
@@ -569,17 +827,17 @@ class WeatherAlerts extends EventEmitter {
      * Generar comment corto para APRS (máximo 43 caracteres)
      */
     getActiveAlertComment() {
-        if (this.activeAlerts.size === 0) return null;
+        if (this.activeAlerts.size === 0) {return null;}
         
         const alerts = Array.from(this.activeAlerts.values());
         const types = [...new Set(alerts.map(a => a.title.toUpperCase()))];
         
         if (types.length === 1) {
             const type = types[0];
-            if (type.includes('LLUVIA')) return '[LLUVIA]';
-            if (type.includes('VIENTO')) return '[VIENTO]';
-            if (type.includes('TORMENTA')) return '[TORMENTA]';
-            if (type.includes('GRANIZO')) return '[GRANIZO]';
+            if (type.includes('LLUVIA')) {return '[LLUVIA]';}
+            if (type.includes('VIENTO')) {return '[VIENTO]';}
+            if (type.includes('TORMENTA')) {return '[TORMENTA]';}
+            if (type.includes('GRANIZO')) {return '[GRANIZO]';}
             return '[ALERTA MET]';
         } else if (types.length === 2) {
             return '[ALERTAS MET]';
@@ -697,7 +955,25 @@ class WeatherAlerts extends EventEmitter {
                 await this.audioManager.playTone(600, 200, 0.6);
                 await delay(200);
                 
-                const message = "No hay alertas meteorológicas activas para Mendoza";
+                const currentTime = new Date().toLocaleTimeString('es-AR', { 
+                    timeZone: 'America/Argentina/Mendoza',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                const lastCheckTime = this.lastCheck ? 
+                    new Date(this.lastCheck).toLocaleTimeString('es-AR', {
+                        timeZone: 'America/Argentina/Mendoza', 
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }) : 'desconocida';
+                
+                const message = `Estado de alertas meteorológicas para Mendoza. ` +
+                    `No hay alertas activas en este momento. ` +
+                    `Última verificación: ${lastCheckTime}. ` +
+                    `Hora actual: ${currentTime}. ` +
+                    `Use comando *0 para forzar verificación inmediata.`;
+                    
                 const cleanMessage = sanitizeTextForTTS(message);
                 
                 if (this.voiceManager) {
@@ -729,10 +1005,45 @@ class WeatherAlerts extends EventEmitter {
         return this.feedCache.data && age < this.config.cacheDuration;
     }
     
-    async waitForFreeChannel() {
-        // Implementar lógica para esperar canal libre
-        // Por ahora, delay simple
-        await delay(1000);
+    async waitForFreeChannel(timeout = 30000) {
+        if (!this.audioManager) {
+            this.logger.debug('AudioManager no disponible, usando delay simple');
+            await delay(1000);
+            return;
+        }
+        
+        // Usar la implementación real de audioManager si está disponible
+        if (typeof this.audioManager.isSafeToTransmit === 'function') {
+            return new Promise((resolve) => {
+                const startTime = Date.now();
+                
+                // Verificar inmediatamente
+                if (this.audioManager.isSafeToTransmit()) {
+                    resolve();
+                    return;
+                }
+                
+                this.logger.debug('Canal ocupado, esperando...');
+                
+                const checkInterval = setInterval(() => {
+                    const elapsed = Date.now() - startTime;
+                    
+                    if (this.audioManager.isSafeToTransmit()) {
+                        clearInterval(checkInterval);
+                        this.logger.debug(`Canal libre después de ${elapsed}ms`);
+                        resolve();
+                    } else if (elapsed > timeout) {
+                        clearInterval(checkInterval);
+                        this.logger.warn(`Timeout esperando canal libre (${timeout}ms)`);
+                        resolve(); // Continuar incluso si timeout
+                    }
+                }, 500); // Verificar cada 500ms
+            });
+        } else {
+            // Fallback si no hay método isSafeToTransmit
+            this.logger.debug('isSafeToTransmit no disponible, usando delay simple');
+            await delay(1000);
+        }
     }
     
     /**
@@ -776,12 +1087,37 @@ class WeatherAlerts extends EventEmitter {
      * Destructor
      */
     destroy() {
-        this.stop();
-        this.activeAlerts.clear();
-        this.lastAnnouncedAlerts.clear();
-        this.feedCache = { data: null, timestamp: 0 };
-        this.state = MODULE_STATES.DISABLED;
-        this.logger.info('Módulo WeatherAlerts destruido');
+        try {
+            // Detener monitoreo y limpiar timers
+            this.stop();
+            
+            // Limpiar datos
+            if (this.activeAlerts) {
+                this.activeAlerts.clear();
+            }
+            if (this.lastAnnouncedAlerts) {
+                this.lastAnnouncedAlerts.clear();
+            }
+            
+            // Limpiar cache
+            this.feedCache = { data: null, timestamp: 0 };
+            
+            // Limpiar referencias
+            this.audioManager = null;
+            this.aprsModule = null;
+            this.weatherModule = null;
+            this.voiceManager = null;
+            this.xmlParser = null;
+            
+            // Remover todos los listeners
+            this.removeAllListeners();
+            
+            this.state = MODULE_STATES.DISABLED;
+            this.logger.info('Módulo WeatherAlerts destruido completamente');
+            
+        } catch (error) {
+            this.logger.error('Error durante destrucción del módulo:', error.message);
+        }
     }
 }
 

@@ -101,7 +101,7 @@ class ConfigurationService {
             'system.logLevel': 'info',
             'system.port': 3000,
             'system.maxLogFiles': 10,
-            'system.maxLogSize': 10485760, // 10MB
+            'system.maxLogSize': 10485760 // 10MB
         };
 
         for (const [key, value] of Object.entries(defaults)) {

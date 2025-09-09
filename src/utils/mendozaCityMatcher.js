@@ -228,9 +228,9 @@ class MendozaCityMatcher {
      * @returns {number} - Similitud entre 0 y 1
      */
     calculateSimilarity(str1, str2) {
-        if (str1 === str2) return 1;
-        if (str1.length === 0) return str2.length === 0 ? 1 : 0;
-        if (str2.length === 0) return 0;
+        if (str1 === str2) {return 1;}
+        if (str1.length === 0) {return str2.length === 0 ? 1 : 0;}
+        if (str2.length === 0) {return 0;}
 
         const maxLength = Math.max(str1.length, str2.length);
         const distance = this.levenshteinDistance(str1, str2);

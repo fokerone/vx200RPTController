@@ -68,7 +68,7 @@ class Logger {
     }
 
     error(message, ...args) {
-        if (!this.shouldLog('error')) return;
+        if (!this.shouldLog('error')) {return;}
         
         const formatted = this.formatMessage('ERROR', message, ...args);
         console.error(`${this.colors.red}${formatted}${this.colors.reset}`);
@@ -78,7 +78,7 @@ class Logger {
     }
 
     warn(message, ...args) {
-        if (!this.shouldLog('warn')) return;
+        if (!this.shouldLog('warn')) {return;}
         
         const formatted = this.formatMessage('WARN', message, ...args);
         console.warn(`${this.colors.yellow}${formatted}${this.colors.reset}`);
@@ -87,7 +87,7 @@ class Logger {
     }
 
     info(message, ...args) {
-        if (!this.shouldLog('info')) return;
+        if (!this.shouldLog('info')) {return;}
         
         const formatted = this.formatMessage('INFO', message, ...args);
         console.log(`${this.colors.green}${formatted}${this.colors.reset}`);
@@ -96,7 +96,7 @@ class Logger {
     }
 
     debug(message, ...args) {
-        if (!this.shouldLog('debug')) return;
+        if (!this.shouldLog('debug')) {return;}
         
         const formatted = this.formatMessage('DEBUG', message, ...args);
         console.log(`${this.colors.gray}${formatted}${this.colors.reset}`);
@@ -106,7 +106,7 @@ class Logger {
 
     // Métodos especiales para eventos importantes
     system(message, ...args) {
-        if (!this.shouldLog('info')) return;
+        if (!this.shouldLog('info')) {return;}
         
         const formatted = this.formatMessage('SYSTEM', message, ...args);
         console.log(`${this.colors.cyan}${formatted}${this.colors.reset}`);
@@ -115,7 +115,7 @@ class Logger {
     }
 
     dtmf(sequence, module) {
-        if (!this.shouldLog('info')) return;
+        if (!this.shouldLog('info')) {return;}
         
         const message = `DTMF detected: ${sequence} -> ${module}`;
         const formatted = this.formatMessage('DTMF', message);
@@ -125,7 +125,7 @@ class Logger {
     }
 
     module(moduleName, status, details = '') {
-        if (!this.shouldLog('info')) return;
+        if (!this.shouldLog('info')) {return;}
         
         const message = `Module ${moduleName}: ${status}${details ? ' - ' + details : ''}`;
         const formatted = this.formatMessage('MODULE', message);

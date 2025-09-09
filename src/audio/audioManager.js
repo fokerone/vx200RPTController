@@ -414,7 +414,7 @@ class AudioManager extends EventEmitter {
             });
             
             espeak.on('close', (code) => {
-                if (timeout) clearTimeout(timeout);
+                if (timeout) {clearTimeout(timeout);}
                 
                 // Emitir evento de transmisión terminada
                 this.emit('transmission_ended', {
@@ -441,7 +441,7 @@ class AudioManager extends EventEmitter {
             });
             
             espeak.on('error', (err) => {
-                if (timeout) clearTimeout(timeout);
+                if (timeout) {clearTimeout(timeout);}
                 
                 // Emitir evento de transmisión terminada (con error)
                 this.emit('transmission_ended', {
@@ -647,7 +647,7 @@ class AudioManager extends EventEmitter {
             }, 5000);
 
             sox.on('close', (code) => {
-                if (soxTimeout) clearTimeout(soxTimeout);
+                if (soxTimeout) {clearTimeout(soxTimeout);}
                 
                 if (code === 0) {
                     // Primero intentar con PulseAudio para evitar conflictos de dispositivo
@@ -678,7 +678,7 @@ class AudioManager extends EventEmitter {
             });
 
             sox.on('error', (err) => {
-                if (soxTimeout) clearTimeout(soxTimeout);
+                if (soxTimeout) {clearTimeout(soxTimeout);}
                 this.logger.warn(`Error en sox: ${err.message}, usando fallback directo`);
                 this.playToneWithoutFile(frequency, duration).then(resolve).catch(() => resolve());
             });
@@ -714,7 +714,7 @@ class AudioManager extends EventEmitter {
             }, expectedDuration + 2000);
             
             aplay.on('close', (code) => {
-                if (aplayTimeout) clearTimeout(aplayTimeout);
+                if (aplayTimeout) {clearTimeout(aplayTimeout);}
                 
                 if (code === 0) {
                     this.logger.debug('aplay completado exitosamente');
@@ -729,7 +729,7 @@ class AudioManager extends EventEmitter {
             });
             
             aplay.on('error', (err) => {
-                if (aplayTimeout) clearTimeout(aplayTimeout);
+                if (aplayTimeout) {clearTimeout(aplayTimeout);}
                 reject(err);
             });
         });
@@ -756,7 +756,7 @@ class AudioManager extends EventEmitter {
             }, 8000);
             
             paplay.on('close', (code) => {
-                if (paplayTimeout) clearTimeout(paplayTimeout);
+                if (paplayTimeout) {clearTimeout(paplayTimeout);}
                 
                 if (code === 0) {
                     this.logger.debug('paplay completado exitosamente');
@@ -771,7 +771,7 @@ class AudioManager extends EventEmitter {
             });
             
             paplay.on('error', (err) => {
-                if (paplayTimeout) clearTimeout(paplayTimeout);
+                if (paplayTimeout) {clearTimeout(paplayTimeout);}
                 reject(err);
             });
         });
@@ -815,9 +815,22 @@ class AudioManager extends EventEmitter {
                 stderr += data.toString();
             });
             
-            // Timeout extendido para alertas meteorológicas muy largas (2 minutos)
+            // Timeout dinámico para alertas meteorológicas (basado en tamaño del archivo)
+            let timeoutDuration = 120000; // 2 minutos por defecto
+            
+            try {
+                const stats = fs.statSync(filePath);
+                const fileSizeMB = stats.size / (1024 * 1024);
+                // Calcular timeout: 30s por cada MB + 90s base (máximo 5 minutos)
+                timeoutDuration = Math.min(90000 + (fileSizeMB * 30000), 300000);
+                this.logger.debug(`Timeout calculado: ${timeoutDuration}ms para archivo de ${fileSizeMB.toFixed(2)}MB`);
+            } catch (error) {
+                this.logger.debug('No se pudo calcular tamaño de archivo, usando timeout por defecto');
+            }
+            
             paplayTimeout = setTimeout(() => {
                 if (!paplay.killed) {
+                    this.logger.warn(`Timeout de ${timeoutDuration}ms alcanzado para alerta meteorológica`);
                     paplay.kill('SIGTERM');
                     
                     // SIMPLEX: Reanudar escucha después de timeout
@@ -828,12 +841,12 @@ class AudioManager extends EventEmitter {
                         }, 100);
                     }
                     
-                    reject(new Error('paplay timeout para alerta meteorológica'));
+                    reject(new Error(`paplay timeout (${timeoutDuration}ms) para alerta meteorológica`));
                 }
-            }, 120000); // 2 minutos para alertas meteorológicas muy largas
+            }, timeoutDuration);
             
             paplay.on('close', (code) => {
-                if (paplayTimeout) clearTimeout(paplayTimeout);
+                if (paplayTimeout) {clearTimeout(paplayTimeout);}
                 
                 // SIMPLEX: Reanudar escucha después de transmisión
                 if (wasRecording && !this.isRecording) {
@@ -851,19 +864,20 @@ class AudioManager extends EventEmitter {
                 });
                 
                 if (code === 0) {
-                    this.logger.debug('paplay para alerta meteorológica completado exitosamente');
+                    this.logger.debug(`paplay para alerta meteorológica completado exitosamente (timeout era ${timeoutDuration}ms)`);
                     resolve();
                 } else {
                     let errorMsg = `paplay para alerta meteorológica falló con código ${code}`;
                     if (stderr.trim()) {
                         errorMsg += `: ${stderr.trim()}`;
                     }
+                    this.logger.warn(errorMsg);
                     reject(new Error(errorMsg));
                 }
             });
             
             paplay.on('error', (err) => {
-                if (paplayTimeout) clearTimeout(paplayTimeout);
+                if (paplayTimeout) {clearTimeout(paplayTimeout);}
                 
                 // SIMPLEX: Reanudar escucha después de error
                 if (wasRecording && !this.isRecording) {
@@ -921,7 +935,7 @@ class AudioManager extends EventEmitter {
             }, 15000); // 15 segundos por fragmento
             
             paplay.on('close', (code) => {
-                if (paplayTimeout) clearTimeout(paplayTimeout);
+                if (paplayTimeout) {clearTimeout(paplayTimeout);}
                 
                 if (code === 0) {
                     this.logger.debug('Fragmento de audio completado exitosamente');
@@ -936,7 +950,7 @@ class AudioManager extends EventEmitter {
             });
             
             paplay.on('error', (err) => {
-                if (paplayTimeout) clearTimeout(paplayTimeout);
+                if (paplayTimeout) {clearTimeout(paplayTimeout);}
                 reject(err);
             });
         });
@@ -1020,8 +1034,8 @@ class AudioManager extends EventEmitter {
                     if (!completed) {
                         completed = true;
                         try {
-                            if (!sox.killed) sox.kill('SIGTERM');
-                            if (!paplay.killed) paplay.kill('SIGTERM');
+                            if (!sox.killed) {sox.kill('SIGTERM');}
+                            if (!paplay.killed) {paplay.kill('SIGTERM');}
                         } catch (e) { /* ignore */ }
                     }
                 };
@@ -1148,7 +1162,7 @@ class AudioManager extends EventEmitter {
                 }, timeoutDuration);
 
                 aplay.on('close', (code) => {
-                    if (aplayTimeout) clearTimeout(aplayTimeout);
+                    if (aplayTimeout) {clearTimeout(aplayTimeout);}
                     this.cleanupTempFile(tempFile);
                     
                     if (code === 0) {
@@ -1161,14 +1175,14 @@ class AudioManager extends EventEmitter {
                 });
 
                 aplay.on('error', (err) => {
-                    if (aplayTimeout) clearTimeout(aplayTimeout);
+                    if (aplayTimeout) {clearTimeout(aplayTimeout);}
                     this.cleanupTempFile(tempFile);
                     this.logger.warn('Error en aplay:', err.message);
                     resolve(); // Fallar silenciosamente para mantener estabilidad
                 });
 
             } catch (error) {
-                if (aplayTimeout) clearTimeout(aplayTimeout);
+                if (aplayTimeout) {clearTimeout(aplayTimeout);}
                 this.cleanupTempFile(tempFile);
                 this.logger.error('Error preparando reproducción de buffer:', error.message);
                 resolve(); // Fallar silenciosamente

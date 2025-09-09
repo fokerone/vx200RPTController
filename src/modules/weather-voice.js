@@ -427,7 +427,7 @@ class WeatherVoice {
             if (forecastData.rain_probability > 20) {
                 mensaje += `Probabilidad de lluvia ${forecastData.rain_probability} por ciento.`;
             } else {
-                mensaje += `Sin precipitaciones esperadas.`;
+                mensaje += 'Sin precipitaciones esperadas.';
             }
 
             const mensajeLimpio = sanitizeTextForTTS(mensaje);
@@ -504,7 +504,7 @@ class WeatherVoice {
      * Verificar si el cache es válido
      */
     isCacheValid(cacheKey) {
-        if (!this.cache.has(cacheKey)) return false;
+        if (!this.cache.has(cacheKey)) {return false;}
         
         const cached = this.cache.get(cacheKey);
         const age = Date.now() - cached.timestamp;

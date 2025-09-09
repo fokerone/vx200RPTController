@@ -240,46 +240,46 @@ class ConfigManager {
      */
     loadFromEnvironment() {
         // Sistema
-        if (process.env.CALLSIGN) this.config.system.callsign = process.env.CALLSIGN;
-        if (process.env.SYSTEM_VERSION) this.config.system.version = process.env.SYSTEM_VERSION;
-        if (process.env.NODE_ENV) this.config.system.environment = process.env.NODE_ENV;
+        if (process.env.CALLSIGN) {this.config.system.callsign = process.env.CALLSIGN;}
+        if (process.env.SYSTEM_VERSION) {this.config.system.version = process.env.SYSTEM_VERSION;}
+        if (process.env.NODE_ENV) {this.config.system.environment = process.env.NODE_ENV;}
 
         // Web Server
-        if (process.env.WEB_PORT) this.config.web.port = parseInt(process.env.WEB_PORT);
-        if (process.env.WEB_HOST) this.config.web.host = process.env.WEB_HOST;
+        if (process.env.WEB_PORT) {this.config.web.port = parseInt(process.env.WEB_PORT);}
+        if (process.env.WEB_HOST) {this.config.web.host = process.env.WEB_HOST;}
         if (process.env.ALLOWED_ORIGINS) {
             this.config.web.allowedOrigins = process.env.ALLOWED_ORIGINS.split(',');
         }
 
         // Audio
-        if (process.env.AUDIO_DEVICE) this.config.audio.device = process.env.AUDIO_DEVICE;
-        if (process.env.AUDIO_SAMPLE_RATE) this.config.audio.sampleRate = parseInt(process.env.AUDIO_SAMPLE_RATE);
-        if (process.env.AUDIO_CHANNELS) this.config.audio.channels = parseInt(process.env.AUDIO_CHANNELS);
-        if (process.env.AUDIO_CHANNEL_THRESHOLD) this.config.audio.channelThreshold = parseFloat(process.env.AUDIO_CHANNEL_THRESHOLD);
+        if (process.env.AUDIO_DEVICE) {this.config.audio.device = process.env.AUDIO_DEVICE;}
+        if (process.env.AUDIO_SAMPLE_RATE) {this.config.audio.sampleRate = parseInt(process.env.AUDIO_SAMPLE_RATE);}
+        if (process.env.AUDIO_CHANNELS) {this.config.audio.channels = parseInt(process.env.AUDIO_CHANNELS);}
+        if (process.env.AUDIO_CHANNEL_THRESHOLD) {this.config.audio.channelThreshold = parseFloat(process.env.AUDIO_CHANNEL_THRESHOLD);}
 
         // TTS
-        if (process.env.TTS_VOICE) this.config.tts.voice = process.env.TTS_VOICE;
-        if (process.env.TTS_SPEED) this.config.tts.speed = process.env.TTS_SPEED;
-        if (process.env.TTS_AMPLITUDE) this.config.tts.amplitude = parseInt(process.env.TTS_AMPLITUDE);
+        if (process.env.TTS_VOICE) {this.config.tts.voice = process.env.TTS_VOICE;}
+        if (process.env.TTS_SPEED) {this.config.tts.speed = process.env.TTS_SPEED;}
+        if (process.env.TTS_AMPLITUDE) {this.config.tts.amplitude = parseInt(process.env.TTS_AMPLITUDE);}
 
         // Roger Beep
-        if (process.env.ROGER_BEEP_ENABLED) this.config.rogerBeep.enabled = process.env.ROGER_BEEP_ENABLED === 'true';
-        if (process.env.ROGER_BEEP_TYPE) this.config.rogerBeep.type = process.env.ROGER_BEEP_TYPE;
-        if (process.env.ROGER_BEEP_VOLUME) this.config.rogerBeep.volume = parseFloat(process.env.ROGER_BEEP_VOLUME);
-        if (process.env.ROGER_BEEP_DURATION) this.config.rogerBeep.duration = parseInt(process.env.ROGER_BEEP_DURATION);
+        if (process.env.ROGER_BEEP_ENABLED) {this.config.rogerBeep.enabled = process.env.ROGER_BEEP_ENABLED === 'true';}
+        if (process.env.ROGER_BEEP_TYPE) {this.config.rogerBeep.type = process.env.ROGER_BEEP_TYPE;}
+        if (process.env.ROGER_BEEP_VOLUME) {this.config.rogerBeep.volume = parseFloat(process.env.ROGER_BEEP_VOLUME);}
+        if (process.env.ROGER_BEEP_DURATION) {this.config.rogerBeep.duration = parseInt(process.env.ROGER_BEEP_DURATION);}
 
         // Baliza
-        if (process.env.BALIZA_ENABLED) this.config.baliza.enabled = process.env.BALIZA_ENABLED === 'true';
-        if (process.env.BALIZA_INTERVAL) this.config.baliza.interval = parseInt(process.env.BALIZA_INTERVAL);
-        if (process.env.BALIZA_MESSAGE) this.config.baliza.message = process.env.BALIZA_MESSAGE;
-        if (process.env.BALIZA_TONE_FREQUENCY) this.config.baliza.tone.frequency = parseInt(process.env.BALIZA_TONE_FREQUENCY);
-        if (process.env.BALIZA_TONE_DURATION) this.config.baliza.tone.duration = parseInt(process.env.BALIZA_TONE_DURATION);
-        if (process.env.BALIZA_TONE_VOLUME) this.config.baliza.tone.volume = parseFloat(process.env.BALIZA_TONE_VOLUME);
+        if (process.env.BALIZA_ENABLED) {this.config.baliza.enabled = process.env.BALIZA_ENABLED === 'true';}
+        if (process.env.BALIZA_INTERVAL) {this.config.baliza.interval = parseInt(process.env.BALIZA_INTERVAL);}
+        if (process.env.BALIZA_MESSAGE) {this.config.baliza.message = process.env.BALIZA_MESSAGE;}
+        if (process.env.BALIZA_TONE_FREQUENCY) {this.config.baliza.tone.frequency = parseInt(process.env.BALIZA_TONE_FREQUENCY);}
+        if (process.env.BALIZA_TONE_DURATION) {this.config.baliza.tone.duration = parseInt(process.env.BALIZA_TONE_DURATION);}
+        if (process.env.BALIZA_TONE_VOLUME) {this.config.baliza.tone.volume = parseFloat(process.env.BALIZA_TONE_VOLUME);}
 
 
         // Logging
-        if (process.env.LOG_LEVEL) this.config.logging.level = process.env.LOG_LEVEL;
-        if (process.env.LOG_TO_FILE) this.config.logging.toFile = process.env.LOG_TO_FILE === 'true';
+        if (process.env.LOG_LEVEL) {this.config.logging.level = process.env.LOG_LEVEL;}
+        if (process.env.LOG_TO_FILE) {this.config.logging.toFile = process.env.LOG_TO_FILE === 'true';}
 
         this.logger.debug('Variables de entorno aplicadas');
     }
@@ -290,7 +290,7 @@ class ConfigManager {
     mergeConfig(target, source) {
         Object.keys(source).forEach(key => {
             if (source[key] !== null && source[key] !== undefined && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-                if (!target[key]) target[key] = {};
+                if (!target[key]) {target[key] = {};}
                 this.mergeConfig(target[key], source[key]);
             } else {
                 target[key] = source[key];

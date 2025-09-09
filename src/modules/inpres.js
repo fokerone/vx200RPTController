@@ -376,7 +376,7 @@ class InpresSismic extends EventEmitter {
      * Determinar zona de Mendoza por coordenadas
      */
     determineZone(lat, lon) {
-        if (!lat || !lon) return 'Mendoza';
+        if (!lat || !lon) {return 'Mendoza';}
         
         // Buscar zona más cercana
         let closestZone = 'Mendoza';
@@ -460,7 +460,7 @@ class InpresSismic extends EventEmitter {
             const time = seism.time || 'hora desconocida';
             const date = seism.date || 'fecha desconocida';
             
-            const message = `Nuevo sismo detectado. ` +
+            const message = 'Nuevo sismo detectado. ' +
                           `Fecha ${date}, hora ${time}. ` +
                           `Profundidad ${depth}. ` +
                           `Magnitud ${magnitude}. ` +

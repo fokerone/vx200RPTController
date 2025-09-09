@@ -209,10 +209,10 @@ class APRS extends EventEmitter {
      * Limpiar y mejorar comentario APRS
      */
     cleanComment(rawInfo) {
-        if (!rawInfo) return 'APRS Station';
+        if (!rawInfo) {return 'APRS Station';}
         
         // Remover caracteres de control y no imprimibles, preservando espacios
-        let cleaned = rawInfo.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
+        const cleaned = rawInfo.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
         
         // Buscar patrones comunes de radio al final del mensaje
         const radioPatterns = [
@@ -501,12 +501,12 @@ class APRS extends EventEmitter {
                 const latDeg = parseInt(latStr.substring(0, 2));
                 const latMin = parseFloat(latStr.substring(2));
                 let lat = latDeg + (latMin / 60);
-                if (latDir === 'S') lat = -lat;
+                if (latDir === 'S') {lat = -lat;}
                 
                 const lonDeg = parseInt(lonStr.substring(0, 3));
                 const lonMin = parseFloat(lonStr.substring(3));
                 let lon = lonDeg + (lonMin / 60);
-                if (lonDir === 'W') lon = -lon;
+                if (lonDir === 'W') {lon = -lon;}
                 
                 this.logger.info(`📍 Coordenadas parseadas: ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
                 return { lat, lon };
@@ -581,7 +581,7 @@ class APRS extends EventEmitter {
             for (let i = lines.length - 1; i >= 0; i--) {
                 const line = lines[i];
                 
-                if (!line || line.includes('latitude,longitude')) continue;
+                if (!line || line.includes('latitude,longitude')) {continue;}
                 
                 const fields = line.split(',');
                 if (fields.length >= 11) {
@@ -593,7 +593,7 @@ class APRS extends EventEmitter {
                     // Verificar que las coordenadas sean válidas
                     if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
                         // Si buscamos callsign específico
-                        if (targetCallsign && source !== targetCallsign) continue;
+                        if (targetCallsign && source !== targetCallsign) {continue;}
                         
                         // Si buscamos timestamp específico, encontrar el más cercano
                         if (targetTimestamp) {
@@ -630,13 +630,13 @@ class APRS extends EventEmitter {
     async parseBasicAX25(frame) {
         try {
             // Formato AX.25: DEST(7) + SOURCE(7) + PATH(0-56) + CONTROL(1) + PID(1) + INFO
-            if (frame.length < 16) return null;
+            if (frame.length < 16) {return null;}
             
             // Extraer callsign source (bytes 7-12, shifted left 1 bit) + SSID
             let callsign = '';
             for (let i = 7; i < 13; i++) {
                 const c = String.fromCharCode(frame[i] >> 1);
-                if (c !== ' ') callsign += c;
+                if (c !== ' ') {callsign += c;}
             }
             
             // Extraer SSID desde el byte 13 (bits 7-1, shifted right 1)
@@ -731,7 +731,7 @@ class APRS extends EventEmitter {
             const logContent = fs.readFileSync(todayLog, 'utf8');
             const lines = logContent.trim().split('\n');
             
-            if (lines.length < 2) return null;
+            if (lines.length < 2) {return null;}
             
             const header = lines[0].split(',');
             const sourceIndex = header.indexOf('source');
@@ -916,7 +916,7 @@ class APRS extends EventEmitter {
     async checkForNewLogFiles() {
         try {
             const logsDir = path.join(__dirname, '../../logs');
-            if (!fs.existsSync(logsDir)) return;
+            if (!fs.existsSync(logsDir)) {return;}
             
             const currentLogFiles = fs.readdirSync(logsDir)
                 .filter(f => f.endsWith('.log'))
@@ -989,7 +989,7 @@ class APRS extends EventEmitter {
             const lines = csvData.trim().split('\n');
             
             // Primera línea es header CSV
-            if (lines.length < 2) return 0;
+            if (lines.length < 2) {return 0;}
             
             const header = lines[0].split(',');
             const latIndex = header.indexOf('latitude');
@@ -1017,7 +1017,7 @@ class APRS extends EventEmitter {
                 const lon = parseFloat(fields[lonIndex]);
                 const callsign = fields[sourceIndex];
                 
-                if (isNaN(lat) || isNaN(lon) || !callsign) continue;
+                if (isNaN(lat) || isNaN(lon) || !callsign) {continue;}
                 
                 const existingPositions = this.receivedPositions.get(callsign) || [];
                 
@@ -1149,11 +1149,11 @@ class APRS extends EventEmitter {
                 const positionsByCallsign = new Map();
                 positions.forEach(pos => {
                     // Convertir timestamp string de vuelta a Date
-                    if (pos.timestamp) pos.timestamp = new Date(pos.timestamp);
-                    if (pos.lastHeard) pos.lastHeard = new Date(pos.lastHeard);
+                    if (pos.timestamp) {pos.timestamp = new Date(pos.timestamp);}
+                    if (pos.lastHeard) {pos.lastHeard = new Date(pos.lastHeard);}
                     
                     // Inicializar contador si no existe
-                    if (!pos.count) pos.count = 1;
+                    if (!pos.count) {pos.count = 1;}
                     
                     // Agrupar por callsign
                     if (!positionsByCallsign.has(pos.callsign)) {
@@ -1424,7 +1424,7 @@ class APRS extends EventEmitter {
      * Obtener tiempo desde último beacon en minutos
      */
     getTimeSinceLastBeacon() {
-        if (!this.stats.lastBeacon || typeof this.stats.lastBeacon.getTime !== 'function') return 'nunca';
+        if (!this.stats.lastBeacon || typeof this.stats.lastBeacon.getTime !== 'function') {return 'nunca';}
         try {
             return Math.floor((Date.now() - this.stats.lastBeacon.getTime()) / 1000 / 60);
         } catch (error) {
@@ -1477,7 +1477,7 @@ class APRS extends EventEmitter {
             await this.checkForNewLogFiles();
         }, monitorInterval);
 
-        this.logger.info(`Monitoreo de logs activado: revisión cada 2 minutos`);
+        this.logger.info('Monitoreo de logs activado: revisión cada 2 minutos');
     }
 
     /**
