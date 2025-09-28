@@ -1,0 +1,72 @@
+# Archivos y directorios a ignorar en Docker build
+
+# Dependencias de Node.js (se instalan en contenedor)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs locales
+logs/
+*.log
+
+# Archivos temporales
+temp/
+tmp/
+.tmp/
+
+# Archivos de configuración local
+.env.local
+.env.development
+.env.test
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+.git/
+.gitignore
+.gitattributes
+
+# Documentación de desarrollo
+*.md
+!README.md
+docs/
+documentation/
+
+# Archivos de backup
+*.backup
+*.bak
+*.orig
+
+# Archivos de testing
+test/
+tests/
+*.test.js
+*.spec.js
+coverage/
+
+# Archivos Docker (evitar recursión)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Scripts de Windows
+*.bat
+*.ps1
+
+# Archivos de desarrollo
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archivos de datos locales (se montan como volúmenes)
+data/
+config/local/
+sounds/custom/
+
+# Archivos de sistema Linux/Mac
+.bash_history
+.ssh/
+.cache/

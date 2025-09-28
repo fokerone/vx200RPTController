@@ -300,10 +300,9 @@ class WeatherAlerts extends EventEmitter {
         }
         
         const items = Array.isArray(channel.item) ? channel.item : [channel.item];
-        
         return items.map(item => ({
             title: item.title || 'Alerta Meteorológica',
-            description: item.description ? 
+            description: item.description.map? 
                 item.description.replace(/<!\[CDATA\[|\]\]>/g, '').trim() : 
                 'Sin descripción disponible',
             link: item.link,
