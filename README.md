@@ -1,10 +1,20 @@
 # VX200 Controller
 
-## 📡 Sistema de Control para Repetidora Headless v2.9.1
+## 📡 Sistema de Control para Repetidora Headless v2.10.0
 
-Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. **Versión Headless** con interfaz APRS liviana, decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, monitoreo sísmico INPRES en tiempo real y **sistema TTS híbrido con Google TTS**.
+Sistema completo de control inteligente para repetidora simplex desarrollado en Node.js. **Versión Headless** con interfaz APRS liviana, decodificación DTMF profesional con anti-falsos positivos, múltiples servicios automatizados, monitoreo sísmico INPRES en tiempo real, **sistema TTS híbrido con Google TTS** y **soporte completo para Raspberry Pi 3**.
 
-**🚀 Versión 2.9.1 - Mejoras Críticas en Alertas Meteorológicas TTS**
+**🚀 Versión 2.10.0 - Optimización Raspberry Pi 3 y Display OLED**
+
+### 📅 **Novedades v2.10.0** (Octubre 2025)
+- **🍓 Soporte Raspberry Pi 3**: Optimización completa para funcionar en Raspberry Pi 3B (1GB RAM)
+- **📺 Display OLED MMDVM**: Integración completa del display OLED SSD1306 128x64 del MMDVM HAT
+- **🎨 8 Pantallas Rotativas**: Frecuencia, Reloj, Sistema, APRS, Clima, Sismos, Audio y Stats
+- **🔊 Detección Audio Inteligente**: Modo output-only automático si no hay dispositivos de captura
+- **🎵 Beeps BBC Continuos**: Corregido problema de cortes en baliza horaria (VOX ya no cae)
+- **📊 Contador APRS Corregido**: Fix contador de beacons APRS en OLED
+- **💾 Scripts Instalación**: Scripts automatizados para instalación en Raspberry Pi desde Arch Linux
+- **📖 Guía Completa**: Documentación detallada de configuración post-instalación
 
 ### 📅 **Novedades v2.9.1** (Septiembre 2025)
 - **🎙️ Mejora Flujo TTS Multiple Alertas**: Corregido flujo de mensaje para múltiples alertas meteorológicas
@@ -112,6 +122,48 @@ Sistema completo de control inteligente para repetidora simplex desarrollado en 
 - **Actualización automática** cada 30 segundos
 - **APIs REST** para integración externa
 
+### 📺 **Display OLED MMDVM (Raspberry Pi 3)**
+
+El sistema integra soporte completo para el display OLED SSD1306 128x64 del MMDVM HAT.
+
+#### **Características del Display**
+- **Resolución**: 128x64 píxeles monocromo
+- **Interfaz**: I2C (dirección 0x3C)
+- **Actualización**: Cada 5 segundos en carousel automático
+- **8 Pantallas rotativas** con información en tiempo real
+
+#### **Pantallas Disponibles**
+
+| # | Pantalla | Información Mostrada |
+|---|----------|---------------------|
+| 0 | **Frecuencia** | Frecuencia del repetidor y callsign |
+| 1 | **Reloj** | Hora (HH:MM) y Fecha (DD/MM/YYYY) |
+| 2 | **Sistema** | IP Address y Uptime |
+| 3 | **APRS** | Beacons enviados y posiciones únicas |
+| 4 | **Clima** | Temperatura actual y humedad |
+| 5 | **Sismos** | Último sismo detectado (INPRES) |
+| 6 | **Audio** | Estado TX/RX con tipo de transmisión |
+| 7 | **Stats** | Comandos DTMF ejecutados |
+
+#### **Pantalla TX (Transmisión)**
+- Se activa automáticamente durante transmisiones
+- Muestra **">> TX <<"** parpadeante
+- Indica tipo de transmisión (TTS, Baliza, Alerta, etc.)
+- Diseño simplificado sin callsign
+- Vuelve al carousel automáticamente al terminar
+
+#### **Configuración Técnica**
+```javascript
+// En src/index.js.pi
+const OLEDDisplay = require('./display/OLEDDisplay');
+this.oledDisplay = new OLEDDisplay({
+    width: 128,
+    height: 64,
+    address: 0x3C,
+    device: '/dev/i2c-1'
+});
+```
+
 ### 🔊 **Sistema de Módulos**
 - **🔊 Baliza BBC Pips**: Secuencia estándar 5 tonos cortos + 1 largo sincronizada con horas de reloj (`*9`)
 - **DateTime**: Anuncio de fecha y hora (`*1`)
@@ -192,6 +244,107 @@ APRS_LOCATION=lat,lon
 ```
 
 **🗺️ Mapa APRS disponible en: http://localhost:3000**
+
+### 🍓 Instalación en Raspberry Pi 3
+
+El sistema está completamente optimizado para ejecutarse en **Raspberry Pi 3B con MMDVM HAT**.
+
+#### Hardware Requerido
+- **Raspberry Pi 3 Model B** (1GB RAM)
+- **MMDVM HAT** con display OLED SSD1306 128x64 (I2C @ 0x3C)
+- Tarjeta microSD (16GB mínimo recomendado)
+- Fuente de alimentación 5V 2.5A
+
+#### Opción 1: Script de Instalación Automatizada desde Arch Linux
+
+```bash
+# Desde tu máquina Arch Linux
+cd vx200RPTController
+chmod +x setup-raspberry-pi.sh
+./setup-raspberry-pi.sh
+
+# El script:
+# 1. Descarga Raspberry Pi OS Lite
+# 2. Configura WiFi y SSH
+# 3. Genera script de instalación automática
+# 4. Copia archivos al Raspberry Pi
+```
+
+#### Opción 2: Instalación Manual en Raspberry Pi
+
+```bash
+# 1. Conectar por SSH al Raspberry Pi
+ssh pi@192.168.100.3  # Usar tu IP
+
+# 2. Actualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# 3. Instalar dependencias básicas
+sudo apt install -y git curl build-essential
+
+# 4. Instalar Node.js 18.x
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# 5. Instalar herramientas de audio
+sudo apt install -y alsa-utils mpg123 espeak-ng ffmpeg
+
+# 6. Instalar Direwolf (para APRS)
+sudo apt install -y direwolf
+
+# 7. Configurar I2C para display OLED
+sudo raspi-config
+# Navegar a: Interfacing Options > I2C > Enable
+# Reiniciar: sudo reboot
+
+# 8. Instalar librería OLED
+sudo apt install -y i2c-tools python3-pip
+sudo pip3 install luma.oled
+
+# 9. Verificar I2C y OLED
+sudo i2cdetect -y 1
+# Debe mostrar 0x3C (dirección del display)
+
+# 10. Clonar repositorio
+cd ~
+git clone https://github.com/fokerone/vx200RPTController.git
+cd vx200RPTController
+
+# 11. Instalar dependencias Node.js
+npm install
+
+# 12. Configurar variables de entorno
+cp .env.example .env
+nano .env  # Editar configuración (ver GUIA-CONFIGURACION.md)
+
+# 13. Copiar archivo principal para Raspberry Pi
+cp src/index.js.pi src/index.js
+
+# 14. Ejecutar el sistema
+npm start
+```
+
+#### Configuración Post-Instalación
+
+Consulta **GUIA-CONFIGURACION.md** para:
+- Configuración detallada del archivo `.env`
+- Pruebas de audio con aplay/arecord
+- Verificación de dispositivos I2C
+- Comandos DTMF disponibles
+- Troubleshooting específico para Raspberry Pi
+
+#### Detección Automática de Audio
+
+El sistema detecta automáticamente las capacidades de audio:
+- **Modo completo**: Con dispositivos de captura y reproducción
+- **Modo output-only**: Solo reproducción (sin captura disponible)
+- Funciones disponibles en modo output-only: TTS, beacons, alertas, baliza
+
+```bash
+# Verificar dispositivos de audio
+aplay -l    # Dispositivos de reproducción
+arecord -l  # Dispositivos de captura
+```
 
 ---
 
@@ -397,6 +550,92 @@ npm start  # Ver logs en consola
 ---
 
 ## 📋 Changelog
+
+### v2.10.0 - Optimización Raspberry Pi 3 y Display OLED 🍓📺
+
+#### 🍓 **Soporte Completo para Raspberry Pi 3**
+- [x] **Optimización para hardware limitado**
+  - [x] Sistema adaptado para Raspberry Pi 3B con 1GB RAM
+  - [x] Gestión eficiente de recursos y memoria
+  - [x] Configuración específica para arquitectura ARM
+  - [x] Archivo principal dedicado `src/index.js.pi`
+- [x] **Scripts de instalación automatizada**
+  - [x] Script `setup-raspberry-pi.sh` para instalación desde Arch Linux
+  - [x] Descarga automática de Raspberry Pi OS Lite
+  - [x] Configuración de WiFi y SSH preinstalada
+  - [x] Instalación de dependencias y servicios
+- [x] **Documentación completa**
+  - [x] Guía detallada `GUIA-CONFIGURACION.md`
+  - [x] Instrucciones de configuración post-instalación
+  - [x] Troubleshooting específico para Raspberry Pi
+
+#### 📺 **Integración Display OLED MMDVM**
+- [x] **Soporte completo SSD1306 128x64**
+  - [x] Implementación driver I2C (dirección 0x3C)
+  - [x] Clase `OLEDDisplay` con gestión completa del display
+  - [x] Renderizado optimizado con biblioteca oled-i2c-bus
+  - [x] Actualización automática cada 5 segundos
+- [x] **8 Pantallas rotativas en carousel**
+  - [x] **Pantalla 0 - Frecuencia**: Frecuencia y callsign del repetidor
+  - [x] **Pantalla 1 - Reloj**: Hora (HH:MM) y fecha (DD/MM/YYYY) sin segundos
+  - [x] **Pantalla 2 - Sistema**: IP Address y Uptime (simplificada)
+  - [x] **Pantalla 3 - APRS**: Beacons enviados y posiciones únicas
+  - [x] **Pantalla 4 - Clima**: Temperatura y humedad
+  - [x] **Pantalla 5 - Sismos**: Último sismo INPRES
+  - [x] **Pantalla 6 - Audio**: Estado TX/RX
+  - [x] **Pantalla 7 - Stats**: Comandos DTMF
+- [x] **Pantalla TX mejorada**
+  - [x] Removido callsign de pantalla de transmisión
+  - [x] Diseño simplificado: ">> TX <<" parpadeante
+  - [x] Indicador de tipo de transmisión
+  - [x] Activación automática durante transmisiones
+
+#### 🔊 **Fix Crítico Baliza BBC Pips**
+- [x] **Solución problema VOX cortando PTT**
+  - [x] Generación de archivo WAV completo con toda la secuencia
+  - [x] 5 beeps cortos + 1 largo en archivo continuo de 5500ms
+  - [x] Implementadas funciones `generateToneBuffer()` y `generateSilenceBuffer()`
+  - [x] Función `writeWavFile()` para crear archivos WAV con header RIFF
+  - [x] Eliminados cortes entre beeps que causaban caída de VOX
+- [x] **Reproducción continua**
+  - [x] Uso de `playWithAplay()` con duración total especificada
+  - [x] Mantiene PTT activo durante toda la transmisión
+  - [x] Limpieza automática de archivos temporales
+
+#### 📊 **Fix Contador APRS**
+- [x] **Corrección contador beacons en OLED**
+  - [x] Cambiado de propiedad inexistente `beaconCount` a `stats.beaconsSent`
+  - [x] Contador ahora refleja beacons realmente transmitidos
+  - [x] Incremento correcto en cada transmisión
+  - [x] Visualización precisa en pantalla APRS del display
+
+#### 🎵 **Detección Audio Inteligente**
+- [x] **AudioDeviceDetector implementado**
+  - [x] Detección automática de dispositivos de captura y reproducción
+  - [x] Parsing de salida `arecord -l` y `aplay -l`
+  - [x] Información detallada de dispositivos disponibles
+  - [x] Verificación de capacidades del sistema
+- [x] **Modo output-only automático**
+  - [x] Sistema se adapta si no hay dispositivos de captura
+  - [x] Funcionalidad completa de TTS, beacons y alertas sin captura
+  - [x] Logging claro de modo de operación
+  - [x] Advertencias apropiadas para funciones no disponibles
+- [x] **Soporte MP3 mejorado**
+  - [x] Detección automática de archivos MP3
+  - [x] Uso de mpg123 con amplificación de volumen (200%)
+  - [x] Fallback a aplay para archivos WAV
+
+#### 🛠️ **Mejoras Adicionales**
+- [x] **Configuración Direwolf optimizada**
+  - [x] Audio TX configurado para MMDVM HAT (plughw:0,0)
+  - [x] Sample rate 48000Hz
+  - [x] Beacons deshabilitados en config (manejados por KISS)
+  - [x] Puertos KISS y AGW configurables
+- [x] **Estructura de archivos actualizada**
+  - [x] Archivo principal `src/index.js.pi` para Raspberry Pi
+  - [x] Módulo `src/display/OLEDDisplay.js` para display OLED
+  - [x] Módulo `src/audio/audioDeviceDetector.js` para detección audio
+  - [x] Scripts de instalación en directorio raíz
 
 ### v2.9.1 - Mejoras Críticas en Alertas Meteorológicas TTS 🎙️
 

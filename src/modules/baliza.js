@@ -246,34 +246,125 @@ class Baliza extends EventEmitter {
 
     /**
      * Reproducir secuencia completa de baliza - PATRÓN BBC PIPS (5 cortos + 1 largo)
+     * OPTIMIZADO: Genera un solo archivo de audio con toda la secuencia
+     * para evitar que el VOX corte el PTT entre beeps
      */
     async playBalizaSequence() {
         try {
             const { volume } = this.config.tone;
             const frequency = 1000; // 1kHz estándar para señales horarias
-            
-            this.logger.debug('Reproduciendo secuencia BBC pips (5 cortos + 1 largo)');
-            
-            // 5 tonos cortos (100ms cada uno) con pausa de 900ms entre ellos
-            for (let i = 0; i < 5; i++) {
-                await this.audioManager.playTone(frequency, 100, volume);
-                if (i < 4) { // No pausar después del último tono corto
-                    await delay(900); // 900ms de silencio entre tonos
-                }
+
+            this.logger.debug('Reproduciendo secuencia BBC pips (5 cortos + 1 largo) - continua');
+
+            // SOLUCIÓN: Generar archivo WAV completo con toda la secuencia
+            // Esto mantiene el PTT activo durante toda la transmisión
+
+            // Patrón BBC: 5 beeps de 100ms con silencios de 900ms + beep largo de 500ms
+            // Total: 5*(100+900) + 500 = 5500ms
+
+            const sampleRate = 48000;
+            const silenceDuration = 900; // ms de silencio entre beeps
+
+            // Generar buffers para cada segmento
+            const beepShort = this.generateToneBuffer(frequency, 100, sampleRate, volume);
+            const silence = this.generateSilenceBuffer(silenceDuration, sampleRate);
+            const beepLong = this.generateToneBuffer(frequency, 500, sampleRate, volume);
+
+            // Concatenar: beep-silencio-beep-silencio-beep-silencio-beep-silencio-beep-silencio-beep_largo
+            const sequence = Buffer.concat([
+                beepShort, silence,
+                beepShort, silence,
+                beepShort, silence,
+                beepShort, silence,
+                beepShort, silence,
+                beepLong
+            ]);
+
+            // Guardar como archivo temporal
+            const fs = require('fs');
+            const tempFile = `/tmp/baliza_${Date.now()}.wav`;
+            this.writeWavFile(tempFile, sequence, sampleRate);
+
+            // Calcular duración total de la secuencia
+            const totalDuration = 5500; // ms: 5*(100+900) + 500
+
+            // Reproducir archivo completo (mantiene PTT activo)
+            await this.audioManager.playWithAplay(tempFile, totalDuration);
+
+            // Limpiar archivo temporal
+            try {
+                fs.unlinkSync(tempFile);
+            } catch (error) {
+                // Ignorar error si el archivo ya no existe
             }
-            
-            // Pausa antes del tono largo
-            await delay(900);
-            
-            // 1 tono largo final (500ms) que marca la hora exacta
-            await this.audioManager.playTone(frequency, 500, volume);
-            
+
             this.logger.debug('Secuencia BBC pips completada exitosamente');
 
         } catch (error) {
             this.logger.error('Error en secuencia de baliza BBC pips:', error.message);
             throw error; // Re-lanzar para manejo en transmit()
         }
+    }
+
+    /**
+     * Generar buffer de tono senoidal
+     */
+    generateToneBuffer(frequency, durationMs, sampleRate, volume) {
+        const numSamples = Math.floor(sampleRate * durationMs / 1000);
+        const buffer = Buffer.alloc(numSamples * 2); // 16-bit samples
+
+        for (let i = 0; i < numSamples; i++) {
+            const t = i / sampleRate;
+            const sample = Math.sin(2 * Math.PI * frequency * t) * volume * 32767;
+            buffer.writeInt16LE(Math.round(sample), i * 2);
+        }
+
+        return buffer;
+    }
+
+    /**
+     * Generar buffer de silencio
+     */
+    generateSilenceBuffer(durationMs, sampleRate) {
+        const numSamples = Math.floor(sampleRate * durationMs / 1000);
+        return Buffer.alloc(numSamples * 2); // Todos ceros
+    }
+
+    /**
+     * Escribir archivo WAV
+     */
+    writeWavFile(filename, audioBuffer, sampleRate) {
+        const fs = require('fs');
+
+        // WAV header
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+        const blockAlign = numChannels * bitsPerSample / 8;
+        const dataSize = audioBuffer.length;
+
+        const header = Buffer.alloc(44);
+
+        // RIFF chunk
+        header.write('RIFF', 0);
+        header.writeUInt32LE(36 + dataSize, 4);
+        header.write('WAVE', 8);
+
+        // fmt chunk
+        header.write('fmt ', 12);
+        header.writeUInt32LE(16, 16); // fmt chunk size
+        header.writeUInt16LE(1, 20);  // PCM format
+        header.writeUInt16LE(numChannels, 22);
+        header.writeUInt32LE(sampleRate, 24);
+        header.writeUInt32LE(byteRate, 28);
+        header.writeUInt16LE(blockAlign, 32);
+        header.writeUInt16LE(bitsPerSample, 34);
+
+        // data chunk
+        header.write('data', 36);
+        header.writeUInt32LE(dataSize, 40);
+
+        fs.writeFileSync(filename, Buffer.concat([header, audioBuffer]));
     }
 
     /**

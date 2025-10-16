@@ -1,9 +1,10 @@
 const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process'); 
+const { spawn } = require('child_process');
 const recorder = require('node-record-lpcm16');
 const RogerBeep = require('./rogerBeep');
+const AudioDeviceDetector = require('./audioDeviceDetector');
 const { Config, getValue } = require('../config');
 const { AUDIO, MODULE_STATES, DELAYS, DTMF } = require('../constants');
 const { delay, validateVolume, throttle } = require('../utils');
@@ -14,13 +15,17 @@ class AudioManager extends EventEmitter {
         super();
         this.logger = createLogger('[AudioManager]');
         this.state = MODULE_STATES.IDLE;
-        
+
         // Configuración de audio desde ConfigManager centralizado
         this.sampleRate = getValue('audio.sampleRate');
         this.channels = getValue('audio.channels');
         this.bitDepth = getValue('audio.bitDepth');
         this.device = getValue('audio.device');
-        
+
+        // Detector de dispositivos de audio
+        this.deviceDetector = new AudioDeviceDetector();
+        this.captureAvailable = false; // Se detectará al iniciar
+
         // Componentes principales
         this.dtmfDecoder = new (require('./dtmfDecoder'))(this.sampleRate, this);
         this.rogerBeep = new RogerBeep(this);
@@ -129,14 +134,31 @@ class AudioManager extends EventEmitter {
         }
     }
 
-    start() {
+    async start() {
         if (this.state === MODULE_STATES.ERROR) {
             this.logger.error('AudioManager en estado de error, no se puede iniciar');
             return false;
         }
 
         try {
-            this.startRecording();
+            // Detectar dispositivos de captura disponibles
+            this.logger.info('Detectando dispositivos de audio...');
+            const deviceInfo = await this.deviceDetector.getDeviceInfo();
+
+            // Log de información de dispositivos
+            this.deviceDetector.logDeviceInfo(deviceInfo);
+
+            this.captureAvailable = deviceInfo.capture.available;
+
+            if (this.captureAvailable) {
+                this.logger.info('Dispositivos de captura detectados - Iniciando grabación');
+                this.startRecording();
+            } else {
+                this.logger.warn('⚠️  No se detectaron dispositivos de captura de audio');
+                this.logger.warn('⚠️  Funciones deshabilitadas: DTMF, detección de actividad');
+                this.logger.info('✓  Funciones disponibles: TTS, beacons, alertas (solo salida)');
+            }
+
             this.state = MODULE_STATES.ACTIVE;
             this.logger.info('Sistema de audio iniciado');
             return true;
@@ -687,49 +709,71 @@ class AudioManager extends EventEmitter {
 
     async playWithAplay(filePath, expectedDuration) {
         return new Promise((resolve, reject) => {
-            // Intentar primero con aplay usando device por defecto
-            const aplayArgs = ['-q'];
-            
-            // Si hay un device específico configurado, intentar usarlo
-            if (this.device && this.device !== 'default') {
-                aplayArgs.push('-D', this.device);
+            // Detectar formato de archivo
+            const isMP3 = filePath.toLowerCase().endsWith('.mp3');
+
+            let player, playerArgs;
+
+            if (isMP3) {
+                // Para MP3, usar mpg123 con salida ALSA
+                player = 'mpg123';
+                playerArgs = [
+                    '-q',      // quiet mode
+                    '-f', '65536'  // scale factor (volumen), 65536 = 200% (amplificado)
+                ];
+
+                // Especificar dispositivo ALSA si está configurado
+                if (this.device && this.device !== 'default') {
+                    playerArgs.push('-a', this.device);
+                }
+                playerArgs.push(filePath);
+            } else {
+                // Para WAV, usar aplay
+                player = 'aplay';
+                playerArgs = ['-q'];
+
+                if (this.device && this.device !== 'default') {
+                    playerArgs.push('-D', this.device);
+                }
+                playerArgs.push(filePath);
             }
-            aplayArgs.push(filePath);
-            
-            const aplay = spawn('aplay', aplayArgs);
-            let aplayTimeout = null;
+
+            this.logger.debug(`Reproduciendo con ${player}: ${path.basename(filePath)}`);
+            const audioPlayer = spawn(player, playerArgs);
+            let playerTimeout = null;
             let stderr = '';
-            
+
             // Capturar stderr para diagnóstico
-            aplay.stderr.on('data', (data) => {
+            audioPlayer.stderr.on('data', (data) => {
                 stderr += data.toString();
             });
-            
-            // Timeout de seguridad
-            aplayTimeout = setTimeout(() => {
-                if (!aplay.killed) {
-                    aplay.kill('SIGTERM');
-                    reject(new Error('aplay timeout'));
+
+            // Timeout de seguridad con margen generoso (50% extra + 5s mínimo)
+            const timeoutMs = Math.max(expectedDuration * 1.5 + 5000, 10000);
+            playerTimeout = setTimeout(() => {
+                if (!audioPlayer.killed) {
+                    audioPlayer.kill('SIGTERM');
+                    reject(new Error(`${player} timeout (${timeoutMs}ms)`));
                 }
-            }, expectedDuration + 2000);
-            
-            aplay.on('close', (code) => {
-                if (aplayTimeout) {clearTimeout(aplayTimeout);}
-                
+            }, timeoutMs);
+
+            audioPlayer.on('close', (code) => {
+                if (playerTimeout) {clearTimeout(playerTimeout);}
+
                 if (code === 0) {
-                    this.logger.debug('aplay completado exitosamente');
+                    this.logger.debug(`${player} completado exitosamente`);
                     resolve();
                 } else {
-                    let errorMsg = `aplay falló con código ${code}`;
+                    let errorMsg = `${player} falló con código ${code}`;
                     if (stderr.trim()) {
                         errorMsg += `: ${stderr.trim()}`;
                     }
                     reject(new Error(errorMsg));
                 }
             });
-            
-            aplay.on('error', (err) => {
-                if (aplayTimeout) {clearTimeout(aplayTimeout);}
+
+            audioPlayer.on('error', (err) => {
+                if (playerTimeout) {clearTimeout(playerTimeout);}
                 reject(err);
             });
         });
@@ -845,34 +889,79 @@ class AudioManager extends EventEmitter {
                 }
             }, timeoutDuration);
             
-            paplay.on('close', (code) => {
+            paplay.on('close', async (code) => {
                 if (paplayTimeout) {clearTimeout(paplayTimeout);}
-                
-                // SIMPLEX: Reanudar escucha después de transmisión
-                if (wasRecording && !this.isRecording) {
-                    setTimeout(() => {
-                        this.resumeRecording();
-                        this.logger.debug('SIMPLEX: Escucha reanudada post-alerta meteorológica');
-                    }, 100); // 100ms delay
-                }
-                
-                // Emitir evento de transmisión terminada
-                this.emit('transmission_ended', {
-                    type: 'weather_alert',
-                    file: path.basename(filePath),
-                    timestamp: Date.now()
-                });
-                
+
                 if (code === 0) {
+                    // SIMPLEX: Reanudar escucha después de transmisión
+                    if (wasRecording && !this.isRecording) {
+                        setTimeout(() => {
+                            this.resumeRecording();
+                            this.logger.debug('SIMPLEX: Escucha reanudada post-alerta meteorológica');
+                        }, 100); // 100ms delay
+                    }
+
+                    // Emitir evento de transmisión terminada
+                    this.emit('transmission_ended', {
+                        type: 'weather_alert',
+                        file: path.basename(filePath),
+                        timestamp: Date.now()
+                    });
+
                     this.logger.debug(`paplay para alerta meteorológica completado exitosamente (timeout era ${timeoutDuration}ms)`);
                     resolve();
                 } else {
+                    // paplay falló, intentar con aplay como fallback
                     let errorMsg = `paplay para alerta meteorológica falló con código ${code}`;
                     if (stderr.trim()) {
                         errorMsg += `: ${stderr.trim()}`;
                     }
                     this.logger.warn(errorMsg);
-                    reject(new Error(errorMsg));
+                    this.logger.info('Intentando reproducir con aplay (fallback)...');
+
+                    try {
+                        // Calcular duración estimada del archivo para timeout de aplay
+                        // Para MP3: ~1KB por segundo de audio aproximadamente
+                        // Para WAV: depende del bitrate, asumimos 128kbps = 16KB/s
+                        const stats = fs.statSync(filePath);
+                        const fileSizeKB = stats.size / 1024;
+                        const isMP3 = filePath.endsWith('.mp3');
+                        const estimatedSeconds = isMP3 ? fileSizeKB : (fileSizeKB / 16);
+                        const estimatedDuration = Math.max(5000, estimatedSeconds * 1000);
+
+                        this.logger.debug(`Estimando duración de ${fileSizeKB.toFixed(1)}KB: ~${estimatedSeconds.toFixed(1)}s`);
+
+                        await this.playWithAplay(filePath, estimatedDuration);
+
+                        // SIMPLEX: Reanudar escucha después de transmisión
+                        if (wasRecording && !this.isRecording) {
+                            setTimeout(() => {
+                                this.resumeRecording();
+                                this.logger.debug('SIMPLEX: Escucha reanudada post-alerta meteorológica (aplay)');
+                            }, 100);
+                        }
+
+                        // Emitir evento de transmisión terminada
+                        this.emit('transmission_ended', {
+                            type: 'weather_alert',
+                            file: path.basename(filePath),
+                            timestamp: Date.now()
+                        });
+
+                        this.logger.info('Alerta meteorológica reproducida exitosamente con aplay');
+                        resolve();
+                    } catch (aplayError) {
+                        // SIMPLEX: Reanudar escucha después de error
+                        if (wasRecording && !this.isRecording) {
+                            setTimeout(() => {
+                                this.resumeRecording();
+                                this.logger.debug('SIMPLEX: Escucha reanudada post-error alerta');
+                            }, 100);
+                        }
+
+                        this.logger.error(`Aplay también falló: ${aplayError.message}`);
+                        reject(new Error(`Falló paplay y aplay: ${errorMsg}`));
+                    }
                 }
             });
             
@@ -1412,11 +1501,15 @@ class AudioManager extends EventEmitter {
     // ===== CONTROL DE GRABACIÓN =====
 
     pauseRecording() {
+        if (!this.captureAvailable) {
+            return false; // No hacer nada si no hay captura
+        }
+
         if (this.recordingStream && this.isRecording) {
             try {
                 this.recordingStream.stop();
                 this.isRecording = false;
-                this.logger.info('Grabación principal pausada');
+                this.logger.debug('Grabación principal pausada');
                 return true;
             } catch (error) {
                 this.logger.warn('Error pausando grabación:', error.message);
@@ -1428,8 +1521,12 @@ class AudioManager extends EventEmitter {
     }
 
     resumeRecording() {
+        if (!this.captureAvailable) {
+            return false; // No hacer nada si no hay captura
+        }
+
         if (!this.isRecording) {
-            this.logger.info('Reanudando grabación principal');
+            this.logger.debug('Reanudando grabación principal');
             this.startRecording();
             return true;
         }
@@ -1479,16 +1576,17 @@ class AudioManager extends EventEmitter {
 
     getStatus() {
         // Determinar si el canal está ocupado (entrada O transmisión)
-        const isChannelBusy = this.channelActivity.isActive || 
-                             this.isProcessingAudio || 
+        const isChannelBusy = this.channelActivity.isActive ||
+                             this.isProcessingAudio ||
                              this.audioQueue.length > 0;
 
         return {
             audio: {
+                captureAvailable: this.captureAvailable,
                 isRecording: this.isRecording,
                 isProcessingAudio: this.isProcessingAudio,
                 audioQueueLength: this.audioQueue.length,
-                status: this.isRecording ? 'active' : 'inactive'
+                status: this.isRecording ? 'active' : (this.captureAvailable ? 'ready' : 'output-only')
             },
             channel: {
                 isActive: isChannelBusy,
@@ -1496,7 +1594,8 @@ class AudioManager extends EventEmitter {
                 threshold: this.channelActivity.threshold,
                 busy: isChannelBusy,
                 inputActivity: this.channelActivity.isActive,
-                transmitting: this.isProcessingAudio || this.audioQueue.length > 0
+                transmitting: this.isProcessingAudio || this.audioQueue.length > 0,
+                dtmfEnabled: this.captureAvailable
             },
             rogerBeep: this.rogerBeep ? this.rogerBeep.getStatus() : { enabled: false }
         };

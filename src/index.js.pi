@@ -1,0 +1,1026 @@
+const AudioManager = require('./audio/audioManager');
+const Baliza = require('./modules/baliza');
+const DateTime = require('./modules/datetime');
+const Weather = require('./modules/weather-voice');
+const WeatherAlerts = require('./modules/weatherAlerts');
+const InpresSismic = require('./modules/inpres');
+const APRS = require('./modules/aprs');
+const DirewolfManager = require('./utils/direwolfManager');
+const APRSMapServer = require('./aprs-map/server');
+const DDNSManager = require('./modules/ddns');
+const OLEDDisplay = require('./display/OLEDDisplay');
+const { Config } = require('./config');
+const { createLogger } = require('./logging/Logger');
+const { getSystemOutput } = require('./logging/SystemOutput');
+const { MODULE_STATES } = require('./constants');
+
+class VX200Controller {
+    constructor() {
+        this.logger = createLogger('[Controller]');
+        this.systemOutput = getSystemOutput();
+        this.state = MODULE_STATES.IDLE;
+        
+        this.config = Config.getAll();
+        this.audio = null;
+        this.modules = {};
+        this.direwolf = null;
+        this.aprsMapServer = null;
+        this.display = null;
+        
+        this.isRunning = false;
+        this.startTime = Date.now();
+        this.initializationErrors = [];
+        
+        this.logger.debug('Constructor completado, inicialización pendiente...');
+    }
+    
+    async initializeSystem() {
+        try {
+            this.state = MODULE_STATES.ACTIVE;
+            this.logger.info('Iniciando secuencia de inicialización ordenada...');
+            
+            // FASE 1: AudioManager (base crítica del sistema)
+            this.logger.info('FASE 1: Inicializando sistema de audio...');
+            await this.initializeAudio();
+            
+            // FASE 2: Direwolf TNC (requerido para APRS)
+            this.logger.info('FASE 2: Inicializando Direwolf TNC...');
+            await this.initializeDirewolf();
+            
+            // FASE 3: Módulos básicos (no dependen de TNC)
+            this.logger.info('FASE 3: Inicializando módulos básicos...');
+            await this.initializeBasicModules();
+            
+            // FASE 4: Módulos que requieren TNC
+            this.logger.info('FASE 4: Inicializando módulos APRS...');
+            await this.initializeAPRSModules();
+            
+            // FASE 5: Módulos de monitoreo
+            this.logger.info('FASE 5: Inicializando módulos de monitoreo...');
+            await this.initializeMonitoringModules();
+            
+            // FASE 6: Servicios auxiliares
+            this.logger.info('FASE 6: Inicializando servicios auxiliares...');
+            await this.initializeAuxiliaryServices();
+            
+            // FASE 7: Configuración final
+            this.logger.info('FASE 7: Aplicando configuración final...');
+            this.setupEventHandlers();
+            this.configureFromFile();
+            this.performInitialCleanup();
+            
+            if (this.initializationErrors.length > 0) {
+                this.logger.warn(`Sistema inicializado con ${this.initializationErrors.length} errores: ${this.initializationErrors.join(', ')}`);
+                this.state = MODULE_STATES.ERROR;
+            } else {
+                this.logger.info('VX200 REPETIDORA OPERATIVA - Audio: LISTO, APRS: ACTIVO');
+                if (this.aprsMapServer && this.aprsMapServer.isRunning) {
+                    const mapPort = process.env.APRS_MAP_PORT || 8080;
+                    this.logger.info(`Mapa APRS: http://localhost:${mapPort}`);
+                }
+            }
+            
+        } catch (error) {
+            this.logger.error('Error crítico durante inicialización:', error.message);
+            this.logger.error('Stack trace:', error.stack);
+            this.state = MODULE_STATES.ERROR;
+        }
+    }
+
+    async initializeAudio() {
+        try {
+            this.audio = new AudioManager();
+
+            if (this.audio.start()) {
+                // AudioManager inicializado
+                // Update display with audio capability info
+                if (this.display) {
+                    this.display.updateAudioData({
+                        captureAvailable: this.audio.deviceDetector ?
+                            (this.audio.deviceDetector.hasCaptureDevices ? true : false) : false
+                    });
+                }
+            } else {
+                throw new Error('AudioManager no pudo iniciarse');
+            }
+        } catch (error) {
+            this.logger.error('Error inicializando AudioManager:', error.message);
+            this.initializationErrors.push('AudioManager');
+        }
+    }
+
+    async initializeDirewolf() {
+        try {
+            this.logger.info('Inicializando Direwolf TNC...');
+            this.direwolf = new DirewolfManager();
+            
+            const direwolfStarted = await this.direwolf.start();
+            if (direwolfStarted) {
+                this.logger.info('Direwolf TNC iniciado exitosamente');
+                // Esperar estabilización del TNC
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } else {
+                this.logger.warn('Error iniciando Direwolf TNC');
+                this.initializationErrors.push('Direwolf');
+            }
+        } catch (error) {
+            this.logger.error('Error crítico inicializando Direwolf:', error.message);
+            this.initializationErrors.push('Direwolf');
+        }
+    }
+
+    async initializeBasicModules() {
+        // Módulos que solo requieren AudioManager
+        this.logger.info('Inicializando módulos básicos...');
+        
+        this.modules.baliza = new Baliza(this.audio);
+        this.modules.datetime = new DateTime(this.audio);
+        this.modules.weather = new Weather(this.audio);
+        
+        this.logger.info('Módulos básicos inicializados');
+    }
+
+    async initializeAPRSModules() {
+        // Módulos que requieren Direwolf TNC
+        this.logger.info('Inicializando módulo APRS...');
+        
+        this.modules.aprs = new APRS(this.audio);
+        try {
+            const aprsInitialized = await this.modules.aprs.initialize();
+            if (aprsInitialized) {
+                this.logger.info('Módulo APRS inicializado');
+            } else {
+                this.logger.warn('Error inicializando módulo APRS');
+                this.initializationErrors.push('APRS');
+            }
+        } catch (error) {
+            this.logger.error('Error inicializando APRS:', error.message);
+            this.initializationErrors.push('APRS');
+        }
+    }
+
+    async initializeMonitoringModules() {
+        this.logger.info('Inicializando módulos de monitoreo...');
+        
+        // WeatherAlerts con referencia a APRS y Weather
+        try {
+            this.modules.weatherAlerts = new WeatherAlerts(this.audio, this.modules.aprs, this.modules.weather);
+            this.logger.info('WeatherAlerts inicializado');
+        } catch (error) {
+            this.logger.error('Error inicializando WeatherAlerts:', error.message);
+            this.initializationErrors.push('WeatherAlerts');
+        }
+        
+        // INPRES - Monitoreo Sísmico
+        try {
+            this.modules.inpres = new InpresSismic(this.audio);
+            this.logger.info('INPRES inicializado');
+        } catch (error) {
+            this.logger.error('Error inicializando INPRES:', error.message);
+            this.initializationErrors.push('INPRES');
+        }
+    }
+
+    async initializeAuxiliaryServices() {
+        this.logger.info('Inicializando servicios auxiliares...');
+
+        // OLED Display
+        try {
+            this.display = new OLEDDisplay();
+            const displayInitialized = await this.display.initialize();
+            if (displayInitialized) {
+                this.logger.info('Display OLED inicializado');
+
+                // Actualizar display con datos existentes de alertas climáticas
+                if (this.modules.weatherAlerts) {
+                    try {
+                        const activeAlerts = this.modules.weatherAlerts.getActiveAlerts();
+                        if (activeAlerts && activeAlerts.length > 0) {
+                            this.display.updateWeatherData({
+                                alertCount: activeAlerts.length,
+                                lastAlert: activeAlerts[0].title || 'Alerta meteorológica'
+                            });
+                            this.logger.debug(`Display actualizado con ${activeAlerts.length} alertas climáticas existentes`);
+                        }
+                    } catch (error) {
+                        this.logger.debug('Error inicializando datos de clima en display:', error.message);
+                    }
+                }
+            } else {
+                this.logger.info('Display OLED no disponible (I2C deshabilitado o no conectado)');
+                this.display = null;
+            }
+        } catch (error) {
+            this.logger.info('Display OLED no disponible:', error.message);
+            this.display = null;
+        }
+
+        // DDNS Manager
+        try {
+            this.modules.ddns = new DDNSManager(this);
+            this.logger.info('DDNS Manager inicializado');
+        } catch (error) {
+            this.logger.error('Error inicializando DDNS:', error.message);
+            this.initializationErrors.push('DDNS');
+        }
+
+        // APRS Map Server
+        try {
+            this.aprsMapServer = new APRSMapServer(this);
+            this.logger.info('Servidor mapa APRS inicializado');
+        } catch (error) {
+            this.logger.error('Error inicializando servidor mapa APRS:', error.message);
+            this.initializationErrors.push('APRS Map Server');
+            this.aprsMapServer = null;
+        }
+    }
+
+
+    configureFromFile() {
+        if (Config.rogerBeepEnabled) {
+            this.audio.configureRogerBeep(Config.rogerBeep);
+        }
+        
+        if (Config.balizaEnabled) {
+            this.modules.baliza.configure(Config.baliza);
+        }
+        
+    }
+
+    /**
+     * Ejecutar cleanup inicial al arranque para sistemas 24/7
+     */
+    performInitialCleanup() {
+        // Ejecutar cleanup en background para no bloquear el arranque
+        setTimeout(async () => {
+            try {
+                if (this.audio && typeof this.audio.performCleanup === 'function') {
+                    await this.audio.performCleanup();
+                    this.logger.info('Cleanup inicial completado');
+                }
+            } catch (error) {
+                this.logger.warn('Error en cleanup inicial:', error.message);
+            }
+        }, 5000); // Esperar 5 segundos después del arranque completo
+    }
+
+    setupEventHandlers() {
+        this.audio.on('dtmf', async (sequence) => {
+            await this.handleDTMF(sequence);
+        });
+
+        this.audio.on('channel_active', (data) => {
+            // Channel activity logged
+        });
+
+        this.audio.on('channel_inactive', (data) => {
+            // Channel inactive logged
+        });
+
+        this.audio.on('signal_level', (data) => {
+            // Signal level logged
+        });
+
+        this.audio.on('transmission_started', (data) => {
+            this.logger.debug('Transmisión iniciada:', data);
+
+            // Update display
+            if (this.display) {
+                const now = new Date();
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+                // Determinar tipo de transmisión para mostrar en display
+                let txType = 'TRANSMITIENDO';
+                if (data.type === 'tts') {
+                    txType = 'TTS';
+                } else if (data.type === 'weather_alert') {
+                    txType = 'ALERTA CLIMA';
+                } else if (data.type === 'seismic_alert') {
+                    txType = 'ALERTA SISMICA';
+                } else if (data.type === 'aprs_beacon') {
+                    txType = 'BEACON APRS';
+                } else if (data.type === 'baliza') {
+                    txType = 'BALIZA';
+                }
+
+                this.display.updateAudioData({
+                    isTransmitting: true,
+                    lastActivity: timeStr,
+                    transmissionType: txType
+                });
+            }
+        });
+
+        this.audio.on('transmission_ended', (data) => {
+            this.logger.debug('Transmisión terminada:', data);
+
+            // Update display
+            if (this.display) {
+                this.display.updateAudioData({
+                    isTransmitting: false
+                });
+            }
+        });
+
+        this.setupEvents();
+    }
+
+    setupEvents() {
+        this.modules.baliza.on('transmitted', (data) => {
+            this.logger.debug('Baliza transmitida:', data);
+        });
+
+        this.modules.aprs.on('position_received', (position) => {
+            this.logger.info(`APRS Position: ${position.callsign} at ${position.lat},${position.lon}`);
+
+            // Update display
+            if (this.display) {
+                this.display.updateAPRSData({
+                    packetsReceived: (this.modules.aprs.packetsReceived || 0) + 1
+                });
+            }
+        });
+
+        this.modules.aprs.on('beacon_sent', (beacon) => {
+            this.logger.info('APRS Beacon sent:', beacon);
+
+            // Update display
+            if (this.display) {
+                const now = new Date();
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                this.display.updateAPRSData({
+                    beaconCount: this.modules.aprs.stats.beaconsSent, // Usar el contador real de stats
+                    lastBeacon: timeStr
+                });
+            }
+        });
+
+        this.modules.aprs.on('tnc_connected', () => {
+            this.logger.info('APRS TNC connected');
+        });
+
+        this.modules.aprs.on('tnc_disconnected', () => {
+            this.logger.warn('APRS TNC disconnected');
+        });
+
+        this.modules.aprs.on('positions_updated', (data) => {
+            this.logger.info(`APRS: ${data.newPositions} nuevas posiciones desde ${data.fromFile}`);
+        });
+
+        this.modules.inpres.on('seism_detected', (seism) => {
+            this.logger.info(`Sismo detectado: ${seism.magnitude} - ${seism.location}`);
+
+            // Actualizar display con datos del sismo
+            if (this.display) {
+                const now = new Date(seism.time || Date.now());
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                this.display.updateSeismicData({
+                    magnitude: seism.magnitude || 0,
+                    location: seism.location || 'Desconocida',
+                    depth: seism.depth || 0,
+                    time: timeStr
+                });
+            }
+        });
+
+        this.modules.inpres.on('seism_announced', (seism) => {
+            this.logger.info(`Sismo anunciado: ${seism.magnitude} - ${seism.location}`);
+        });
+
+        // Weather alerts events for display
+        if (this.modules.weatherAlerts) {
+            this.modules.weatherAlerts.on('alert_announced', (data) => {
+                if (this.display) {
+                    const activeAlerts = this.modules.weatherAlerts.getActiveAlerts();
+                    this.display.updateWeatherData({
+                        alertCount: activeAlerts.length,
+                        lastAlert: data.title || 'Alerta meteorológica'
+                    });
+                }
+            });
+        }
+    }
+
+
+    async handleDTMF(sequence) {
+        const commands = {
+            '*1': { module: 'datetime', handler: () => this.modules.datetime.execute(sequence) },
+            '*3': { module: 'inpres', handler: () => this.modules.inpres?.execute(sequence) },
+            '*4': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
+            '*5': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
+            '*7': { module: 'weatherAlerts', handler: () => this.modules.weatherAlerts?.execute(sequence) },
+            '*0': { module: 'weatherAlerts', handler: () => this.modules.weatherAlerts?.execute(sequence) },
+            '*9': { module: 'baliza', handler: () => this.modules.baliza.execute(sequence) }
+        };
+
+        if (commands[sequence]) {
+            const { module, handler } = commands[sequence];
+            this.systemOutput.printDTMFDetected(sequence, module);
+            await this.safeExecute(handler);
+        } else {
+            await this.handleUnknownCommand(sequence);
+        }
+    }
+
+    async handleUnknownCommand(sequence) {
+        try {
+            // Tono de confirmación deshabilitado para evitar retroalimentación
+            // que causa falsos positivos DTMF cuando operadores hablan
+            // await this.audio.playTone(400, 200, 0.5);
+        } catch (error) {
+            
+        }
+    }
+
+    async safeExecute(callback) {
+        try {
+            await this.safeTransmit(callback);
+        } catch (error) {
+            this.logger.error('Error ejecutando comando:', error.message);
+        }
+    }
+
+    async safeTransmit(callback) {
+        if (!this.audio.isSafeToTransmit()) {
+            this.logger.warn('Canal ocupado - Esperando...');
+            await this.waitForFreeChannel();
+        }
+        
+        await callback();
+    }
+
+    async waitForFreeChannel(timeout = 30000) {
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            
+            const checkInterval = setInterval(() => {
+                if (this.audio.isSafeToTransmit() || (Date.now() - startTime) > timeout) {
+                    clearInterval(checkInterval);
+                    resolve();
+                }
+            }, 500);
+        });
+    }
+
+
+    toggleRogerBeep() {
+        const wasEnabled = this.audio.getRogerBeepStatus().enabled;
+        const isEnabled = this.audio.toggleRogerBeep();
+        
+        this.logger.info(`Roger Beep: ${isEnabled ? 'ON' : 'OFF'}`);
+        return {
+            success: true,
+            enabled: isEnabled,
+            message: `Roger Beep ${isEnabled ? 'activado' : 'desactivado'}`,
+            status: this.audio.getRogerBeepStatus()
+        };
+    }
+
+    async testRogerBeep() {
+        this.logger.info('Test Roger Beep');
+        
+        try {
+            const success = await this.audio.testRogerBeep();
+            return {
+                success: success,
+                message: success ? 'Test ejecutado correctamente' : 'Error en test'
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: 'Error ejecutando test'
+            };
+        }
+    }
+
+    configureBalizaFromWeb(newConfig) {
+        this.logger.info('Configurando baliza desde web');
+        this.modules.baliza.configure(newConfig);
+        
+        this.logger.info('Configuración de baliza actualizada desde panel web');
+    }
+
+
+    async start() {
+        if (this.isRunning) {
+            this.logger.warn('Sistema ya está ejecutándose');
+            return;
+        }
+        
+        try {
+            this.logger.info('Iniciando sistema...');
+            
+            await this.initializeSystem();
+            
+            if (this.audio && !this.audio.isRecording) {
+                const audioStarted = this.audio.start();
+                if (!audioStarted) {
+                    throw new Error('No se pudo iniciar AudioManager');
+                }
+            }
+            
+            if (Config.balizaEnabled && this.modules.baliza) {
+                const balizaStarted = this.modules.baliza.start();
+                if (balizaStarted) {
+                    // Baliza automática activa
+                } else {
+                    this.logger.warn('No se pudo iniciar baliza automática');
+                }
+            }
+            
+            // Inicializar APRS si está habilitado
+            if (this.modules.aprs) {
+                try {
+                    const aprsStarted = await this.modules.aprs.start();
+                    if (aprsStarted) {
+                        this.logger.info('APRS operativo');
+                    } else {
+                        this.logger.warn('No se pudo iniciar sistema APRS');
+                    }
+                } catch (error) {
+                    this.logger.warn('Error iniciando APRS:', error.message);
+                }
+            }
+            
+            // Iniciar servidor mapa APRS
+            if (this.aprsMapServer) {
+                try {
+                    await this.aprsMapServer.start();
+                    const status = this.aprsMapServer.getStatus();
+                    this.logger.info(`Mapa APRS disponible en: ${status.url}`);
+                } catch (error) {
+                    this.logger.warn('Error iniciando servidor mapa APRS:', error.message);
+                }
+            }
+            
+            // Iniciar DDNS Manager
+            if (this.modules.ddns) {
+                try {
+                    const ddnsStarted = await this.modules.ddns.initialize();
+                    if (ddnsStarted) {
+                        this.logger.info('DDNS Manager activo');
+                    } else {
+                        this.logger.info('DDNS Manager deshabilitado (configurar DUCKDNS_DOMAIN y DUCKDNS_TOKEN)');
+                    }
+                } catch (error) {
+                    this.logger.warn('Error iniciando DDNS:', error.message);
+                }
+            }
+            
+            this.isRunning = true;
+            this.state = MODULE_STATES.ACTIVE;
+            
+            this.printStartupInfo();
+            
+            // Inicializar monitoreo en background DESPUÉS del arranque completo
+            this.startMonitoringServices();
+            
+        } catch (error) {
+            this.logger.error('Error iniciando sistema:', error.message);
+            this.state = MODULE_STATES.ERROR;
+            throw error;
+        }
+    }
+
+    printStartupInfo() {
+        const moduleStatus = {
+            audio: { 
+                enabled: this.audio && this.audio.state === MODULE_STATES.ACTIVE,
+                details: this.audio ? `Device: ${this.audio.device}` : 'Not initialized'
+            },
+            baliza: { 
+                enabled: this.modules.baliza && this.modules.baliza.config.enabled,
+                details: this.modules.baliza && this.modules.baliza.config.enabled ? 
+                    `Every ${this.modules.baliza.config.interval} min` : null
+            },
+            rogerBeep: { 
+                enabled: Config.rogerBeepEnabled,
+                details: Config.rogerBeepEnabled ? Config.rogerBeepType : null
+            },
+            weather: {
+                enabled: !!process.env.OPENWEATHER_API_KEY,
+                details: process.env.OPENWEATHER_API_KEY ? 'OpenWeather configured' : 'No API key'
+            },
+            aprs: {
+                enabled: this.modules.aprs && this.modules.aprs.isRunning,
+                details: this.modules.aprs && this.modules.aprs.isRunning ? 
+                    `Callsign: ${this.modules.aprs.config.callsign}` : 
+                    'TNC not connected'
+            },
+            inpres: {
+                enabled: this.modules.inpres && this.modules.inpres.state === MODULE_STATES.ACTIVE,
+                details: this.modules.inpres && this.modules.inpres.state === MODULE_STATES.ACTIVE ? 
+                    'Seismic monitoring active' : 'Monitoring stopped'
+            }
+        };
+
+        this.systemOutput.printModuleStatus(moduleStatus);
+        this.systemOutput.printSystemReady();
+    }
+
+    stop() {
+        this.systemOutput.printShutdown();
+
+        this.isRunning = false;
+
+        if (this.display) {
+            this.display.stop();
+        }
+
+        if (this.audio) {
+            this.audio.stop();
+        }
+
+
+
+        if (this.modules.baliza?.isRunning) {
+            this.modules.baliza.stop();
+        }
+
+        if (this.modules.aprs?.isRunning) {
+            this.modules.aprs.stop();
+        }
+
+        if (this.aprsMapServer) {
+            this.aprsMapServer.stop();
+        }
+
+        if (this.modules.weatherAlerts) {
+            this.modules.weatherAlerts.stop();
+        }
+
+        if (this.modules.inpres) {
+            this.modules.inpres.stop();
+        }
+
+        if (this.modules.ddns) {
+            this.modules.ddns.stop();
+        }
+
+        if (this.direwolf) {
+            this.direwolf.stop();
+        }
+
+        this.systemOutput.printStopped();
+    }
+
+    async toggleService(service) {
+        let result = { success: false, message: '', enabled: false };
+        
+        try {
+            switch (service) {
+                case 'audio':
+                    if (this.audio.isRecording) {
+                        this.audio.pauseRecording();
+                        result = { success: true, message: 'Audio desactivado', enabled: false };
+                    } else {
+                        this.audio.resumeRecording();
+                        result = { success: true, message: 'Audio activado', enabled: true };
+                    }
+                    break;
+                    
+                case 'baliza':
+                    if (this.modules.baliza.isRunning) {
+                        this.modules.baliza.stop();
+                        result = { success: true, message: 'Baliza detenida', enabled: false };
+                    } else {
+                        this.modules.baliza.start();
+                        result = { success: true, message: 'Baliza iniciada', enabled: true };
+                    }
+                    break;
+                    
+                    
+                default:
+                    result = { success: false, message: 'Servicio desconocido' };
+            }
+            
+            this.logger.info(`${service}: ${result.enabled ? 'ON' : 'OFF'}`);
+            this.logger.info(result.message);
+            
+        } catch (error) {
+            result = { success: false, message: `Error: ${error.message}` };
+            this.logger.error(`Error toggle ${service}:`, error.message);
+        }
+        
+        return result;
+    }
+
+    getSystemStatus() {
+        const audioStatus = this.audio.getStatus();
+        
+        return {
+            timestamp: new Date().toISOString(),
+            uptime: Date.now() - this.startTime,
+            audio: audioStatus.audio,
+            channel: audioStatus.channel,
+            baliza: this.modules.baliza.getStatus(),
+            datetime: this.modules.datetime.getStatus(),
+            weather: this.modules.weather.getStatus(),
+            weatherAlerts: this.modules.weatherAlerts?.getStatus() || { enabled: false, state: 'not_initialized' },
+            inpres: this.modules.inpres?.getStatus() || { enabled: false, state: 'not_initialized' },
+            aprs: this.modules.aprs.getStatus(),
+            rogerBeep: audioStatus.rogerBeep,
+            dtmf: {
+                lastSequence: 'Esperando...'
+            }
+        };
+    }
+
+    /**
+     * Iniciar servicios de monitoreo de forma asíncrona
+     * Se ejecuta después del arranque completo del sistema
+     */
+    async startMonitoringServices() {
+        // Esperar 3 segundos para que el sistema se estabilice completamente
+        setTimeout(async () => {
+            try {
+                this.logger.info('Iniciando módulos de monitoreo...');
+                
+                // Inicializar monitoreo de alertas meteorológicas
+                if (this.modules.weatherAlerts) {
+                    try {
+                        await this.modules.weatherAlerts.start();
+                        this.logger.info('Alertas meteorológicas activas');
+                    } catch (error) {
+                        this.logger.warn('Error iniciando alertas meteorológicas:', error.message);
+                    }
+                }
+                
+                // Iniciar módulo INPRES - Monitoreo Sísmico
+                if (this.modules.inpres) {
+                    try {
+                        await this.modules.inpres.start();
+                        this.logger.info('Monitoreo sísmico INPRES activo');
+                    } catch (error) {
+                        this.logger.warn('Error iniciando monitoreo INPRES:', error.message);
+                    }
+                }
+                
+                this.logger.info('Módulos de monitoreo inicializados');
+                
+            } catch (error) {
+                this.logger.error('Error iniciando módulos de monitoreo:', error.message);
+            }
+        }, 3000);
+    }
+
+    getDetailedStatus() {
+        return {
+            ...this.getSystemStatus(),
+            system: {
+                uptime: process.uptime(),
+                memory: process.memoryUsage(),
+                pid: process.pid,
+                callsign: Config.callsign,
+                version: Config.version
+            },
+            services: {
+                audio: this.audio.getStatus().audio.isRecording,
+                baliza: this.modules.baliza.isRunning,
+                rogerBeep: this.audio.getRogerBeepStatus().enabled
+            }
+        };
+    }
+
+
+
+    async shutdown() {
+        this.logger.warn('Apagando sistema...');
+        this.logger.warn('Sistema apagándose...');
+        
+        try {
+            await this.audio.speakNoRoger('Sistema apagándose');
+        } catch (error) {
+            
+        }
+        
+        this.stop();
+        
+        setTimeout(() => {
+            console.log('Hasta luego!');
+            process.exit(0);
+        }, 2000);
+    }
+
+    async restart() {
+        this.logger.warn('Reiniciando sistema...');
+        this.logger.warn('Reiniciando...');
+        
+        try {
+            await this.audio.speakNoRoger('Sistema reiniciándose');
+        } catch (error) {
+            
+        }
+        
+        this.stop();
+        
+        setTimeout(() => {
+            console.log('Reiniciando...');
+            this.start();
+            this.logger.info('Sistema reiniciado');
+        }, 3000);
+    }
+
+    async transmitText(text) {
+        await this.safeTransmit(async () => {
+            this.logger.debug(`TTS: ${text.substring(0, 50)}...`);
+            await this.audio.speak(text);
+        });
+    }
+
+    async healthCheck() {
+        this.logger.info('Health Check del sistema:');
+        
+        const status = this.getSystemStatus();
+        
+        this.logger.info(`  Audio: ${status.audio.status === 'active' ? 'ACTIVE' : 'INACTIVE'}`);
+        this.logger.info(`  Canal: ${status.channel.isActive ? 'OCUPADO' : 'LIBRE'}`);
+        this.logger.info(`  Baliza: ${status.baliza.running ? 'RUNNING' : 'STOPPED'}`);
+        this.logger.info(`  Roger Beep: ${status.rogerBeep.enabled ? 'ENABLED' : 'DISABLED'}`);
+        this.logger.info(`  Sistema: ${this.isRunning ? 'RUNNING' : 'STOPPED'}`);
+        
+        // Verificar estado de archivos temporales
+        if (this.audio && typeof this.audio.getTempSpaceStats === 'function') {
+            const tempStats = this.audio.getTempSpaceStats();
+            this.logger.info(`  Archivos temp: ${tempStats.total.files} archivos (${tempStats.total.sizeMB}MB)`);
+            
+            // Alertar si hay demasiados archivos temporales
+            if (tempStats.total.files > 50) {
+                this.logger.warn(`  Muchos archivos temporales: ${tempStats.total.files}`);
+            }
+            if (parseFloat(tempStats.total.sizeMB) > 50) {
+                this.logger.warn(`  Uso alto de espacio temp: ${tempStats.total.sizeMB}MB`);
+            }
+        }
+        
+        if (status.audio.status === 'active') {
+            try {
+                await this.audio.healthCheck();
+            } catch (error) {
+                this.logger.error('  Test de audio falló');
+            }
+        }
+        
+        return status;
+    }
+
+    /**
+     * Obtener estadísticas detalladas del sistema para funcionamiento 24/7
+     */
+    getSystemHealth() {
+        const baseStatus = this.getSystemStatus();
+        const detailedStatus = this.getDetailedStatus();
+        
+        // Agregar estadísticas de archivos temporales
+        let tempStats = { total: { files: 0, size: 0, sizeMB: '0.00' }, directories: {} };
+        if (this.audio && typeof this.audio.getTempSpaceStats === 'function') {
+            tempStats = this.audio.getTempSpaceStats();
+        }
+        
+        return {
+            ...baseStatus,
+            system: detailedStatus.system,
+            tempFiles: tempStats,
+            alerts: this.generateSystemAlerts(tempStats, detailedStatus)
+        };
+    }
+
+    /**
+     * Generar alertas del sistema para monitoreo 24/7
+     */
+    generateSystemAlerts(tempStats, systemStatus) {
+        const alerts = [];
+        
+        // Alertas de archivos temporales
+        if (tempStats.total.files > 100) {
+            alerts.push({
+                level: 'warning',
+                type: 'temp_files',
+                message: `Muchos archivos temporales: ${tempStats.total.files}`,
+                value: tempStats.total.files,
+                threshold: 100
+            });
+        }
+        
+        if (parseFloat(tempStats.total.sizeMB) > 100) {
+            alerts.push({
+                level: 'warning', 
+                type: 'temp_size',
+                message: `Alto uso de espacio temporal: ${tempStats.total.sizeMB}MB`,
+                value: parseFloat(tempStats.total.sizeMB),
+                threshold: 100
+            });
+        }
+        
+        // Alertas de memoria
+        if (systemStatus.system.memory.heapUsed > 200 * 1024 * 1024) { // > 200MB
+            alerts.push({
+                level: 'warning',
+                type: 'memory',
+                message: `Alto uso de memoria: ${Math.round(systemStatus.system.memory.heapUsed / (1024 * 1024))}MB`,
+                value: systemStatus.system.memory.heapUsed,
+                threshold: 200 * 1024 * 1024
+            });
+        }
+        
+        // Alertas de uptime (verificar reinicio reciente)
+        if (systemStatus.system.uptime < 300) { // < 5 minutos
+            alerts.push({
+                level: 'info',
+                type: 'recent_restart',
+                message: `Sistema reiniciado recientemente: ${Math.round(systemStatus.system.uptime / 60)} min`,
+                value: systemStatus.system.uptime,
+                threshold: 300
+            });
+        }
+        
+        return alerts;
+    }
+
+    /**
+     * Forzar cleanup manual de archivos temporales
+     */
+    async forceCleanup() {
+        this.logger.info('Ejecutando cleanup manual de archivos temporales...');
+        
+        if (this.audio && typeof this.audio.performCleanup === 'function') {
+            try {
+                await this.audio.performCleanup();
+                return { success: true, message: 'Cleanup ejecutado exitosamente' };
+            } catch (error) {
+                this.logger.error('Error en cleanup manual:', error.message);
+                return { success: false, message: `Error: ${error.message}` };
+            }
+        } else {
+            return { success: false, message: 'Función de cleanup no disponible' };
+        }
+    }
+}
+
+let controller = null;
+
+function setupSignalHandlers() {
+    const gracefulShutdown = async (signal) => {
+        console.log(`\n${signal} detectado - cerrando aplicación...`);
+        if (controller) {
+            try {
+                controller.stop();
+                // Wait a bit to ensure cleanup completes
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            } catch (error) {
+                console.error('Error durante shutdown:', error.message);
+            }
+        }
+        process.exit(0);
+    };
+
+    process.on('SIGINT', () => gracefulShutdown('SIGINT (Ctrl+C)'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+    process.on('uncaughtException', async (error) => {
+        console.error('Error crítico:', error.message);
+        if (controller) {
+            try {
+                controller.stop();
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (cleanupError) {
+                console.error('Error durante cleanup de emergencia:', cleanupError.message);
+            }
+        }
+        process.exit(1);
+    });
+
+    process.on('unhandledRejection', async (reason) => {
+        console.error('Promesa rechazada:', reason);
+        if (controller) {
+            try {
+                controller.stop();
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (cleanupError) {
+                console.error('Error durante cleanup de emergencia:', cleanupError.message);
+            }
+        }
+        process.exit(1);
+    });
+}
+
+async function main() {
+    try {
+        setupSignalHandlers();
+        
+        controller = new VX200Controller();
+        global.vx200Controller = controller;
+        
+        await controller.start();
+        
+    } catch (error) {
+        console.error('Error crítico al iniciar:', error);
+        process.exit(1);
+    }
+}
+
+if (require.main === module) {
+    main();
+}
+
+module.exports = VX200Controller;

@@ -1,0 +1,1475 @@
+const EventEmitter = require('events');
+const axios = require('axios');
+const xml2js = require('xml2js');
+const { delay, sanitizeTextForTTS } = require('../utils');
+const { createLogger } = require('../logging/Logger');
+const { MODULE_STATES } = require('../constants');
+const HybridVoiceManager = require('../audio/HybridVoiceManager');
+
+/**
+ * Módulo de Alertas Meteorológicas SMN Argentina
+ * Funcionalidades:
+ * - Monitoreo automático cada 1.5h de alertas SMN
+ * - Filtrado por región de Mendoza
+ * - Anuncios automáticos con Google TTS
+ * - Integración con APRS comment dinámico
+ * - Comando DTMF *7 para consulta manual
+ */
+class WeatherAlerts extends EventEmitter {
+    constructor(audioManager, aprsModule = null, weatherModule = null) {
+        super();
+        this.audioManager = audioManager;
+        this.aprsModule = aprsModule;
+        this.weatherModule = weatherModule;
+        this.logger = createLogger('[WeatherAlerts]');
+        this.state = MODULE_STATES.IDLE;
+        
+        this.config = {
+            enabled: true,
+            // Feeds SMN Argentina
+            mainFeedUrl: 'https://ssl.smn.gob.ar/CAP/AR.php',
+            shortTermFeedUrl: 'https://ssl.smn.gob.ar/feeds/avisocorto_GeoRSS.xml',
+            
+            // Coordenadas de Mendoza para filtrado geográfico - Cobertura completa provincial
+            mendozaRegion: {
+                // Límites completos de la provincia de Mendoza:
+                // Latitud: 32°00' a 37°35' Sur
+                // Longitud: 66°30' a 70°35' Oeste
+                bounds: {
+                    north: -32.0,    // 32° Sur (límite norte)
+                    south: -37.6,    // 37°35' Sur (límite sur) 
+                    west: -70.6,     // 70°35' Oeste (límite oeste)
+                    east: -66.5      // 66°30' Oeste (límite este)
+                },
+                // Centro geográfico aproximado de la provincia
+                center: { lat: -34.8, lon: -68.5 },
+                // Radio de seguridad (no usado con bounds, pero mantenido para compatibilidad)
+                radius: 200 // km de radio de cobertura total
+            },
+            
+            // Timers
+            checkInterval: 87 * 60 * 1000,      // 1h 27min (evita múltiples colisiones)  
+            repeatInterval: 101 * 60 * 1000,    // 1h 41min (evita colisión con baliza)
+            weatherUpdateInterval: 17 * 60 * 1000, // 17 minutos (evita solapamiento exacto con APRS)
+            
+            // TTS
+            useGoogleTTS: true,
+            fallbackTTS: 'espeak',
+            
+            // Cache
+            cacheDuration: 15 * 60 * 1000 // 15 minutos
+        };
+        
+        // Estado de alertas
+        this.activeAlerts = new Map();
+        this.lastAnnouncedAlerts = new Set();
+        this.lastCheck = null;
+        this.checkTimer = null;
+        this.repeatTimer = null;
+        this.weatherUpdateTimer = null;
+        
+        // Cache
+        this.feedCache = {
+            data: null,
+            timestamp: 0
+        };
+        
+        // XML Parser
+        this.xmlParser = new xml2js.Parser({
+            explicitArray: false,
+            mergeAttrs: true
+        });
+        
+        // Voice Manager para Google TTS
+        this.voiceManager = null;
+        if (this.config.useGoogleTTS) {
+            try {
+                this.voiceManager = new HybridVoiceManager(this.audioManager);
+                this.logger.info('Google TTS habilitado para alertas');
+            } catch (error) {
+                this.logger.warn('Google TTS no disponible, usando fallback:', error.message);
+            }
+        }
+    }
+    
+    /**
+     * Iniciar monitoreo automático de alertas
+     */
+    async start() {
+        if (this.state === MODULE_STATES.ACTIVE) {
+            this.logger.warn('Monitoreo ya está activo');
+            return;
+        }
+        
+        this.state = MODULE_STATES.ACTIVE;
+        
+        // Primera verificación inmediata
+        await this.checkForAlerts();
+        
+        // Primera actualización de clima APRS inmediata
+        await this.updateAPRSComment();
+        
+        // Configurar timers automáticos
+        this.scheduleNextCheck();
+        this.scheduleWeatherUpdates();
+        
+        this.logger.info(`Monitoreo de alertas iniciado - cada ${this.config.checkInterval / 60000} minutos`);
+        this.logger.info(`Actualización clima APRS - cada ${this.config.weatherUpdateInterval / 60000} minutos`);
+        this.emit('started');
+    }
+    
+    /**
+     * Detener monitoreo
+     */
+    stop() {
+        this.state = MODULE_STATES.DISABLED;
+        
+        // Limpiar todos los timers de forma segura
+        this.clearAllTimers();
+        
+        this.logger.info('Monitoreo de alertas detenido');
+        this.emit('stopped');
+    }
+    
+    /**
+     * Limpiar todos los timers de forma segura
+     */
+    clearAllTimers() {
+        const timers = [
+            { name: 'checkTimer', timer: this.checkTimer },
+            { name: 'repeatTimer', timer: this.repeatTimer },
+            { name: 'weatherUpdateTimer', timer: this.weatherUpdateTimer }
+        ];
+        
+        timers.forEach(({ name, timer }) => {
+            if (timer) {
+                try {
+                    clearTimeout(timer);
+                    this[name] = null;
+                    this.logger.debug(`Timer ${name} limpiado`);
+                } catch (error) {
+                    this.logger.warn(`Error limpiando timer ${name}:`, error.message);
+                }
+            }
+        });
+    }
+    
+    /**
+     * Verificar alertas meteorológicas
+     */
+    async checkForAlerts() {
+        if (!this.config.enabled) {
+            return;
+        }
+        
+        // Limpiar timer existente para evitar duplicados
+        if (this.checkTimer) {
+            clearTimeout(this.checkTimer);
+            this.checkTimer = null;
+        }
+        
+        try {
+            this.logger.info('Verificando alertas SMN Argentina...');
+            
+            const feedData = await this.fetchAlertsFeed();
+            if (!feedData || !feedData.rss || !feedData.rss.channel) {
+                this.logger.warn('Feed RSS vacío o inválido');
+                return;
+            }
+            
+            const alerts = this.parseAlerts(feedData.rss.channel);
+            const mendozaAlerts = await this.filterMendozaAlerts(alerts);
+            
+            this.logger.info(`Alertas encontradas: ${alerts.length}, para Mendoza: ${mendozaAlerts.length}`);
+      
+            // Procesar nuevas alertas
+            const newAlerts = this.processNewAlerts(mendozaAlerts);
+            
+            if (newAlerts.length > 0) {
+                this.logger.info(`${newAlerts.length} nueva(s) alerta(s) para Mendoza`);
+                await this.announceNewAlerts(newAlerts);
+                await this.updateAPRSComment();
+                this.scheduleRepeatAnnouncements();
+            }
+            
+            // Limpiar alertas expiradas
+            this.cleanExpiredAlerts();
+            this.lastCheck = Date.now();
+            
+            this.logger.info('Verificación de alertas completada exitosamente');
+            
+        } catch (error) {
+            this.logger.error('Error verificando alertas:', error.message);
+            this.state = MODULE_STATES.ERROR;
+        } finally {
+            // Reprogramar siempre, incluso si hubo error
+            if (this.state === MODULE_STATES.ACTIVE || this.state === MODULE_STATES.ERROR) {
+                this.scheduleNextCheck();
+            }
+        }
+    }
+    
+    /**
+     * Obtener feed RSS de SMN
+     */
+    async fetchAlertsFeed() {
+        // Verificar cache
+        if (this.isCacheValid()) {
+            this.logger.debug('Usando feed desde cache');
+            return this.feedCache.data;
+        }
+        
+        let lastError = null;
+        const maxRetries = 3;
+        const retryDelay = 2000; // 2 segundos
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                this.logger.debug(`Intento ${attempt}/${maxRetries} obteniendo feed SMN`);
+                
+                const response = await axios.get(this.config.mainFeedUrl, {
+                    timeout: 30000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'
+                    },
+                    validateStatus: (status) => status >= 200 && status < 500 // No fallar en errores HTTP 4xx
+                });
+                
+                // Verificar respuesta válida
+                if (!response.data || response.data.length < 100) {
+                    throw new Error(`Respuesta inválida o vacía (${response.data ? response.data.length : 0} bytes)`);
+                }
+                
+                if (response.status !== 200) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const xmlData = await this.xmlParser.parseStringPromise(response.data);
+                
+                if (!xmlData || !xmlData.rss) {
+                    throw new Error('Estructura XML inválida - no contiene RSS');
+                }
+                
+                // Guardar en cache solo si es válido
+                this.feedCache = {
+                    data: xmlData,
+                    timestamp: Date.now()
+                };
+                
+                this.logger.debug(`Feed SMN obtenido exitosamente en intento ${attempt}`);
+                return xmlData;
+                
+            } catch (error) {
+                lastError = error;
+                const errorType = error.code || error.name || 'Unknown';
+                this.logger.warn(`Intento ${attempt}/${maxRetries} fallido [${errorType}]: ${error.message}`);
+                
+                // No reintentar en errores de parsing XML o respuestas inválidas
+                if (error.message.includes('XML') || error.message.includes('Estructura')) {
+                    break;
+                }
+                
+                // Esperar antes del siguiente intento (excepto el último)
+                if (attempt < maxRetries) {
+                    await delay(retryDelay * attempt); // Backoff exponencial
+                }
+            }
+        }
+        
+        // Si llegó aquí, todos los intentos fallaron
+        this.logger.error(`Error obteniendo feed SMN después de ${maxRetries} intentos:`, lastError.message);
+        
+        // Retornar cache si está disponible (aunque sea viejo)
+        if (this.feedCache.data) {
+            const age = Date.now() - this.feedCache.timestamp;
+            this.logger.warn(`Usando cache expirado (${Math.round(age / 60000)} minutos de antigüedad)`);
+            return this.feedCache.data;
+        }
+        
+        // Si no hay cache, retornar null en lugar de lanzar error para evitar crash
+        this.logger.error('No se pudo obtener feed SMN y no hay cache disponible');
+        return null;
+    }
+    
+    /**
+     * Parsear alertas del RSS
+     */
+    parseAlerts(channel) {
+        if (!channel.item) {
+            return [];
+        }
+        
+        const items = Array.isArray(channel.item) ? channel.item : [channel.item];
+        return items.map(item => ({
+            title: item.title || 'Alerta Meteorológica',
+            description: item.description.map? 
+                item.description.replace(/<!\[CDATA\[|\]\]>/g, '').trim() : 
+                'Sin descripción disponible',
+            link: item.link,
+            category: item.category || 'Met',
+            pubDate: new Date(channel.pubDate || Date.now()),
+            id: this.generateAlertId(item)
+        }));
+    }
+    
+    /**
+     * Filtrar alertas por región de Mendoza
+     */
+    async filterMendozaAlerts(alerts) {
+        const mendozaAlerts = [];
+        
+        for (const alert of alerts) {
+            try {
+                // Si hay un link específico, obtener detalles CAP
+                if (alert.link && alert.link.includes('.xml')) {
+                    const capData = await this.fetchCAPDetails(alert.link);
+                    if (capData && this.isAlertForMendoza(capData)) {
+                        // Incorporar todos los datos CAP a la alerta
+                        alert.severity = capData.severity;
+                        alert.expires = capData.expires;
+                        alert.onset = capData.onset;
+                        alert.polygons = capData.polygons;
+                        alert.areaDescriptions = capData.areaDescriptions;
+                        alert.instructions = capData.instructions;
+                        alert.event = capData.event;
+                        alert.headline = capData.headline;
+                        mendozaAlerts.push(alert);
+                    }
+                } else {
+                    // Filtro simple por texto si no hay coordenadas específicas
+                    if (this.alertMentionsMendoza(alert)) {
+                        mendozaAlerts.push(alert);
+                    }
+                }
+            } catch (error) {
+                this.logger.debug(`Error procesando alerta ${alert.id}:`, error.message);
+            }
+        }
+        
+        return mendozaAlerts;
+    }
+    
+    /**
+     * Obtener detalles CAP de una alerta específica
+     */
+    async fetchCAPDetails(capUrl) {
+        if (!capUrl || typeof capUrl !== 'string') {
+            this.logger.debug('URL CAP inválida');
+            return null;
+        }
+        
+        try {
+            this.logger.debug(`Obteniendo detalles CAP: ${capUrl}`);
+            
+            const response = await axios.get(capUrl, {
+                timeout: 8000, // Aumentar timeout
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'
+                },
+                validateStatus: (status) => status === 200, // Solo aceptar respuestas 200
+                maxRedirects: 3 // Limitar redirecciones
+            });
+            
+            if (!response.data) {
+                this.logger.debug('Respuesta CAP vacía');
+                return null;
+            }
+            
+            const capData = await this.xmlParser.parseStringPromise(response.data);
+            
+            if (!capData || !capData.alert) {
+                this.logger.debug('Estructura CAP inválida - no contiene alert');
+                return null;
+            }
+            
+            if (capData.alert && capData.alert.info) {
+                const info = Array.isArray(capData.alert.info) ? capData.alert.info[0] : capData.alert.info;
+                
+                // Extraer todos los polígonos y áreas con validación
+                let polygons = [];
+                let areaDescriptions = [];
+                if (info.area) {
+                    const areas = Array.isArray(info.area) ? info.area : [info.area];
+                    areas.forEach(area => {
+                        if (area.polygon && typeof area.polygon === 'string' && area.polygon.trim().length > 0) {
+                            polygons.push(area.polygon);
+                        }
+                        if (area.areaDesc && area.areaDesc.trim().length > 0) {
+                            areaDescriptions.push(area.areaDesc.trim());
+                        }
+                    });
+                }
+                
+                const capDetails = {
+                    severity: info.severity || 'Unknown',
+                    expires: info.expires || null,
+                    onset: info.onset || null,
+                    polygons: polygons,
+                    areaDescriptions: areaDescriptions,
+                    instructions: info.instruction || null,
+                    event: info.event || null,
+                    headline: info.headline || null
+                };
+                
+                this.logger.debug(`Detalles CAP obtenidos: ${polygons.length} polígonos, ${areaDescriptions.length} descripciones de área, severidad: ${capDetails.severity}`);
+                return capDetails;
+            } else {
+                this.logger.debug('Estructura CAP inválida - no contiene info');
+            }
+            
+        } catch (error) {
+            const errorType = error.code || error.name || 'Unknown';
+            this.logger.debug(`Error obteniendo detalles CAP [${errorType}]: ${error.message}`);
+            
+            // Log más detallado para errores de red
+            if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+                this.logger.debug(`Timeout obteniendo CAP: ${capUrl}`);
+            } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+                this.logger.debug(`Error de conexión obteniendo CAP: ${capUrl}`);
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Verificar si una alerta CAP afecta a Mendoza por coordenadas
+     */
+    isAlertForMendoza(capData) {
+        if (!capData.polygons || capData.polygons.length === 0) {
+            return false;
+        }
+        
+        try {
+            // Verificar cada polígono - si cualquiera intersecta con Mendoza, la alerta aplica
+            for (const polygon of capData.polygons) {
+                if (!polygon) {continue;}
+                
+                // Parse polygon coordinates
+                const coords = polygon.split(' ').map(coord => {
+                    const [lat, lon] = coord.split(',').map(parseFloat);
+                    return { lat, lon };
+                });
+                
+                // Si este polígono intersecta con Mendoza, la alerta aplica
+                if (this.polygonIntersectsMendoza(coords)) {
+                    return true;
+                }
+            }
+            
+            return false;
+            
+        } catch (error) {
+            this.logger.debug('Error verificando polígonos:', error.message);
+            return false;
+        }
+    }
+    
+    /**
+     * Verificar si un polígono intersecta con los límites de Mendoza
+     */
+    polygonIntersectsMendoza(coords) {
+        const bounds = this.config.mendozaRegion.bounds;
+        
+        // Verificar si algún punto del polígono está dentro de los límites de Mendoza
+        for (const coord of coords) {
+            if (coord.lat >= bounds.south && coord.lat <= bounds.north &&
+                coord.lon >= bounds.west && coord.lon <= bounds.east) {
+                return true;
+            }
+        }
+        
+        // Verificar si el polígono contiene alguna esquina de Mendoza
+        const mendozaCorners = [
+            { lat: bounds.north, lon: bounds.west },
+            { lat: bounds.north, lon: bounds.east },
+            { lat: bounds.south, lon: bounds.west },
+            { lat: bounds.south, lon: bounds.east }
+        ];
+        
+        for (const corner of mendozaCorners) {
+            if (this.pointInPolygon(corner, coords)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Verificar si un punto está dentro de un polígono (algoritmo ray-casting)
+     */
+    pointInPolygon(point, polygon) {
+        const x = point.lon;
+        const y = point.lat;
+        let inside = false;
+        
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            if (((polygon[i].lat > y) !== (polygon[j].lat > y)) &&
+                (x < (polygon[j].lon - polygon[i].lon) * (y - polygon[i].lat) / (polygon[j].lat - polygon[i].lat) + polygon[i].lon)) {
+                inside = !inside;
+            }
+        }
+        
+        return inside;
+    }
+    
+    /**
+     * Filtro simple por mención de Mendoza en el texto
+     */
+    alertMentionsMendoza(alert) {
+        const text = `${alert.title} ${alert.description}`.toLowerCase();
+        const mendozaKeywords = [
+            // Términos específicos de Mendoza
+            'mendoza', 'cuyo', 'precordillera', 'cordillera mendocina',
+            'alta montaña mendoza', 'valle de uco', 'región cuyo',
+            // Términos geográficos generales que afectan Mendoza
+            'viento zonda', 'cordillera', 'alta montaña', 'montaña',
+            // Departamentos principales de Mendoza
+            'godoy cruz', 'las heras', 'luján de cuyo', 'maipú',
+            'guaymallén', 'san rafael', 'general alvear', 'malargüe',
+            'tunuyán', 'tupungato', 'san martín', 'rivadavia',
+            'junín', 'santa rosa', 'la paz', 'lavalle'
+        ];
+        
+        return mendozaKeywords.some(keyword => text.includes(keyword));
+    }
+    
+    /**
+     * Procesar nuevas alertas
+     */
+    processNewAlerts(alerts) {
+        const newAlerts = [];
+        
+        for (const alert of alerts) {
+            if (!this.activeAlerts.has(alert.id)) {
+                this.activeAlerts.set(alert.id, {
+                    ...alert,
+                    firstSeen: Date.now(),
+                    announced: false
+                });
+                newAlerts.push(alert);
+            }
+        }
+        
+        return newAlerts;
+    }
+    
+    /**
+     * Anunciar nuevas alertas por TTS
+     */
+    async announceNewAlerts(alerts) {
+        if (alerts.length === 0) {return;}
+        
+        try {
+            // Esperar canal libre
+            await this.waitForFreeChannel();
+            
+            // Tono de alerta
+            await this.audioManager.playTone(800, 300, 0.8);
+            await delay(200);
+            await this.audioManager.playTone(1000, 300, 0.8);
+            await delay(500);
+            
+            // Construir mensaje
+            const message = this.buildAlertMessage(alerts);
+            const cleanMessage = sanitizeTextForTTS(message);
+            
+            this.logger.info(`Anunciando alertas: ${cleanMessage.substring(0, 50)}...`);
+            
+            // Usar Google TTS si está disponible (con soporte para textos largos y timeout extendido)
+            if (this.voiceManager) {
+                try {
+                    this.logger.debug(`Generando TTS para ${cleanMessage.length} caracteres...`);
+                    
+                    // Calcular timeout dinámico basado en longitud del texto
+                    const baseTimeout = 30000; // 30 segundos base
+                    const extraTime = Math.ceil(cleanMessage.length / 100) * 5000; // 5s por cada 100 chars
+                    const dynamicTimeout = Math.min(baseTimeout + extraTime, 180000); // Máximo 3 minutos
+                    
+                    this.logger.debug(`Timeout calculado: ${dynamicTimeout}ms para texto de ${cleanMessage.length} chars`);
+                    
+                    // Generar audio con timeout extendido
+                    const audioFile = await Promise.race([
+                        this.voiceManager.generateLongSpeech(cleanMessage),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout generando TTS')), dynamicTimeout))
+                    ]);
+                    
+                    // Reproducir con timeout extendido también
+                    await this.voiceManager.playAudio(audioFile);
+                    
+                } catch (error) {
+                    this.logger.warn(`Error con TTS híbrido (${error.message}), usando fallback espeak`);
+                    // Fallback a espeak con texto más corto si es muy largo
+                    const fallbackText = cleanMessage.length > 500 ? 
+                        `${cleanMessage.substring(0, 450)}... mensaje completo disponible en consulta manual` : 
+                        cleanMessage;
+                    await this.audioManager.speak(fallbackText, { voice: 'es+f3' });
+                }
+            } else {
+                // Si no hay voiceManager, truncar texto largo para espeak
+                const espeakText = cleanMessage.length > 500 ? 
+                    `${cleanMessage.substring(0, 450)}... mensaje completo disponible con comando *7` : 
+                    cleanMessage;
+                await this.audioManager.speak(espeakText, { voice: 'es+f3' });
+            }
+            
+            // Marcar como anunciadas
+            alerts.forEach(alert => {
+                this.lastAnnouncedAlerts.add(alert.id);
+                if (this.activeAlerts.has(alert.id)) {
+                    this.activeAlerts.get(alert.id).announced = true;
+                }
+            });
+
+            // Emitir evento para actualización de display
+            this.emit('alert_announced', {
+                count: alerts.length,
+                title: alerts[0].title || 'Alerta meteorológica'
+            });
+
+        } catch (error) {
+            this.logger.error('Error anunciando alertas:', error.message);
+        }
+    }
+    
+    /**
+     * Construir mensaje de alerta para TTS mejorado con área, horarios e instrucciones
+     */
+    buildAlertMessage(alerts) {
+        const currentTime = new Date().toLocaleTimeString('es-AR', { 
+            timeZone: 'America/Argentina/Mendoza',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false // Formato 24h para mejor TTS
+        });
+        
+        if (alerts.length === 1) {
+            const alert = alerts[0];
+            
+            // Limpiar y mejorar el contenido de la alerta
+            const cleanTitle = this.cleanAlertText(alert.title);
+            const cleanDescription = this.cleanAlertText(alert.description);
+            
+            // Extraer nivel de severidad
+            const severity = alert.severity ? this.translateSeverity(alert.severity) : '';
+            const severityText = severity ? ` Nivel: ${severity}.` : '';
+            
+            // Identificar área afectada desde polígonos
+            const affectedArea = alert.polygons ? 
+                this.identifyMendozaAreas(alert.polygons) : 'Mendoza';
+            
+            // Procesar horarios de validez
+            const timeInfo = this.buildTimeInfo(alert.onset, alert.expires);
+            
+            // Construir mensaje estructurado
+            let message = `Atención. Nueva alerta meteorológica.${severityText} ${cleanTitle} para ${affectedArea}.`;
+            
+            // Agregar horarios de validez
+            if (timeInfo) {
+                message += ` ${timeInfo}.`;
+            }
+            
+            // Agregar descripción mejorada (sin repetir el área)
+            if (cleanDescription) {
+                const improvedDescription = this.improveDescription(cleanDescription, cleanTitle);
+                if (improvedDescription && improvedDescription.length < 300) {
+                    message += ` ${improvedDescription}.`;
+                }
+            }
+            
+            // Agregar instrucciones de seguridad resumidas
+            if (alert.instructions) {
+                const safetyTips = this.extractSafetyTips(alert.instructions, cleanTitle);
+                if (safetyTips) {
+                    message += ` Medidas de seguridad: ${safetyTips}.`;
+                }
+            }
+            
+            // Agregar timestamp y fuente
+            message += ` Información emitida a las ${currentTime}, fuente Servicio Meteorológico Nacional.`;
+            
+            return message;
+            
+        } else {
+            // Para múltiples alertas, dar detalles específicos de cada una
+            let message = 'Atención. Nuevas alertas meteorológicas para Mendoza. ';
+            
+            // Si son pocas alertas (2-3), mencionar cada una de forma concisa
+            if (alerts.length <= 3) {
+                const alertDetails = [];
+                
+                alerts.forEach((alert) => {
+                    const cleanTitle = this.cleanAlertText(alert.title);
+                    const affectedArea = alert.polygons ? 
+                        this.identifyMendozaAreas(alert.polygons) : 'Mendoza';
+                    
+                    // Construir cada alerta de forma completa y clara
+                    let alertDetail = `${cleanTitle} para ${affectedArea}`;
+                    
+                    // Agregar horarios de forma separada para mejor flujo
+                    const timeInfo = this.buildTimeInfo(alert.onset, alert.expires);
+                    if (timeInfo) {
+                        alertDetail += `. ${timeInfo}`;
+                    }
+                    
+                    alertDetails.push(alertDetail);
+                });
+                
+                // Unir con pauses adecuadas entre alertas completas
+                message += alertDetails.join('. ') + '.';
+                
+                // Omitir medidas de seguridad para múltiples alertas (evitar timeout)
+                
+            } else {
+                // Para muchas alertas (4+), usar resumen por categorías
+                const alertTypes = new Map();
+                const affectedAreas = new Set();
+                
+                alerts.forEach(alert => {
+                    const cleanTitle = this.cleanAlertText(alert.title);
+                    const type = this.categorizeAlert(cleanTitle);
+                    alertTypes.set(type, (alertTypes.get(type) || 0) + 1);
+                    
+                    if (alert.polygons) {
+                        const area = this.identifyMendozaAreas(alert.polygons);
+                        affectedAreas.add(area);
+                    }
+                });
+                
+                message += `Total: ${alerts.length} alertas. `;
+                
+                // Enumerar tipos
+                const typesList = Array.from(alertTypes.entries())
+                    .map(([type, count]) => count > 1 ? `${count} de ${type}` : type)
+                    .join(', ');
+                
+                message += `Tipos: ${typesList}. `;
+                
+                // Enumerar áreas afectadas
+                if (affectedAreas.size > 0) {
+                    const areasList = Array.from(affectedAreas).slice(0, 3).join(', ');
+                    const moreAreas = affectedAreas.size > 3 ? ' y otras zonas' : '';
+                    message += `Áreas: ${areasList}${moreAreas}. `;
+                }
+            }
+            
+            message += ` Información emitida a las ${currentTime}, fuente Servicio Meteorológico Nacional.`;
+            
+            return message;
+        }
+    }
+    
+    /**
+     * Construir información de horarios de validez optimizada para TTS
+     */
+    buildTimeInfo(onset, expires) {
+        try {
+            let timeInfo = '';
+            const now = new Date();
+            
+            if (onset) {
+                const onsetDate = new Date(onset);
+                // Formato 24h sin "horas"
+                const onsetTime = onsetDate.toLocaleTimeString('es-AR', {
+                    timeZone: 'America/Argentina/Mendoza',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false // Formato 24h
+                });
+                
+                if (onsetDate > now) {
+                    const today = now.toDateString() === onsetDate.toDateString();
+                    if (today) {
+                        timeInfo = `vigente desde las ${onsetTime}`;
+                    } else {
+                        // Usar día específico en lugar de "mañana"
+                        const dayName = onsetDate.toLocaleDateString('es-AR', {
+                            timeZone: 'America/Argentina/Mendoza',
+                            weekday: 'long'
+                        });
+                        const dayNumber = onsetDate.getDate();
+                        timeInfo = `vigente desde ${dayName} ${dayNumber}, a las ${onsetTime}`;
+                    }
+                } else {
+                    timeInfo = 'ya vigente';
+                }
+            }
+            
+            if (expires) {
+                const expiresDate = new Date(expires);
+                // Formato 24h sin "horas"
+                const expiresTime = expiresDate.toLocaleTimeString('es-AR', {
+                    timeZone: 'America/Argentina/Mendoza',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false // Formato 24h
+                });
+                
+                const today = now.toDateString() === expiresDate.toDateString();
+                let expiresText;
+                if (today) {
+                    expiresText = `hasta las ${expiresTime}`;
+                } else {
+                    // Usar día específico en lugar de "mañana"
+                    const dayName = expiresDate.toLocaleDateString('es-AR', {
+                        timeZone: 'America/Argentina/Mendoza',
+                        weekday: 'long'
+                    });
+                    const dayNumber = expiresDate.getDate();
+                    expiresText = `hasta ${dayName} ${dayNumber}, a las ${expiresTime}`;
+                }
+                
+                timeInfo = timeInfo ? `${timeInfo}, ${expiresText}` : `vigente ${expiresText}`;
+            }
+            
+            return timeInfo;
+            
+        } catch (error) {
+            this.logger.debug('Error construyendo información de horarios:', error.message);
+            return null;
+        }
+    }
+    
+    /**
+     * Mejorar descripción eliminando redundancias
+     */
+    improveDescription(description, title) {
+        if (!description) return '';
+        
+        let improved = description;
+        
+        // Remover frases redundantes comunes
+        improved = improved.replace(/^El área (será|podrá ser) afectada? por /i, '');
+        improved = improved.replace(/^Se esperan? /i, '');
+        improved = improved.replace(/^La zona (será|podrá ser) afectada? por /i, '');
+        
+        // Si comienza igual que el título, remover esa parte
+        const titleWords = title.toLowerCase().split(' ');
+        const descWords = improved.toLowerCase().split(' ');
+        
+        if (descWords[0] === titleWords[0] && titleWords.length > 1) {
+            const wordsToRemove = titleWords.filter(word => 
+                descWords.slice(0, 3).includes(word) && word.length > 3
+            ).length;
+            
+            if (wordsToRemove >= 1) {
+                improved = improved.split(' ').slice(wordsToRemove).join(' ');
+            }
+        }
+        
+        // Capitalizar primera letra
+        improved = improved.charAt(0).toUpperCase() + improved.slice(1);
+        
+        return improved.trim();
+    }
+    
+    /**
+     * Extraer tips de seguridad más importantes (resumidos para TTS)
+     */
+    extractSafetyTips(instructions, alertType) {
+        if (!instructions || typeof instructions !== 'string') return null;
+        
+        const tips = [];
+        const lines = instructions.split('\n').map(line => line.trim()).filter(Boolean);
+        
+        // Extraer tips más relevantes según tipo de alerta
+        const isWindAlert = alertType.toLowerCase().includes('viento') || 
+                           alertType.toLowerCase().includes('zonda');
+        const isRainAlert = alertType.toLowerCase().includes('lluvia');
+        
+        for (const line of lines.slice(0, 5)) { // Máximo 5 líneas
+            const cleanLine = line.replace(/^\d+[-.)\s]*/, '').trim();
+            
+            if (cleanLine.length < 10) continue;
+            
+            // Priorizar tips según tipo de alerta
+            if (isWindAlert) {
+                if (cleanLine.includes('asegur') || cleanLine.includes('elementos') ||
+                    cleanLine.includes('árboles') || cleanLine.includes('vehículo')) {
+                    tips.push(this.simplifySafetyTip(cleanLine));
+                }
+            } else if (isRainAlert) {
+                if (cleanLine.includes('no manejes') || cleanLine.includes('no circules') ||
+                    cleanLine.includes('evitá') || cleanLine.includes('refugiáte')) {
+                    tips.push(this.simplifySafetyTip(cleanLine));
+                }
+            } else {
+                // Tips generales
+                if (cleanLine.includes('emergencia') || cleanLine.includes('segur') ||
+                    cleanLine.includes('evitá') || cleanLine.includes('mantenete')) {
+                    tips.push(this.simplifySafetyTip(cleanLine));
+                }
+            }
+            
+            if (tips.length >= 2) break; // Máximo 2 tips para TTS
+        }
+        
+        return tips.length > 0 ? tips.join(', ') : null;
+    }
+    
+    /**
+     * Simplificar tip de seguridad para TTS
+     */
+    simplifySafetyTip(tip) {
+        return tip
+            .replace(/Asegurá/g, 'Asegurar')
+            .replace(/Mantenete/g, 'Mantenerse')
+            .replace(/No estaciones/g, 'No estacionar')
+            .replace(/comunicate/g, 'comunicarse')
+            .substring(0, 80) // Limitar longitud
+            .trim();
+    }
+    
+    /**
+     * Limpiar texto de alerta para TTS optimizado para pronunciación
+     */
+    cleanAlertText(text) {
+        if (!text) return '';
+        
+        return text
+            .replace(/\s+/g, ' ') // Múltiples espacios a uno
+            .replace(/[\r\n]+/g, '. ') // Saltos de línea a puntos
+            .replace(/\.\.+/g, '.') // Múltiples puntos a uno
+            .replace(/([.!?])\s*([a-z])/g, '$1 $2') // Espacio después de puntuación
+            // Mejorar pronunciación de números y unidades
+            .replace(/(\d+)\s*(km\/h|kmh)/g, '$1 kilómetros por hora')
+            .replace(/(\d+)\s*(mm)/g, '$1 milímetros')
+            .replace(/(\d+)\s*(°C|°)/g, '$1 grados')
+            // Mejorar pausas en frases largas
+            .replace(/,\s*([a-z])/g, ', $1') // Asegurar espacios después de comas
+            .replace(/\b(entre|desde|hasta)\s+(\d+)/g, '$1, $2') // Pausas antes de números
+            // Convertir siglas/nombres a forma más legible para TTS
+            .replace(/\b(SMN|MENDOZA|ARGENTINA)\b/g, (match) => {
+                switch(match) {
+                    case 'SMN': return 'Servicio Meteorológico Nacional';
+                    case 'MENDOZA': return 'Mendoza';
+                    case 'ARGENTINA': return 'Argentina';
+                    default: return match;
+                }
+            })
+            // Asegurar que 'Zonda' se pronuncie claramente
+            .replace(/\bZonda\b/gi, 'Zonda')
+            .replace(/\bviento zonda\b/gi, 'viento Zonda')
+            .trim();
+    }
+    
+    /**
+     * Traducir nivel de severidad
+     */
+    translateSeverity(severity) {
+        const severityMap = {
+            'Minor': 'Menor',
+            'Moderate': 'Moderado', 
+            'Severe': 'Severo',
+            'Extreme': 'Extremo',
+            'Unknown': 'Desconocido'
+        };
+        return severityMap[severity] || severity;
+    }
+    
+    /**
+     * Categorizar alerta por tipo
+     */
+    categorizeAlert(title) {
+        const titleLower = title.toLowerCase();
+        
+        if (titleLower.includes('lluvia') || titleLower.includes('precipitación')) {
+            return 'lluvia';
+        }
+        if (titleLower.includes('viento') || titleLower.includes('ráfaga') || titleLower.includes('zonda')) {
+            return 'viento';
+        }
+        if (titleLower.includes('tormenta') || titleLower.includes('eléctrica')) {
+            return 'tormenta';
+        }
+        if (titleLower.includes('granizo')) {
+            return 'granizo';
+        }
+        if (titleLower.includes('nieve') || titleLower.includes('nevada')) {
+            return 'nieve';
+        }
+        if (titleLower.includes('temperatura') || titleLower.includes('calor') || titleLower.includes('frío')) {
+            return 'temperatura';
+        }
+        if (titleLower.includes('niebla') || titleLower.includes('visibilidad')) {
+            return 'visibilidad';
+        }
+        
+        return 'meteorológica general';
+    }
+    
+    /**
+     * Identificar áreas geográficas de Mendoza desde polígonos
+     */
+    identifyMendozaAreas(polygons) {
+        if (!polygons || polygons.length === 0) {
+            return 'provincia de Mendoza';
+        }
+        
+        const areas = new Set();
+        
+        for (const polygon of polygons) {
+            try {
+                // Parsear coordenadas del polígono
+                const coords = polygon.split(' ').map(coord => {
+                    const [lat, lon] = coord.split(',').map(parseFloat);
+                    return { lat, lon };
+                }).filter(coord => !isNaN(coord.lat) && !isNaN(coord.lon));
+                
+                if (coords.length === 0) continue;
+                
+                // Calcular centro del polígono
+                const centerLat = coords.reduce((sum, c) => sum + c.lat, 0) / coords.length;
+                const centerLon = coords.reduce((sum, c) => sum + c.lon, 0) / coords.length;
+                
+                // Identificar área basada en coordenadas
+                const area = this.identifyAreaFromCoordinates(centerLat, centerLon, coords);
+                if (area) {
+                    areas.add(area);
+                }
+                
+            } catch (error) {
+                this.logger.debug('Error procesando polígono para identificar área:', error.message);
+            }
+        }
+        
+        if (areas.size === 0) {
+            return 'zonas de Mendoza';
+        }
+        
+        const areaList = Array.from(areas).sort();
+        
+        if (areaList.length === 1) {
+            return areaList[0];
+        } else if (areaList.length === 2) {
+            return `${areaList[0]} y ${areaList[1]}`;
+        } else if (areaList.length <= 4) {
+            const lastArea = areaList.pop();
+            return `${areaList.join(', ')} y ${lastArea}`;
+        } else {
+            return 'múltiples zonas de Mendoza';
+        }
+    }
+    
+    /**
+     * Identificar área específica desde coordenadas
+     */
+    identifyAreaFromCoordinates(centerLat, centerLon, coords) {
+        // Simplificar identificación de áreas de Mendoza
+        this.logger.debug(`Identificando área para coordenadas: ${centerLat}, ${centerLon}`);
+        
+        // Área metropolitana (Gran Mendoza) - zona más poblada
+        if (centerLat >= -33.0 && centerLat <= -32.7 && centerLon >= -69.0 && centerLon <= -68.7) {
+            return 'Gran Mendoza';
+        }
+        
+        // Norte de Mendoza 
+        if (centerLat >= -32.7 && centerLat <= -32.0) {
+            return 'Norte de Mendoza';
+        }
+        
+        // Valle de Uco - sur del área metropolitana
+        if (centerLat >= -34.0 && centerLat <= -33.0 && centerLon >= -69.5 && centerLon <= -68.8) {
+            return 'Valle de Uco';
+        }
+        
+        // San Rafael - más al sur
+        if (centerLat >= -35.0 && centerLat <= -34.0) {
+            return 'San Rafael';
+        }
+        
+        // Alta Montaña - oeste
+        if (centerLon <= -69.5) {
+            return 'Alta Montaña';
+        }
+        
+        // Este de Mendoza
+        if (centerLon >= -68.0) {
+            return 'Este de Mendoza';
+        }
+        
+        // Por defecto, devolver centro de Mendoza si no coincide con ninguna área específica
+        return 'Gran Mendoza';
+    }
+    
+    /**
+     * Actualizar comment de APRS con clima actual y alertas activas
+     */
+    async updateAPRSComment() {
+        if (!this.aprsModule) {return;}
+        
+        const alertComment = this.getActiveAlertComment();
+        const weatherComment = await this.getCurrentWeatherComment();
+        const baseComment = 'VX200 RPT';
+        
+        // Construir comment: Base + Clima + Alertas (máximo 43 caracteres APRS)
+        let fullComment = baseComment;
+        
+        if (weatherComment) {
+            fullComment += ` ${weatherComment}`;
+        }
+        
+        if (alertComment) {
+            const spaceLeft = 43 - fullComment.length;
+            if (spaceLeft > alertComment.length + 1) {
+                fullComment += ` ${alertComment}`;
+            } else {
+                // Priorizar alertas si no hay espacio suficiente
+                fullComment = `${baseComment} ${alertComment}`;
+            }
+        }
+        
+        try {
+            this.aprsModule.config.beacon.comment = fullComment;
+            this.logger.debug(`APRS comment actualizado: "${fullComment}"`);
+        } catch (error) {
+            this.logger.error('Error actualizando APRS comment:', error.message);
+        }
+    }
+    
+    /**
+     * Obtener comment de clima actual para APRS
+     */
+    async getCurrentWeatherComment() {
+        if (!this.weatherModule) {return null;}
+        
+        try {
+            // Obtener clima actual para Mendoza
+            const mendozaCity = {
+                name: 'Mendoza',
+                lat: -32.89,
+                lon: -68.84
+            };
+            
+            // Verificar que el método existe antes de llamarlo
+            if (typeof this.weatherModule.getCurrentWeatherForCity !== 'function') {
+                this.logger.debug('Método getCurrentWeatherForCity no disponible en weatherModule');
+                return null;
+            }
+            
+            const weatherData = await this.weatherModule.getCurrentWeatherForCity(mendozaCity);
+            
+            if (!weatherData) {
+                this.logger.debug('No se obtuvo data de clima');
+                return null;
+            }
+            
+            // Formato compacto para APRS con validación de campos
+            const temp = weatherData.temperature ? Math.round(weatherData.temperature) : 'N/A';
+            const humidity = weatherData.humidity ? Math.round(weatherData.humidity) : 'N/A';
+            const windSpeed = weatherData.wind_speed ? Math.round(weatherData.wind_speed) : 'N/A';
+            
+            // Solo incluir datos válidos
+            const parts = [];
+            if (temp !== 'N/A') parts.push(`${temp}C`);
+            if (humidity !== 'N/A') parts.push(`${humidity}%`);
+            if (windSpeed !== 'N/A') parts.push(`${windSpeed}km/h`);
+            
+            return parts.length > 0 ? parts.join(' ') : null;
+            
+        } catch (error) {
+            this.logger.debug('Error obteniendo clima para APRS:', error.message);
+            return null;
+        }
+    }
+    
+    /**
+     * Generar comment corto para APRS (máximo 43 caracteres)
+     */
+    getActiveAlertComment() {
+        if (this.activeAlerts.size === 0) {return null;}
+        
+        const alerts = Array.from(this.activeAlerts.values());
+        const types = [...new Set(alerts.map(a => a.title.toUpperCase()))];
+        
+        if (types.length === 1) {
+            const type = types[0];
+            if (type.includes('LLUVIA')) {return '[LLUVIA]';}
+            if (type.includes('VIENTO')) {return '[VIENTO]';}
+            if (type.includes('TORMENTA')) {return '[TORMENTA]';}
+            if (type.includes('GRANIZO')) {return '[GRANIZO]';}
+            return '[ALERTA MET]';
+        } else if (types.length === 2) {
+            return '[ALERTAS MET]';
+        } else {
+            return `[${types.length} ALERTAS]`;
+        }
+    }
+    
+    /**
+     * Programar próxima verificación
+     */
+    scheduleNextCheck() {
+        if (this.checkTimer) {
+            clearTimeout(this.checkTimer);
+        }
+        
+        this.checkTimer = setTimeout(() => {
+            this.checkForAlerts();
+        }, this.config.checkInterval);
+        
+        // Guardar la fecha exacta del próximo check
+        this.nextCheckTime = new Date(Date.now() + this.config.checkInterval);
+        this.logger.debug(`Próxima verificación: ${this.nextCheckTime.toLocaleTimeString('es-AR')}`);
+    }
+    
+    /**
+     * Programar repeticiones de anuncios
+     */
+    scheduleRepeatAnnouncements() {
+        if (this.repeatTimer) {
+            clearTimeout(this.repeatTimer);
+        }
+        
+        this.repeatTimer = setTimeout(async () => {
+            const activeAlerts = Array.from(this.activeAlerts.values());
+            if (activeAlerts.length > 0) {
+                this.logger.info('Repitiendo anuncios de alertas activas');
+                await this.announceNewAlerts(activeAlerts);
+                this.scheduleRepeatAnnouncements();
+            }
+        }, this.config.repeatInterval);
+    }
+    
+    /**
+     * Programar actualizaciones periódicas del clima en APRS
+     */
+    scheduleWeatherUpdates() {
+        if (this.weatherUpdateTimer) {
+            clearTimeout(this.weatherUpdateTimer);
+        }
+        
+        this.weatherUpdateTimer = setTimeout(async () => {
+            try {
+                await this.updateAPRSComment();
+                this.logger.debug('Clima APRS actualizado automáticamente');
+                this.scheduleWeatherUpdates(); // Reprogramar
+            } catch (error) {
+                this.logger.debug('Error actualizando clima APRS:', error.message);
+                this.scheduleWeatherUpdates(); // Reprogramar incluso si falla
+            }
+        }, this.config.weatherUpdateInterval);
+    }
+    
+    /**
+     * Limpiar alertas expiradas
+     */
+    cleanExpiredAlerts() {
+        const now = Date.now();
+        const expiredAlerts = [];
+        
+        for (const [id, alert] of this.activeAlerts) {
+            // Considerar expirada si tiene más de 24 horas
+            const age = now - alert.firstSeen;
+            if (age > 24 * 60 * 60 * 1000) {
+                expiredAlerts.push(id);
+            }
+        }
+        
+        if (expiredAlerts.length > 0) {
+            expiredAlerts.forEach(id => {
+                this.activeAlerts.delete(id);
+                this.lastAnnouncedAlerts.delete(id);
+            });
+            
+            this.logger.info(`Limpiadas ${expiredAlerts.length} alertas expiradas`);
+            // Actualizar comment APRS de forma asíncrona
+            this.updateAPRSComment().catch(error => 
+                this.logger.debug('Error actualizando APRS comment:', error.message)
+            );
+        }
+    }
+    
+    /**
+     * Comando manual *7 - Consultar alertas activas
+     */
+    async execute(command) {
+        this.logger.info(`Consulta manual de alertas: ${command}`);
+        
+        if (this.state !== MODULE_STATES.IDLE && this.state !== MODULE_STATES.ACTIVE) {
+            this.logger.warn('Módulo no disponible');
+            return;
+        }
+        
+        try {
+            await this.waitForFreeChannel();
+            
+            // Si el comando es *0, forzar verificación de alertas
+            if (command === '*0') {
+                this.logger.info('Forzando verificación manual de alertas SMN...');
+                await this.checkForAlerts();
+                return;
+            }
+            
+            if (this.activeAlerts.size === 0) {
+                await this.audioManager.playTone(600, 200, 0.6);
+                await delay(200);
+                
+                const currentTime = new Date().toLocaleTimeString('es-AR', { 
+                    timeZone: 'America/Argentina/Mendoza',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                const lastCheckTime = this.lastCheck ? 
+                    new Date(this.lastCheck).toLocaleTimeString('es-AR', {
+                        timeZone: 'America/Argentina/Mendoza', 
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }) : 'desconocida';
+                
+                const message = `Estado de alertas meteorológicas para Mendoza. ` +
+                    `No hay alertas activas en este momento. ` +
+                    `Última verificación: ${lastCheckTime}. ` +
+                    `Hora actual: ${currentTime}. ` +
+                    `Use comando *0 para forzar verificación inmediata.`;
+                    
+                const cleanMessage = sanitizeTextForTTS(message);
+                
+                if (this.voiceManager) {
+                    const audioFile = await this.voiceManager.generateLongSpeech(cleanMessage);
+                    await this.voiceManager.playAudio(audioFile);
+                } else {
+                    await this.audioManager.speak(cleanMessage, { voice: 'es+f3' });
+                }
+            } else {
+                const alerts = Array.from(this.activeAlerts.values());
+                await this.announceNewAlerts(alerts);
+            }
+            
+        } catch (error) {
+            this.logger.error('Error en consulta manual:', error.message);
+        }
+    }
+    
+    /**
+     * Utilidades
+     */
+    generateAlertId(item) {
+        const content = `${item.title}-${item.description}-${item.link}`;
+        return require('crypto').createHash('md5').update(content).digest('hex').substring(0, 8);
+    }
+    
+    isCacheValid() {
+        const age = Date.now() - this.feedCache.timestamp;
+        return this.feedCache.data && age < this.config.cacheDuration;
+    }
+    
+    async waitForFreeChannel(timeout = 30000) {
+        if (!this.audioManager) {
+            this.logger.debug('AudioManager no disponible, usando delay simple');
+            await delay(1000);
+            return;
+        }
+        
+        // Usar la implementación real de audioManager si está disponible
+        if (typeof this.audioManager.isSafeToTransmit === 'function') {
+            return new Promise((resolve) => {
+                const startTime = Date.now();
+                
+                // Verificar inmediatamente
+                if (this.audioManager.isSafeToTransmit()) {
+                    resolve();
+                    return;
+                }
+                
+                this.logger.debug('Canal ocupado, esperando...');
+                
+                const checkInterval = setInterval(() => {
+                    const elapsed = Date.now() - startTime;
+                    
+                    if (this.audioManager.isSafeToTransmit()) {
+                        clearInterval(checkInterval);
+                        this.logger.debug(`Canal libre después de ${elapsed}ms`);
+                        resolve();
+                    } else if (elapsed > timeout) {
+                        clearInterval(checkInterval);
+                        this.logger.warn(`Timeout esperando canal libre (${timeout}ms)`);
+                        resolve(); // Continuar incluso si timeout
+                    }
+                }, 500); // Verificar cada 500ms
+            });
+        } else {
+            // Fallback si no hay método isSafeToTransmit
+            this.logger.debug('isSafeToTransmit no disponible, usando delay simple');
+            await delay(1000);
+        }
+    }
+    
+    /**
+     * Obtener estado del módulo
+     */
+    getStatus() {
+        return {
+            enabled: this.config.enabled,
+            state: this.state,
+            activeAlerts: this.activeAlerts.size,
+            lastCheck: this.lastCheck ? new Date(this.lastCheck).toISOString() : null,
+            nextCheck: this.nextCheckTime ? this.nextCheckTime.toISOString() : null,
+            googleTTSAvailable: !!this.voiceManager,
+            aprsIntegration: !!this.aprsModule
+        };
+    }
+    
+    /**
+     * Obtener alertas activas
+     */
+    getActiveAlerts() {
+        return Array.from(this.activeAlerts.values());
+    }
+    
+    /**
+     * Configurar módulo
+     */
+    configure(newConfig) {
+        this.config = { ...this.config, ...newConfig };
+        
+        if (!this.config.enabled && this.state === MODULE_STATES.ACTIVE) {
+            this.stop();
+        } else if (this.config.enabled && this.state === MODULE_STATES.DISABLED) {
+            this.start();
+        }
+        
+        this.logger.info('Configuración de WeatherAlerts actualizada');
+    }
+    
+    /**
+     * Destructor
+     */
+    destroy() {
+        try {
+            // Detener monitoreo y limpiar timers
+            this.stop();
+            
+            // Limpiar datos
+            if (this.activeAlerts) {
+                this.activeAlerts.clear();
+            }
+            if (this.lastAnnouncedAlerts) {
+                this.lastAnnouncedAlerts.clear();
+            }
+            
+            // Limpiar cache
+            this.feedCache = { data: null, timestamp: 0 };
+            
+            // Limpiar referencias
+            this.audioManager = null;
+            this.aprsModule = null;
+            this.weatherModule = null;
+            this.voiceManager = null;
+            this.xmlParser = null;
+            
+            // Remover todos los listeners
+            this.removeAllListeners();
+            
+            this.state = MODULE_STATES.DISABLED;
+            this.logger.info('Módulo WeatherAlerts destruido completamente');
+            
+        } catch (error) {
+            this.logger.error('Error durante destrucción del módulo:', error.message);
+        }
+    }
+}
+
+module.exports = WeatherAlerts;

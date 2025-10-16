@@ -42,8 +42,9 @@ class DirewolfManager {
 # Callsign del repetidor
 MYCALL ${this.config.callsign}
 
-# Configuracion de audio (usando mismo dispositivo que VX200 Controller)
-ADEVICE default default
+# Audio device - Salida para APRS beacon (VOX activa PTT)
+# Entrada: null (no decodificamos), Salida: plughw:0,0 (para transmitir beacons)
+ADEVICE null plughw:0,0
 ARATE 48000
 
 # Configuracion de modem para canal 0
@@ -121,7 +122,7 @@ TXTAIL 1
             // Iniciar proceso
             this.process = spawn('/usr/local/bin/direwolf', [
                 '-c', this.configPath,
-                '-t', '0' // Sin color en terminal
+                '-t', '0'   // Sin color en terminal
             ], {
                 stdio: ['ignore', 'pipe', 'pipe'],
                 detached: false
@@ -159,7 +160,7 @@ TXTAIL 1
 
             if (this.process && !this.process.killed) {
                 this.isRunning = true;
-                this.logger.info('TNC Direwolf: 1200 baud AFSK, KISS:8001, Audio:default');
+                this.logger.info(`TNC Direwolf: AFSK 1200 baud, Audio TX:plughw:0,0, KISS:${this.config.ports.kiss}, AGW:${this.config.ports.agw}`);
                 return true;
             } else {
                 throw new Error('Proceso Direwolf terminó inesperadamente');
