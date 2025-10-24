@@ -8,8 +8,6 @@ const APRS = require('./modules/aprs');
 const DirewolfManager = require('./utils/direwolfManager');
 const APRSMapServer = require('./aprs-map/server');
 const DDNSManager = require('./modules/ddns');
-const OLEDDisplay = require('./display/OLEDDisplay');
-const AutoUpdater = require('./modules/autoUpdater');
 const { Config } = require('./config');
 const { createLogger } = require('./logging/Logger');
 const { getSystemOutput } = require('./logging/SystemOutput');
@@ -26,7 +24,6 @@ class VX200Controller {
         this.modules = {};
         this.direwolf = null;
         this.aprsMapServer = null;
-        this.display = null;
         
         this.isRunning = false;
         this.startTime = Date.now();
@@ -47,27 +44,27 @@ class VX200Controller {
             // FASE 1: AudioManager (base crítica del sistema)
             this.logger.info('FASE 1: Inicializando sistema de audio...');
             await this.initializeAudio();
-            
+
             // FASE 2: Direwolf TNC (requerido para APRS)
             this.logger.info('FASE 2: Inicializando Direwolf TNC...');
             await this.initializeDirewolf();
-            
+
             // FASE 3: Módulos básicos (no dependen de TNC)
             this.logger.info('FASE 3: Inicializando módulos básicos...');
             await this.initializeBasicModules();
-            
+
             // FASE 4: Módulos que requieren TNC
             this.logger.info('FASE 4: Inicializando módulos APRS...');
             await this.initializeAPRSModules();
-            
-            // FASE 5: Módulos de monitoreo
+
+            // FASE 5: Módulos de monitoreo (diferidos, no bloquean)
             this.logger.info('FASE 5: Inicializando módulos de monitoreo...');
             await this.initializeMonitoringModules();
-            
+
             // FASE 6: Servicios auxiliares
             this.logger.info('FASE 6: Inicializando servicios auxiliares...');
             await this.initializeAuxiliaryServices();
-            
+
             // FASE 7: Configuración y arranque de servicios críticos
             this.logger.info('FASE 7: Aplicando configuración final...');
             this.setupEventHandlers();
@@ -104,16 +101,9 @@ class VX200Controller {
     async initializeAudio() {
         try {
             this.audio = new AudioManager();
-
+            
             if (this.audio.start()) {
                 // AudioManager inicializado
-                // Update display with audio capability info
-                if (this.display) {
-                    this.display.updateAudioData({
-                        captureAvailable: this.audio.deviceDetector ?
-                            (this.audio.deviceDetector.hasCaptureDevices ? true : false) : false
-                    });
-                }
             } else {
                 throw new Error('AudioManager no pudo iniciarse');
             }
@@ -197,38 +187,7 @@ class VX200Controller {
 
     async initializeAuxiliaryServices() {
         this.logger.info('Inicializando servicios auxiliares...');
-
-        // OLED Display
-        try {
-            this.display = new OLEDDisplay();
-            const displayInitialized = await this.display.initialize();
-            if (displayInitialized) {
-                this.logger.info('Display OLED inicializado');
-
-                // Actualizar display con datos existentes de alertas climáticas
-                if (this.modules.weatherAlerts) {
-                    try {
-                        const activeAlerts = this.modules.weatherAlerts.getActiveAlerts();
-                        if (activeAlerts && activeAlerts.length > 0) {
-                            this.display.updateWeatherData({
-                                alertCount: activeAlerts.length,
-                                lastAlert: activeAlerts[0].title || 'Alerta meteorológica'
-                            });
-                            this.logger.debug(`Display actualizado con ${activeAlerts.length} alertas climáticas existentes`);
-                        }
-                    } catch (error) {
-                        this.logger.debug('Error inicializando datos de clima en display:', error.message);
-                    }
-                }
-            } else {
-                this.logger.info('Display OLED no disponible (I2C deshabilitado o no conectado)');
-                this.display = null;
-            }
-        } catch (error) {
-            this.logger.info('Display OLED no disponible:', error.message);
-            this.display = null;
-        }
-
+        
         // DDNS Manager
         try {
             this.modules.ddns = new DDNSManager(this);
@@ -237,7 +196,7 @@ class VX200Controller {
             this.logger.error('Error inicializando DDNS:', error.message);
             this.initializationErrors.push('DDNS');
         }
-
+        
         // APRS Map Server
         try {
             this.aprsMapServer = new APRSMapServer(this);
@@ -246,15 +205,6 @@ class VX200Controller {
             this.logger.error('Error inicializando servidor mapa APRS:', error.message);
             this.initializationErrors.push('APRS Map Server');
             this.aprsMapServer = null;
-        }
-
-        // Auto-Updater (después del OLED para poder mostrar mensajes)
-        try {
-            this.modules.autoUpdater = new AutoUpdater(this.display);
-            this.logger.info('Auto-Updater inicializado');
-        } catch (error) {
-            this.logger.error('Error inicializando Auto-Updater:', error.message);
-            this.initializationErrors.push('AutoUpdater');
         }
     }
 
@@ -307,43 +257,10 @@ class VX200Controller {
 
         this.audio.on('transmission_started', (data) => {
             this.logger.debug('Transmisión iniciada:', data);
-
-            // Update display
-            if (this.display) {
-                const now = new Date();
-                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-                // Determinar tipo de transmisión para mostrar en display
-                let txType = 'TRANSMITIENDO';
-                if (data.type === 'tts') {
-                    txType = 'TTS';
-                } else if (data.type === 'weather_alert') {
-                    txType = 'ALERTA CLIMA';
-                } else if (data.type === 'seismic_alert') {
-                    txType = 'ALERTA SISMICA';
-                } else if (data.type === 'aprs_beacon') {
-                    txType = 'BEACON APRS';
-                } else if (data.type === 'baliza') {
-                    txType = 'BALIZA';
-                }
-
-                this.display.updateAudioData({
-                    isTransmitting: true,
-                    lastActivity: timeStr,
-                    transmissionType: txType
-                });
-            }
         });
 
         this.audio.on('transmission_ended', (data) => {
             this.logger.debug('Transmisión terminada:', data);
-
-            // Update display
-            if (this.display) {
-                this.display.updateAudioData({
-                    isTransmitting: false
-                });
-            }
         });
 
         this.setupEvents();
@@ -356,27 +273,10 @@ class VX200Controller {
 
         this.modules.aprs.on('position_received', (position) => {
             this.logger.info(`APRS Position: ${position.callsign} at ${position.lat},${position.lon}`);
-
-            // Update display
-            if (this.display) {
-                this.display.updateAPRSData({
-                    packetsReceived: this.modules.aprs.stats.positionsReceived
-                });
-            }
         });
 
         this.modules.aprs.on('beacon_sent', (beacon) => {
             this.logger.info('APRS Beacon sent:', beacon);
-
-            // Update display
-            if (this.display) {
-                const now = new Date();
-                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-                this.display.updateAPRSData({
-                    beaconCount: this.modules.aprs.stats.beaconsSent,
-                    lastBeacon: timeStr
-                });
-            }
         });
 
         this.modules.aprs.on('tnc_connected', () => {
@@ -390,39 +290,14 @@ class VX200Controller {
         this.modules.aprs.on('positions_updated', (data) => {
             this.logger.info(`APRS: ${data.newPositions} nuevas posiciones desde ${data.fromFile}`);
         });
-
+        
         this.modules.inpres.on('seism_detected', (seism) => {
             this.logger.info(`Sismo detectado: ${seism.magnitude} - ${seism.location}`);
-
-            // Actualizar display con datos del sismo
-            if (this.display) {
-                const now = new Date(seism.time || Date.now());
-                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-                this.display.updateSeismicData({
-                    magnitude: seism.magnitude || 0,
-                    location: seism.location || 'Desconocida',
-                    depth: seism.depth || 0,
-                    time: timeStr
-                });
-            }
         });
-
+        
         this.modules.inpres.on('seism_announced', (seism) => {
             this.logger.info(`Sismo anunciado: ${seism.magnitude} - ${seism.location}`);
         });
-
-        // Weather alerts events for display
-        if (this.modules.weatherAlerts) {
-            this.modules.weatherAlerts.on('alert_announced', (data) => {
-                if (this.display) {
-                    const activeAlerts = this.modules.weatherAlerts.getActiveAlerts();
-                    this.display.updateWeatherData({
-                        alertCount: activeAlerts.length,
-                        lastAlert: data.title || 'Alerta meteorológica'
-                    });
-                }
-            });
-        }
     }
 
 
@@ -638,51 +513,43 @@ class VX200Controller {
 
     stop() {
         this.systemOutput.printShutdown();
-
+        
         this.isRunning = false;
-
-        if (this.display) {
-            this.display.stop();
-        }
-
+        
         if (this.audio) {
             this.audio.stop();
         }
-
-
-
+        
+        
+        
         if (this.modules.baliza?.isRunning) {
             this.modules.baliza.stop();
         }
-
+        
         if (this.modules.aprs?.isRunning) {
             this.modules.aprs.stop();
         }
-
+        
         if (this.aprsMapServer) {
             this.aprsMapServer.stop();
         }
-
+        
         if (this.modules.weatherAlerts) {
             this.modules.weatherAlerts.stop();
         }
-
+        
         if (this.modules.inpres) {
             this.modules.inpres.stop();
         }
-
+        
         if (this.modules.ddns) {
             this.modules.ddns.stop();
         }
-
-        if (this.modules.autoUpdater) {
-            this.modules.autoUpdater.stop();
-        }
-
+        
         if (this.direwolf) {
             this.direwolf.stop();
         }
-
+        
         this.systemOutput.printStopped();
     }
 
@@ -758,7 +625,7 @@ class VX200Controller {
         setTimeout(async () => {
             try {
                 this.logger.info('Iniciando módulos de monitoreo...');
-                
+
                 // Inicializar monitoreo de alertas meteorológicas
                 if (this.modules.weatherAlerts) {
                     try {
@@ -768,7 +635,7 @@ class VX200Controller {
                         this.logger.warn('Error iniciando alertas meteorológicas:', error.message);
                     }
                 }
-                
+
                 // Iniciar módulo INPRES - Monitoreo Sísmico
                 if (this.modules.inpres) {
                     try {
@@ -776,16 +643,6 @@ class VX200Controller {
                         this.logger.info('Monitoreo sísmico INPRES activo');
                     } catch (error) {
                         this.logger.warn('Error iniciando monitoreo INPRES:', error.message);
-                    }
-                }
-
-                // Iniciar Auto-Updater
-                if (this.modules.autoUpdater) {
-                    try {
-                        this.modules.autoUpdater.start();
-                        this.logger.info('Auto-Updater activo');
-                    } catch (error) {
-                        this.logger.warn('Error iniciando Auto-Updater:', error.message);
                     }
                 }
 
