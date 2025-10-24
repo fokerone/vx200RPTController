@@ -151,6 +151,12 @@ class OLEDDisplay {
     startScreenRotation() {
         if (!this.enabled) return;
 
+        // Limpiar timer existente si hay uno
+        if (this.screenTimer) {
+            clearInterval(this.screenTimer);
+            this.screenTimer = null;
+        }
+
         this.logger.info('Iniciando rotación de pantallas');
 
         // Mostrar primera pantalla
