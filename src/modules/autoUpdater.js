@@ -102,6 +102,7 @@ class AutoUpdater extends EventEmitter {
 
         this.state = MODULE_STATES.ACTIVE;
         this.logger.info(`Auto-updater iniciado - Verificación cada ${Math.round(this.config.checkInterval / 1000 / 60)} minutos`);
+        this.logger.info(`Repositorio: ${this.config.github.owner}/${this.config.github.repo}`);
 
         // Primera verificación inmediata
         setTimeout(() => this.checkForUpdates(), 30000); // 30 segundos después del arranque
