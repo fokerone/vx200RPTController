@@ -504,7 +504,12 @@ class AutoUpdater extends EventEmitter {
 
             // Extraer archivo descargado
             if (downloadedFile.endsWith('.tar.gz')) {
-                await execAsync(`tar -xzf ${downloadedFile} -C ${rootPath}`);
+                // Extraer y mover archivos del subdirectorio vx200RPTController
+                const tmpExtract = '/tmp/vx200_extract';
+                await execAsync(`rm -rf ${tmpExtract} && mkdir -p ${tmpExtract}`);
+                await execAsync(`tar -xzf ${downloadedFile} -C ${tmpExtract}`);
+                await execAsync(`cp -rf ${tmpExtract}/vx200RPTController/* ${rootPath}/`);
+                await execAsync(`rm -rf ${tmpExtract}`);
             } else if (downloadedFile.endsWith('.zip')) {
                 await execAsync(`unzip -o ${downloadedFile} -d ${rootPath}`);
             }
