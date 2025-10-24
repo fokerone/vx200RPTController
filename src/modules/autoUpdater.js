@@ -316,7 +316,7 @@ class AutoUpdater extends EventEmitter {
 
             // Mostrar éxito en OLED
             if (this.display) {
-                await this.display.showMessage(`Update OK: ${release.tag_name}`, 3000);
+                await this.display.showMessage(`OK! ${release.tag_name}`, 3000);
             }
 
             // Reiniciar servicio con cuenta regresiva visual
