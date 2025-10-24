@@ -316,12 +316,12 @@ class AutoUpdater extends EventEmitter {
 
             // Mostrar éxito en OLED
             if (this.display) {
-                await this.display.showMessage(`Update OK: ${release.tag_name}`, 5000);
+                await this.display.showMessage(`Update OK: ${release.tag_name}`, 3000);
             }
 
-            // Reiniciar servicio
-            this.logger.info('Reiniciando servicio en 10 segundos...');
-            setTimeout(() => this.restartService(), 10000);
+            // Reiniciar servicio con cuenta regresiva visual
+            this.logger.info('Reiniciando servicio en 5 segundos...');
+            await this.showRestartCountdown(5);
 
             return true;
 
@@ -368,6 +368,11 @@ class AutoUpdater extends EventEmitter {
         this.updateStatus.downloading = true;
         this.logger.info(`Descargando ${asset.name} (${(asset.size / 1024 / 1024).toFixed(2)} MB)...`);
 
+        // Mostrar progreso inicial en OLED
+        if (this.display && typeof this.display.showProgress === 'function') {
+            this.display.showProgress('Descargando', 0, release.tag_name);
+        }
+
         try {
             const response = await axios({
                 method: 'GET',
@@ -377,6 +382,11 @@ class AutoUpdater extends EventEmitter {
                 onDownloadProgress: (progressEvent) => {
                     const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
                     this.updateStatus.downloadProgress = progress;
+
+                    // Actualizar OLED con progreso
+                    if (this.display && typeof this.display.showProgress === 'function') {
+                        this.display.showProgress('Descargando', progress, release.tag_name);
+                    }
 
                     if (progress % 10 === 0) {
                         this.logger.debug(`Descarga: ${progress}%`);
@@ -496,30 +506,69 @@ class AutoUpdater extends EventEmitter {
         this.updateStatus.installing = true;
         this.logger.info('Instalando actualización...');
 
-        if (this.display) {
-            await this.display.showMessage('Instalando update...', 3000);
-        }
-
         try {
             const rootPath = this.config.paths.root;
 
-            // Extraer archivo descargado
+            // Paso 1: Extrayendo archivos (0-30%)
+            if (this.display && typeof this.display.showProgress === 'function') {
+                this.display.showProgress('Instalando', 10, 'Extrayendo...');
+            }
+
             if (downloadedFile.endsWith('.tar.gz')) {
                 // Extraer y mover archivos del subdirectorio vx200RPTController
                 const tmpExtract = '/tmp/vx200_extract';
                 await execAsync(`rm -rf ${tmpExtract} && mkdir -p ${tmpExtract}`);
+
+                if (this.display && typeof this.display.showProgress === 'function') {
+                    this.display.showProgress('Instalando', 20, 'Extrayendo...');
+                }
+
                 await execAsync(`tar -xzf ${downloadedFile} -C ${tmpExtract}`);
+
+                if (this.display && typeof this.display.showProgress === 'function') {
+                    this.display.showProgress('Instalando', 30, 'Copiando...');
+                }
+
                 await execAsync(`cp -rf ${tmpExtract}/vx200RPTController/* ${rootPath}/`);
                 await execAsync(`rm -rf ${tmpExtract}`);
             } else if (downloadedFile.endsWith('.zip')) {
                 await execAsync(`unzip -o ${downloadedFile} -d ${rootPath}`);
             }
 
-            // Instalar dependencias
+            // Paso 2: Instalando dependencias (30-90%)
             this.logger.info('Instalando dependencias...');
-            await execAsync(`cd ${rootPath} && npm install --production`, {
+            if (this.display && typeof this.display.showProgress === 'function') {
+                this.display.showProgress('Instalando', 40, 'Dependencies...');
+            }
+
+            // Simular progreso durante npm install
+            const npmPromise = execAsync(`cd ${rootPath} && npm install --production`, {
                 timeout: 300000 // 5 minutos
             });
+
+            // Mostrar progreso simulado mientras npm install ejecuta
+            const progressInterval = setInterval(() => {
+                if (this.display && typeof this.display.showProgress === 'function') {
+                    const currentProgress = Math.min(90, 40 + Math.floor(Math.random() * 10));
+                    this.display.showProgress('Instalando', currentProgress, 'Dependencies...');
+                }
+            }, 2000);
+
+            await npmPromise;
+            clearInterval(progressInterval);
+
+            // Paso 3: Finalizando (90-100%)
+            if (this.display && typeof this.display.showProgress === 'function') {
+                this.display.showProgress('Instalando', 95, 'Finalizando...');
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            if (this.display && typeof this.display.showProgress === 'function') {
+                this.display.showProgress('Instalando', 100, 'Completo!');
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             this.logger.info('Instalación completada');
 
@@ -591,6 +640,21 @@ class AutoUpdater extends EventEmitter {
             this.logger.error('Error en rollback:', error.message);
             throw error;
         }
+    }
+
+    /**
+     * Mostrar cuenta regresiva antes del reinicio
+     */
+    async showRestartCountdown(seconds) {
+        for (let i = seconds; i > 0; i--) {
+            if (this.display && typeof this.display.showCountdown === 'function') {
+                this.display.showCountdown('Reiniciando', i);
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        // Reiniciar inmediatamente después de la cuenta regresiva
+        await this.restartService();
     }
 
     /**

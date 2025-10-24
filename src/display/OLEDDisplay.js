@@ -801,6 +801,88 @@ class OLEDDisplay {
     }
 
     /**
+     * Mostrar progreso con barra visual
+     * @param {string} title - Título del proceso (ej: "Descargando")
+     * @param {number} progress - Progreso de 0 a 100
+     * @param {string} subtitle - Texto adicional opcional
+     */
+    showProgress(title, progress, subtitle = '') {
+        if (!this.enabled) return;
+
+        try {
+            // Pausar rotación si está activa
+            if (this.screenTimer) {
+                clearInterval(this.screenTimer);
+            }
+
+            this.display.clearDisplay();
+
+            // Título centrado
+            const titleX = Math.floor((128 - title.length * 6) / 2);
+            this.display.setCursor(titleX, 5);
+            this.display.writeString(font, 1, title, 1, true, 0);
+
+            // Porcentaje centrado
+            const percentText = `${progress}%`;
+            const percentX = Math.floor((128 - percentText.length * 6) / 2);
+            this.display.setCursor(percentX, 20);
+            this.display.writeString(font, 1, percentText, 1, true, 0);
+
+            // Barra de progreso (110px de ancho, centrada)
+            const barWidth = 110;
+            const barHeight = 10;
+            const barX = Math.floor((128 - barWidth) / 2);
+            const barY = 35;
+
+            // Dibujar borde de la barra
+            this.display.drawRect(barX, barY, barWidth, barHeight, 1, false);
+
+            // Dibujar progreso (rellenar barra)
+            const fillWidth = Math.floor((barWidth - 4) * (progress / 100));
+            if (fillWidth > 0) {
+                this.display.fillRect(barX + 2, barY + 2, fillWidth, barHeight - 4, 1);
+            }
+
+            // Subtítulo centrado (si existe)
+            if (subtitle) {
+                const subX = Math.floor((128 - subtitle.length * 6) / 2);
+                this.display.setCursor(subX, 52);
+                this.display.writeString(font, 1, subtitle, 1, true, 0);
+            }
+
+        } catch (error) {
+            this.logger.warn('Error mostrando progreso:', error.message);
+        }
+    }
+
+    /**
+     * Mostrar cuenta regresiva
+     * @param {string} message - Mensaje (ej: "Reiniciando")
+     * @param {number} seconds - Segundos restantes
+     */
+    showCountdown(message, seconds) {
+        if (!this.enabled) return;
+
+        try {
+            this.display.clearDisplay();
+
+            // Mensaje centrado
+            const msgX = Math.floor((128 - message.length * 6) / 2);
+            this.display.setCursor(msgX, 15);
+            this.display.writeString(font, 1, message, 1, true, 0);
+
+            // Número grande centrado
+            const numText = seconds.toString();
+            const numX = Math.floor((128 - numText.length * 12) / 2);
+            this.display.setCursor(numX, 35);
+            this.display.writeString(font, 2, numText, 1, true, 0);
+
+        } catch (error) {
+            this.logger.warn('Error mostrando countdown:', error.message);
+        }
+    }
+
+    /**
      * Detener el display
      */
     stop() {
