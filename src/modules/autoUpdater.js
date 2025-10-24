@@ -67,6 +67,9 @@ class AutoUpdater extends EventEmitter {
         this.logger.info(`Auto-updater inicializado - Versión actual: ${this.updateStatus.currentVersion}`);
         if (!this.config.enabled) {
             this.logger.info('Auto-update DESHABILITADO (configurar AUTO_UPDATE_ENABLED=true para habilitar)');
+        } else {
+            this.logger.info(`Auto-update HABILITADO - Verificará cada ${Math.round(this.config.checkInterval / 60000)} minutos`);
+            this.logger.info(`Canal: ${this.config.channel} | Auto-install: ${this.config.autoInstall ? 'SÍ' : 'NO'}`);
         }
     }
 
