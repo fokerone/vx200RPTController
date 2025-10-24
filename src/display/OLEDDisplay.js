@@ -18,6 +18,11 @@ class OLEDDisplay {
         this.screenDuration = 5000; // 5 segundos por pantalla
         this.enabled = false;
 
+        // Control de estado de actualización
+        this.updateInProgress = false;
+        this.animationTimer = null;
+        this.animationFrame = 0;
+
         // Datos para mostrar
         this.systemData = {
             callsign: 'FOKER', // Callsign del operador del repetidor
@@ -150,6 +155,12 @@ class OLEDDisplay {
      */
     startScreenRotation() {
         if (!this.enabled) return;
+
+        // NO iniciar rotación si hay actualización en progreso
+        if (this.updateInProgress) {
+            this.logger.debug('Rotación bloqueada: actualización en progreso');
+            return;
+        }
 
         // Limpiar timer existente si hay uno
         if (this.screenTimer) {
@@ -801,7 +812,129 @@ class OLEDDisplay {
     }
 
     /**
-     * Mostrar progreso con barra visual
+     * Pausar rotación de pantallas (para actualizaciones)
+     */
+    pauseRotation() {
+        if (!this.enabled) return;
+
+        this.logger.info('Pausando rotación: actualización iniciada');
+        this.updateInProgress = true;
+
+        // Detener rotación
+        if (this.screenTimer) {
+            clearInterval(this.screenTimer);
+            this.screenTimer = null;
+        }
+
+        // Detener cualquier animación
+        if (this.animationTimer) {
+            clearInterval(this.animationTimer);
+            this.animationTimer = null;
+        }
+    }
+
+    /**
+     * Reanudar rotación de pantallas
+     */
+    resumeRotation() {
+        if (!this.enabled) return;
+
+        this.logger.info('Reanudando rotación: actualización completada');
+        this.updateInProgress = false;
+
+        // Detener animación
+        if (this.animationTimer) {
+            clearInterval(this.animationTimer);
+            this.animationTimer = null;
+        }
+
+        // Reanudar rotación normal
+        setTimeout(() => {
+            this.startScreenRotation();
+        }, 1000);
+    }
+
+    /**
+     * Mostrar animación de actualización con spinner
+     * @param {string} title - Título (ej: "Descargando", "Instalando")
+     * @param {string} subtitle - Subtítulo opcional
+     */
+    showUpdateAnimation(title, subtitle = '') {
+        if (!this.enabled) return;
+
+        try {
+            this.display.clearDisplay();
+
+            // Título centrado
+            const titleX = Math.floor((128 - title.length * 6) / 2);
+            this.display.setCursor(titleX, 10);
+            this.display.writeString(font, 1, title, 1, true, 0);
+
+            // Spinner en el centro (4 frames: | / - \)
+            const spinnerChars = ['|', '/', '-', '\\'];
+            const spinner = spinnerChars[this.animationFrame % 4];
+            const spinnerX = Math.floor((128 - 12) / 2);
+            this.display.setCursor(spinnerX, 30);
+            this.display.writeString(font, 2, spinner, 1, true, 0);
+
+            // Subtítulo centrado (si existe)
+            if (subtitle) {
+                const maxLen = 20; // Máximo 20 caracteres
+                const truncated = subtitle.length > maxLen ? subtitle.substring(0, maxLen - 3) + '...' : subtitle;
+                const subX = Math.floor((128 - truncated.length * 6) / 2);
+                this.display.setCursor(subX, 52);
+                this.display.writeString(font, 1, truncated, 1, true, 0);
+            }
+
+            this.animationFrame++;
+
+        } catch (error) {
+            this.logger.warn('Error mostrando animación:', error.message);
+        }
+    }
+
+    /**
+     * Iniciar animación de actualización
+     * @param {string} title - Título del proceso
+     * @param {string} subtitle - Subtítulo opcional
+     */
+    startUpdateAnimation(title, subtitle = '') {
+        if (!this.enabled) return;
+
+        try {
+            // Pausar rotación
+            this.pauseRotation();
+
+            // Reset frame
+            this.animationFrame = 0;
+
+            // Mostrar primera frame
+            this.showUpdateAnimation(title, subtitle);
+
+            // Animar cada 200ms
+            this.animationTimer = setInterval(() => {
+                this.showUpdateAnimation(title, subtitle);
+            }, 200);
+
+        } catch (error) {
+            this.logger.warn('Error iniciando animación:', error.message);
+        }
+    }
+
+    /**
+     * Detener animación de actualización
+     */
+    stopUpdateAnimation() {
+        if (!this.enabled) return;
+
+        if (this.animationTimer) {
+            clearInterval(this.animationTimer);
+            this.animationTimer = null;
+        }
+    }
+
+    /**
+     * Mostrar progreso con barra visual (LEGACY - mantener por compatibilidad)
      * @param {string} title - Título del proceso (ej: "Descargando")
      * @param {number} progress - Progreso de 0 a 100
      * @param {string} subtitle - Texto adicional opcional
@@ -810,45 +943,8 @@ class OLEDDisplay {
         if (!this.enabled) return;
 
         try {
-            // Pausar rotación si está activa
-            if (this.screenTimer) {
-                clearInterval(this.screenTimer);
-            }
-
-            this.display.clearDisplay();
-
-            // Título centrado
-            const titleX = Math.floor((128 - title.length * 6) / 2);
-            this.display.setCursor(titleX, 5);
-            this.display.writeString(font, 1, title, 1, true, 0);
-
-            // Porcentaje centrado
-            const percentText = `${progress}%`;
-            const percentX = Math.floor((128 - percentText.length * 6) / 2);
-            this.display.setCursor(percentX, 20);
-            this.display.writeString(font, 1, percentText, 1, true, 0);
-
-            // Barra de progreso (110px de ancho, centrada)
-            const barWidth = 110;
-            const barHeight = 10;
-            const barX = Math.floor((128 - barWidth) / 2);
-            const barY = 35;
-
-            // Dibujar borde de la barra
-            this.display.drawRect(barX, barY, barWidth, barHeight, 1, false);
-
-            // Dibujar progreso (rellenar barra)
-            const fillWidth = Math.floor((barWidth - 4) * (progress / 100));
-            if (fillWidth > 0) {
-                this.display.fillRect(barX + 2, barY + 2, fillWidth, barHeight - 4, 1);
-            }
-
-            // Subtítulo centrado (si existe)
-            if (subtitle) {
-                const subX = Math.floor((128 - subtitle.length * 6) / 2);
-                this.display.setCursor(subX, 52);
-                this.display.writeString(font, 1, subtitle, 1, true, 0);
-            }
+            // Usar animación simple en lugar de barra
+            this.showUpdateAnimation(title, `${progress}% ${subtitle}`.trim());
 
         } catch (error) {
             this.logger.warn('Error mostrando progreso:', error.message);
