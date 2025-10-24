@@ -42,13 +42,15 @@ class DirewolfManager {
 # Callsign del repetidor
 MYCALL ${this.config.callsign}
 
-# Audio device - Salida para APRS beacon (VOX activa PTT)
-# Entrada: null (no decodificamos), Salida: plughw:0,0 (para transmitir beacons)
-ADEVICE null plughw:0,0
-ARATE 48000
+# Audio device - Modo null optimizado (solo KISS TNC, sin procesamiento de audio)
+# Entrada: null (no RX), Salida: null (TX manejado por VX200Controller)
+# Esto reduce el consumo de CPU drásticamente en Raspberry Pi
+ADEVICE null null
+ARATE 22050
 
-# Configuracion de modem para canal 0
-MODEM 0 1200
+# Configuracion de modem para canal 0 (formato moderno)
+CHANNEL 0
+MODEM 1200
 
 # Puertos de servicio
 KISSPORT ${this.config.ports.kiss}

@@ -8,6 +8,7 @@ const APRS = require('./modules/aprs');
 const DirewolfManager = require('./utils/direwolfManager');
 const APRSMapServer = require('./aprs-map/server');
 const DDNSManager = require('./modules/ddns');
+const OLEDDisplay = require('./display/OLEDDisplay');
 const { Config } = require('./config');
 const { createLogger } = require('./logging/Logger');
 const { getSystemOutput } = require('./logging/SystemOutput');
@@ -24,6 +25,7 @@ class VX200Controller {
         this.modules = {};
         this.direwolf = null;
         this.aprsMapServer = null;
+        this.display = null;
         
         this.isRunning = false;
         this.startTime = Date.now();
@@ -36,7 +38,11 @@ class VX200Controller {
         try {
             this.state = MODULE_STATES.ACTIVE;
             this.logger.info('Iniciando secuencia de inicialización ordenada...');
-            
+
+            // FASE 0: Cleanup PRIMERO (no bloquea el arranque)
+            this.logger.info('FASE 0: Ejecutando cleanup inicial...');
+            this.performInitialCleanup();
+
             // FASE 1: AudioManager (base crítica del sistema)
             this.logger.info('FASE 1: Inicializando sistema de audio...');
             await this.initializeAudio();
@@ -61,12 +67,21 @@ class VX200Controller {
             this.logger.info('FASE 6: Inicializando servicios auxiliares...');
             await this.initializeAuxiliaryServices();
             
-            // FASE 7: Configuración final
+            // FASE 7: Configuración y arranque de servicios críticos
             this.logger.info('FASE 7: Aplicando configuración final...');
             this.setupEventHandlers();
             this.configureFromFile();
-            this.performInitialCleanup();
-            
+
+            // Iniciar baliza INMEDIATAMENTE después de configurar
+            // para evitar desfase de sincronización
+            if (Config.balizaEnabled && this.modules.baliza) {
+                const balizaStarted = this.modules.baliza.start();
+                if (!balizaStarted) {
+                    this.logger.warn('No se pudo iniciar baliza automática');
+                    this.initializationErrors.push('Baliza-AutoStart');
+                }
+            }
+
             if (this.initializationErrors.length > 0) {
                 this.logger.warn(`Sistema inicializado con ${this.initializationErrors.length} errores: ${this.initializationErrors.join(', ')}`);
                 this.state = MODULE_STATES.ERROR;
@@ -88,9 +103,16 @@ class VX200Controller {
     async initializeAudio() {
         try {
             this.audio = new AudioManager();
-            
+
             if (this.audio.start()) {
                 // AudioManager inicializado
+                // Update display with audio capability info
+                if (this.display) {
+                    this.display.updateAudioData({
+                        captureAvailable: this.audio.deviceDetector ?
+                            (this.audio.deviceDetector.hasCaptureDevices ? true : false) : false
+                    });
+                }
             } else {
                 throw new Error('AudioManager no pudo iniciarse');
             }
@@ -174,7 +196,38 @@ class VX200Controller {
 
     async initializeAuxiliaryServices() {
         this.logger.info('Inicializando servicios auxiliares...');
-        
+
+        // OLED Display
+        try {
+            this.display = new OLEDDisplay();
+            const displayInitialized = await this.display.initialize();
+            if (displayInitialized) {
+                this.logger.info('Display OLED inicializado');
+
+                // Actualizar display con datos existentes de alertas climáticas
+                if (this.modules.weatherAlerts) {
+                    try {
+                        const activeAlerts = this.modules.weatherAlerts.getActiveAlerts();
+                        if (activeAlerts && activeAlerts.length > 0) {
+                            this.display.updateWeatherData({
+                                alertCount: activeAlerts.length,
+                                lastAlert: activeAlerts[0].title || 'Alerta meteorológica'
+                            });
+                            this.logger.debug(`Display actualizado con ${activeAlerts.length} alertas climáticas existentes`);
+                        }
+                    } catch (error) {
+                        this.logger.debug('Error inicializando datos de clima en display:', error.message);
+                    }
+                }
+            } else {
+                this.logger.info('Display OLED no disponible (I2C deshabilitado o no conectado)');
+                this.display = null;
+            }
+        } catch (error) {
+            this.logger.info('Display OLED no disponible:', error.message);
+            this.display = null;
+        }
+
         // DDNS Manager
         try {
             this.modules.ddns = new DDNSManager(this);
@@ -183,7 +236,7 @@ class VX200Controller {
             this.logger.error('Error inicializando DDNS:', error.message);
             this.initializationErrors.push('DDNS');
         }
-        
+
         // APRS Map Server
         try {
             this.aprsMapServer = new APRSMapServer(this);
@@ -209,10 +262,11 @@ class VX200Controller {
 
     /**
      * Ejecutar cleanup inicial al arranque para sistemas 24/7
+     * Se ejecuta INMEDIATAMENTE antes de cualquier inicialización para liberar espacio
      */
     performInitialCleanup() {
-        // Ejecutar cleanup en background para no bloquear el arranque
-        setTimeout(async () => {
+        // Ejecutar cleanup SINCRÓNICAMENTE para liberar espacio ANTES de inicializar
+        setImmediate(async () => {
             try {
                 if (this.audio && typeof this.audio.performCleanup === 'function') {
                     await this.audio.performCleanup();
@@ -221,7 +275,7 @@ class VX200Controller {
             } catch (error) {
                 this.logger.warn('Error en cleanup inicial:', error.message);
             }
-        }, 5000); // Esperar 5 segundos después del arranque completo
+        });
     }
 
     setupEventHandlers() {
@@ -243,10 +297,43 @@ class VX200Controller {
 
         this.audio.on('transmission_started', (data) => {
             this.logger.debug('Transmisión iniciada:', data);
+
+            // Update display
+            if (this.display) {
+                const now = new Date();
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+                // Determinar tipo de transmisión para mostrar en display
+                let txType = 'TRANSMITIENDO';
+                if (data.type === 'tts') {
+                    txType = 'TTS';
+                } else if (data.type === 'weather_alert') {
+                    txType = 'ALERTA CLIMA';
+                } else if (data.type === 'seismic_alert') {
+                    txType = 'ALERTA SISMICA';
+                } else if (data.type === 'aprs_beacon') {
+                    txType = 'BEACON APRS';
+                } else if (data.type === 'baliza') {
+                    txType = 'BALIZA';
+                }
+
+                this.display.updateAudioData({
+                    isTransmitting: true,
+                    lastActivity: timeStr,
+                    transmissionType: txType
+                });
+            }
         });
 
         this.audio.on('transmission_ended', (data) => {
             this.logger.debug('Transmisión terminada:', data);
+
+            // Update display
+            if (this.display) {
+                this.display.updateAudioData({
+                    isTransmitting: false
+                });
+            }
         });
 
         this.setupEvents();
@@ -259,10 +346,27 @@ class VX200Controller {
 
         this.modules.aprs.on('position_received', (position) => {
             this.logger.info(`APRS Position: ${position.callsign} at ${position.lat},${position.lon}`);
+
+            // Update display
+            if (this.display) {
+                this.display.updateAPRSData({
+                    packetsReceived: this.modules.aprs.stats.positionsReceived
+                });
+            }
         });
 
         this.modules.aprs.on('beacon_sent', (beacon) => {
             this.logger.info('APRS Beacon sent:', beacon);
+
+            // Update display
+            if (this.display) {
+                const now = new Date();
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                this.display.updateAPRSData({
+                    beaconCount: this.modules.aprs.stats.beaconsSent,
+                    lastBeacon: timeStr
+                });
+            }
         });
 
         this.modules.aprs.on('tnc_connected', () => {
@@ -276,14 +380,39 @@ class VX200Controller {
         this.modules.aprs.on('positions_updated', (data) => {
             this.logger.info(`APRS: ${data.newPositions} nuevas posiciones desde ${data.fromFile}`);
         });
-        
+
         this.modules.inpres.on('seism_detected', (seism) => {
             this.logger.info(`Sismo detectado: ${seism.magnitude} - ${seism.location}`);
+
+            // Actualizar display con datos del sismo
+            if (this.display) {
+                const now = new Date(seism.time || Date.now());
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                this.display.updateSeismicData({
+                    magnitude: seism.magnitude || 0,
+                    location: seism.location || 'Desconocida',
+                    depth: seism.depth || 0,
+                    time: timeStr
+                });
+            }
         });
-        
+
         this.modules.inpres.on('seism_announced', (seism) => {
             this.logger.info(`Sismo anunciado: ${seism.magnitude} - ${seism.location}`);
         });
+
+        // Weather alerts events for display
+        if (this.modules.weatherAlerts) {
+            this.modules.weatherAlerts.on('alert_announced', (data) => {
+                if (this.display) {
+                    const activeAlerts = this.modules.weatherAlerts.getActiveAlerts();
+                    this.display.updateWeatherData({
+                        alertCount: activeAlerts.length,
+                        lastAlert: data.title || 'Alerta meteorológica'
+                    });
+                }
+            });
+        }
     }
 
 
@@ -403,16 +532,10 @@ class VX200Controller {
                     throw new Error('No se pudo iniciar AudioManager');
                 }
             }
-            
-            if (Config.balizaEnabled && this.modules.baliza) {
-                const balizaStarted = this.modules.baliza.start();
-                if (balizaStarted) {
-                    // Baliza automática activa
-                } else {
-                    this.logger.warn('No se pudo iniciar baliza automática');
-                }
-            }
-            
+
+            // NOTA: La baliza ya fue iniciada en initializeSystem() FASE 7
+            // para evitar desfase de sincronización con la hora
+
             // Inicializar APRS si está habilitado
             if (this.modules.aprs) {
                 try {
@@ -505,43 +628,47 @@ class VX200Controller {
 
     stop() {
         this.systemOutput.printShutdown();
-        
+
         this.isRunning = false;
-        
+
+        if (this.display) {
+            this.display.stop();
+        }
+
         if (this.audio) {
             this.audio.stop();
         }
-        
-        
-        
+
+
+
         if (this.modules.baliza?.isRunning) {
             this.modules.baliza.stop();
         }
-        
+
         if (this.modules.aprs?.isRunning) {
             this.modules.aprs.stop();
         }
-        
+
         if (this.aprsMapServer) {
             this.aprsMapServer.stop();
         }
-        
+
         if (this.modules.weatherAlerts) {
             this.modules.weatherAlerts.stop();
         }
-        
+
         if (this.modules.inpres) {
             this.modules.inpres.stop();
         }
-        
+
         if (this.modules.ddns) {
             this.modules.ddns.stop();
         }
-        
+
         if (this.direwolf) {
             this.direwolf.stop();
         }
-        
+
         this.systemOutput.printStopped();
     }
 
@@ -610,9 +737,10 @@ class VX200Controller {
     /**
      * Iniciar servicios de monitoreo de forma asíncrona
      * Se ejecuta después del arranque completo del sistema
+     * OPTIMIZADO: Delay reducido para inicialización más rápida
      */
     async startMonitoringServices() {
-        // Esperar 3 segundos para que el sistema se estabilice completamente
+        // Esperar solo 500ms para que el sistema se estabilice (reducido de 3s)
         setTimeout(async () => {
             try {
                 this.logger.info('Iniciando módulos de monitoreo...');
@@ -638,11 +766,11 @@ class VX200Controller {
                 }
                 
                 this.logger.info('Módulos de monitoreo inicializados');
-                
+
             } catch (error) {
                 this.logger.error('Error iniciando módulos de monitoreo:', error.message);
             }
-        }, 3000);
+        }, 500); // Reducido de 3000ms a 500ms
     }
 
     getDetailedStatus() {

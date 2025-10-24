@@ -738,6 +738,23 @@ class AudioManager extends EventEmitter {
                 playerArgs.push(filePath);
             }
 
+            // Determinar tipo de transmisión basado en el nombre del archivo
+            let transmissionType = 'audio';
+            if (filePath.includes('baliza')) {
+                transmissionType = 'baliza';
+            } else if (filePath.includes('weather') || filePath.includes('alert') || filePath.includes('alerta')) {
+                transmissionType = 'weather_alert';
+            } else if (filePath.includes('seismic') || filePath.includes('sismo')) {
+                transmissionType = 'seismic_alert';
+            }
+
+            // Emitir evento de transmisión iniciada
+            this.emit('transmission_started', {
+                type: transmissionType,
+                file: path.basename(filePath),
+                timestamp: Date.now()
+            });
+
             this.logger.debug(`Reproduciendo con ${player}: ${path.basename(filePath)}`);
             const audioPlayer = spawn(player, playerArgs);
             let playerTimeout = null;
@@ -760,6 +777,14 @@ class AudioManager extends EventEmitter {
             audioPlayer.on('close', (code) => {
                 if (playerTimeout) {clearTimeout(playerTimeout);}
 
+                // Emitir evento de transmisión terminada
+                this.emit('transmission_ended', {
+                    type: transmissionType,
+                    file: path.basename(filePath),
+                    success: code === 0,
+                    timestamp: Date.now()
+                });
+
                 if (code === 0) {
                     this.logger.debug(`${player} completado exitosamente`);
                     resolve();
@@ -774,6 +799,15 @@ class AudioManager extends EventEmitter {
 
             audioPlayer.on('error', (err) => {
                 if (playerTimeout) {clearTimeout(playerTimeout);}
+
+                // Emitir evento de transmisión terminada con error
+                this.emit('transmission_ended', {
+                    type: transmissionType,
+                    file: path.basename(filePath),
+                    error: true,
+                    timestamp: Date.now()
+                });
+
                 reject(err);
             });
         });
