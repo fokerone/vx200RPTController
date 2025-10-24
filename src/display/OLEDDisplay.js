@@ -4,6 +4,7 @@ const font = require('oled-font-5x7');
 const { createLogger } = require('../logging/Logger');
 const os = require('os');
 const fs = require('fs');
+const path = require('path');
 
 /**
  * Gestor del display OLED del MMDVM HAT
@@ -30,7 +31,8 @@ class OLEDDisplay {
             uptime: 0,
             temperature: 0,
             memoryUsage: 0,
-            cpuUsage: 0
+            cpuUsage: 0,
+            version: this.getVersion()
         };
 
         this.aprsData = {
@@ -295,17 +297,23 @@ class OLEDDisplay {
         this.display.setCursor(titleX, 1);
         this.display.writeString(font, 1, title, 1, true, 0);
 
-        // IP centrado (más grande en el centro)
+        // IP centrado
         const ip = this.systemData.ip;
         const ipX = Math.floor((128 - ip.length * 6) / 2);
-        this.display.setCursor(ipX, 24);
+        this.display.setCursor(ipX, 18);
         this.display.writeString(font, 1, ip, 1, true, 0);
+
+        // Versión centrada
+        const version = `v${this.systemData.version}`;
+        const versionX = Math.floor((128 - version.length * 6) / 2);
+        this.display.setCursor(versionX, 32);
+        this.display.writeString(font, 1, version, 1, true, 0);
 
         // Uptime centrado debajo
         const uptime = this.formatUptime(this.systemData.uptime);
-        const uptimeStr = `Uptime: ${uptime}`;
+        const uptimeStr = `Up: ${uptime}`;
         const uptimeX = Math.floor((128 - uptimeStr.length * 6) / 2);
-        this.display.setCursor(uptimeX, 42);
+        this.display.setCursor(uptimeX, 46);
         this.display.writeString(font, 1, uptimeStr, 1, true, 0);
     }
 
@@ -662,6 +670,20 @@ class OLEDDisplay {
             }
         }
         return '0.0.0.0';
+    }
+
+    /**
+     * Obtener versión del package.json
+     */
+    getVersion() {
+        try {
+            const packagePath = path.join(__dirname, '../../package.json');
+            const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+            return packageJson.version || 'unknown';
+        } catch (error) {
+            this.logger.warn('Error leyendo versión:', error.message);
+            return 'unknown';
+        }
     }
 
     /**
