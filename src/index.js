@@ -108,10 +108,10 @@ class VX200Controller {
             if (this.audio.start()) {
                 // AudioManager inicializado
                 // Update display with audio capability info
-                if (this.display) {
+                if (this.display && this.audio.deviceDetector) {
+                    const hasCapture = await this.audio.deviceDetector.hasCaptureDevices();
                     this.display.updateAudioData({
-                        captureAvailable: this.audio.deviceDetector ?
-                            (this.audio.deviceDetector.hasCaptureDevices ? true : false) : false
+                        captureAvailable: hasCapture
                     });
                 }
             } else {
