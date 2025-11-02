@@ -185,7 +185,7 @@ class OLEDDisplay {
 
         // Configurar timer para rotar
         this.screenTimer = setInterval(() => {
-            this.currentScreen = (this.currentScreen + 1) % 9; // 9 pantallas
+            this.currentScreen = (this.currentScreen + 1) % 8; // 8 pantallas (sin Audio)
             this.showCurrentScreen();
         }, this.screenDuration);
     }
@@ -220,12 +220,9 @@ class OLEDDisplay {
                     this.showSeismicScreen();
                     break;
                 case 6:
-                    this.showAudioScreen();
-                    break;
-                case 7:
                     this.showStatsScreen();
                     break;
-                case 8:
+                case 7:
                     this.showMMDVMScreen();
                     break;
             }
