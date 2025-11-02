@@ -188,9 +188,11 @@ class Baliza extends EventEmitter {
         const nextHour = moment().add(1, 'hour').startOf('hour');
         const timeToNextHour = nextHour.diff(now);
         
-        this.timer = setTimeout(() => {
+        this.timer = setTimeout(async () => {
             if (this.isRunning) { // Verificar que siga activa
-                this.transmit();
+                await this.transmit().catch(err => {
+                    this.logger.error('Error en transmisión programada:', err.message);
+                });
                 this.scheduleNext(); // Programar la siguiente
             }
         }, timeToNextHour);
@@ -240,7 +242,8 @@ class Baliza extends EventEmitter {
         } catch (error) {
             this.logger.error('Error transmitiendo baliza:', error.message);
             this.state = MODULE_STATES.ERROR;
-            this.emit('error', error);
+            // No emitir evento 'error' sin listeners - causa crash por unhandled rejection
+            // this.emit('error', error);
         }
     }
 
