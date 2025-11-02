@@ -66,6 +66,14 @@ class OLEDDisplay {
             band: process.env.REPEATER_BAND || 'VHF'
         };
 
+        this.mmdvmData = {
+            enabled: true,
+            mode: 'YSF',
+            reflector: 'AR-ARG-NETWORK',
+            status: 'Connected',
+            frequency: '433.000 MHz'
+        };
+
         // Control de animación TX
         this.txAnimationTimer = null;
         this.txAnimationFrame = 0;
@@ -177,7 +185,7 @@ class OLEDDisplay {
 
         // Configurar timer para rotar
         this.screenTimer = setInterval(() => {
-            this.currentScreen = (this.currentScreen + 1) % 8; // 8 pantallas
+            this.currentScreen = (this.currentScreen + 1) % 9; // 9 pantallas
             this.showCurrentScreen();
         }, this.screenDuration);
     }
@@ -216,6 +224,9 @@ class OLEDDisplay {
                     break;
                 case 7:
                     this.showStatsScreen();
+                    break;
+                case 8:
+                    this.showMMDVMScreen();
                     break;
             }
         } catch (error) {
@@ -531,6 +542,45 @@ class OLEDDisplay {
         const statusX = Math.floor((128 - status.length * 6) / 2);
         this.display.setCursor(statusX, 56);
         this.display.writeString(font, 1, status, 1, true, 0);
+    }
+
+    /**
+     * Pantalla 8: MMDVM/YSF Status
+     */
+    showMMDVMScreen() {
+        this.display.clearDisplay();
+
+        // Título centrado con símbolo
+        const title = '~ MMDVM ~';
+        const titleX = Math.floor((128 - title.length * 6) / 2);
+        this.display.setCursor(titleX, 1);
+        this.display.writeString(font, 1, title, 1, true, 0);
+
+        // Modo centrado
+        const mode = `Mode: ${this.mmdvmData.mode}`;
+        const modeX = Math.floor((128 - mode.length * 6) / 2);
+        this.display.setCursor(modeX, 15);
+        this.display.writeString(font, 1, mode, 1, true, 0);
+
+        // Reflector centrado
+        const reflector = this.mmdvmData.reflector || 'None';
+        const reflectorX = Math.floor((128 - Math.min(reflector.length, 21) * 6) / 2);
+        this.display.setCursor(reflectorX, 29);
+        // Truncar si es muy largo
+        const displayReflector = reflector.length > 21 ? reflector.substring(0, 18) + '...' : reflector;
+        this.display.writeString(font, 1, displayReflector, 1, true, 0);
+
+        // Estado centrado
+        const estado = this.mmdvmData.status || 'Unknown';
+        const estadoX = Math.floor((128 - estado.length * 6) / 2);
+        this.display.setCursor(estadoX, 41);
+        this.display.writeString(font, 1, estado, 1, true, 0);
+
+        // Frecuencia centrada
+        const freq = this.mmdvmData.frequency || '433.000 MHz';
+        const freqX = Math.floor((128 - freq.length * 6) / 2);
+        this.display.setCursor(freqX, 53);
+        this.display.writeString(font, 1, freq, 1, true, 0);
     }
 
     /**
