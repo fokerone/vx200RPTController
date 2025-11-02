@@ -42,10 +42,10 @@ class DirewolfManager {
 # Callsign del repetidor
 MYCALL ${this.config.callsign}
 
-# Audio device - Modo optimizado con salida de audio para beacons
-# Entrada: null (no RX, manejado por VX200Controller)
-# Salida: default (para transmitir beacons APRS por audio)
-ADEVICE null default
+# Audio device - RX y TX completo para APRS
+# Entrada: plughw:1,0 (decodifica packets APRS), Salida: plughw:1,0 (transmite beacons)
+# USB audio card (Card 1) para recibir y transmitir packets APRS
+ADEVICE plughw:1,0 plughw:1,0
 ARATE 48000
 
 # Configuracion de modem para canal 0 (formato moderno)
