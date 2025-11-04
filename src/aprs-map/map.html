@@ -476,9 +476,191 @@
                 height: 20px;
             }
         }
+
+        /* Dark Mode Styles */
+        body.dark-mode {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2c3e50 100%);
+        }
+
+        body.dark-mode .info-card {
+            background: #2a2a2a;
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .stat-item {
+            background: #2a2a2a;
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .station-item:hover {
+            background-color: #333333;
+        }
+
+        body.dark-mode .station-item.selected {
+            background-color: #2c3e50;
+        }
+
+        body.dark-mode .detail-section h6 {
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .detail-item {
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        body.dark-mode .detail-label {
+            color: #9e9e9e;
+        }
+
+        body.dark-mode .direction-item {
+            background: #2a2a2a;
+        }
+
+        body.dark-mode .direction-progress {
+            background: #3a3a3a;
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 9999;
+        }
+
+        .toast {
+            min-width: 250px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease;
+        }
+
+        body.dark-mode .toast {
+            background: #2a2a2a;
+            color: #e0e0e0;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
+        .toast.hiding {
+            animation: slideOut 0.3s ease forwards;
+        }
+
+        .toast-header {
+            background: #3498db;
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .toast-body {
+            padding: 0.75rem;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            line-height: 1;
+        }
+
+        /* Export dropdown menu */
+        .export-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .export-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 150px;
+            z-index: 1000;
+            margin-top: 4px;
+        }
+
+        body.dark-mode .export-menu {
+            background: #2a2a2a;
+        }
+
+        .export-menu.show {
+            display: block;
+        }
+
+        .export-menu button {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .export-menu button:hover {
+            background: #f8f9fa;
+        }
+
+        body.dark-mode .export-menu button {
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .export-menu button:hover {
+            background: #333333;
+        }
+
+        .export-menu button:first-child {
+            border-radius: 4px 4px 0 0;
+        }
+
+        .export-menu button:last-child {
+            border-radius: 0 0 4px 4px;
+        }
     </style>
 </head>
 <body>
+    <!-- Toast Container for Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
     <!-- Header -->
     <header class="header">
         <div class="container">
@@ -533,6 +715,20 @@
                                 <button id="toggle-advanced-filters" class="btn btn-outline-secondary" title="Filtros Avanzados">
                                     🔍 Avanzado
                                 </button>
+                                <button id="toggle-dark-mode" class="btn btn-outline-secondary" title="Modo Oscuro">
+                                    🌙 Oscuro
+                                </button>
+                                <div class="export-dropdown">
+                                    <button id="export-btn" class="btn btn-outline-success" title="Exportar Datos">
+                                        📥 Exportar
+                                    </button>
+                                    <div id="export-menu" class="export-menu">
+                                        <button onclick="aprsMap.exportCSV()">📄 CSV</button>
+                                        <button onclick="aprsMap.exportJSON()">📋 JSON</button>
+                                        <button onclick="aprsMap.exportKML()">🗺️ KML</button>
+                                        <button onclick="aprsMap.exportGPX()">📍 GPX</button>
+                                    </div>
+                                </div>
                                 <button id="reset-filter" class="btn btn-outline-secondary">
                                     Reset
                                 </button>
@@ -778,6 +974,10 @@
                 };
                 this.repeaterLocation = null;
                 this.updateInterval = null;
+                this.darkMode = false;
+                this.lightTileLayer = null;
+                this.darkTileLayer = null;
+                this.knownStations = new Set();
 
                 this.init();
             }
@@ -793,10 +993,18 @@
                 // Initialize map centered on Mendoza, Argentina
                 this.map = L.map('map').setView([-32.9082647, -68.8162689], 12);
 
-                // Add OpenStreetMap tile layer
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                // Initialize light tile layer
+                this.lightTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors'
-                }).addTo(this.map);
+                });
+
+                // Initialize dark tile layer
+                this.darkTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '© OpenStreetMap contributors © CartoDB'
+                });
+
+                // Add light layer by default
+                this.lightTileLayer.addTo(this.map);
             }
 
             setupEventListeners() {
@@ -807,6 +1015,23 @@
                 document.getElementById('toggle-advanced-filters').addEventListener('click', () => {
                     const panel = document.getElementById('advanced-filters-panel');
                     panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+                });
+
+                document.getElementById('toggle-dark-mode').addEventListener('click', () => {
+                    this.toggleDarkMode();
+                });
+
+                document.getElementById('export-btn').addEventListener('click', () => {
+                    const menu = document.getElementById('export-menu');
+                    menu.classList.toggle('show');
+                });
+
+                // Close export menu when clicking outside
+                document.addEventListener('click', (e) => {
+                    const exportDropdown = document.querySelector('.export-dropdown');
+                    if (!exportDropdown.contains(e.target)) {
+                        document.getElementById('export-menu').classList.remove('show');
+                    }
                 });
 
                 document.getElementById('apply-advanced-filters').addEventListener('click', () => {
@@ -927,6 +1152,9 @@
                 if (this.heatmapEnabled) {
                     this.createHeatmap();
                 }
+
+                // Check for new stations and show notifications
+                this.checkNewStations(this.stations);
 
                 // Fit map to show all markers
                 if (stationsToShow.length > 0 && this.repeaterLocation) {
@@ -1745,7 +1973,203 @@
 
             showError(message) {
                 console.error(message);
-                // Could implement a toast notification here
+                this.showToast('Error', message, 'danger');
+            }
+
+            // Dark Mode Toggle
+            toggleDarkMode() {
+                this.darkMode = !this.darkMode;
+                document.body.classList.toggle('dark-mode');
+
+                const button = document.getElementById('toggle-dark-mode');
+                if (this.darkMode) {
+                    // Switch to dark tiles
+                    this.map.removeLayer(this.lightTileLayer);
+                    this.darkTileLayer.addTo(this.map);
+                    button.classList.remove('btn-outline-secondary');
+                    button.classList.add('btn-secondary');
+                    button.textContent = '☀️ Claro';
+                } else {
+                    // Switch to light tiles
+                    this.map.removeLayer(this.darkTileLayer);
+                    this.lightTileLayer.addTo(this.map);
+                    button.classList.remove('btn-secondary');
+                    button.classList.add('btn-outline-secondary');
+                    button.textContent = '🌙 Oscuro';
+                }
+            }
+
+            // Toast Notifications
+            showToast(title, message, type = 'info') {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                toast.className = 'toast';
+
+                const colors = {
+                    info: '#3498db',
+                    success: '#27ae60',
+                    warning: '#f39c12',
+                    danger: '#e74c3c'
+                };
+
+                toast.innerHTML = `
+                    <div class="toast-header" style="background: ${colors[type]}">
+                        <strong>${title}</strong>
+                        <button class="toast-close" onclick="this.closest('.toast').remove()">×</button>
+                    </div>
+                    <div class="toast-body">${message}</div>
+                `;
+
+                container.appendChild(toast);
+
+                // Auto remove after 5 seconds
+                setTimeout(() => {
+                    toast.classList.add('hiding');
+                    setTimeout(() => toast.remove(), 300);
+                }, 5000);
+            }
+
+            // Check for new stations and show notifications
+            checkNewStations(stations) {
+                stations.forEach(station => {
+                    const stationId = `${station.callsign}-${station.lat}-${station.lon}`;
+                    if (!this.knownStations.has(stationId)) {
+                        this.knownStations.add(stationId);
+
+                        // Only show toast if it's not the initial load
+                        if (this.knownStations.size > stations.length) {
+                            const distanceKm = station.distance ? station.distance.toFixed(2) : '?';
+                            this.showToast(
+                                '📡 Nueva Estación',
+                                `${station.callsign} detectada a ${distanceKm} km`,
+                                'success'
+                            );
+                        }
+                    }
+                });
+            }
+
+            // Export to CSV
+            exportCSV() {
+                const csvRows = [];
+                csvRows.push('Callsign,Latitude,Longitude,Distance (km),Timestamp,Comment,Audio Level');
+
+                this.stations.forEach(station => {
+                    const row = [
+                        station.callsign || '',
+                        station.lat || '',
+                        station.lon || '',
+                        station.distance ? station.distance.toFixed(2) : '',
+                        station.timestamp || '',
+                        (station.comment || '').replace(/,/g, ';'),
+                        station.audioLevel || ''
+                    ];
+                    csvRows.push(row.join(','));
+                });
+
+                const csvContent = csvRows.join('\n');
+                this.downloadFile(csvContent, 'aprs-stations.csv', 'text/csv');
+                this.showToast('Exportación', 'Datos exportados a CSV', 'success');
+                document.getElementById('export-menu').classList.remove('show');
+            }
+
+            // Export to JSON
+            exportJSON() {
+                const data = {
+                    repeater: this.repeaterLocation,
+                    exportDate: new Date().toISOString(),
+                    totalStations: this.stations.length,
+                    stations: this.stations
+                };
+
+                const jsonContent = JSON.stringify(data, null, 2);
+                this.downloadFile(jsonContent, 'aprs-stations.json', 'application/json');
+                this.showToast('Exportación', 'Datos exportados a JSON', 'success');
+                document.getElementById('export-menu').classList.remove('show');
+            }
+
+            // Export to KML (Google Earth format)
+            exportKML() {
+                let kml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+                kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n';
+                kml += '<Document>\n';
+                kml += '<name>APRS Stations</name>\n';
+                kml += '<description>Exported from VX200 APRS Map</description>\n';
+
+                // Add repeater
+                if (this.repeaterLocation) {
+                    kml += '<Placemark>\n';
+                    kml += `<name>${this.repeaterLocation.callsign}</name>\n`;
+                    kml += '<description>Repeater Location</description>\n';
+                    kml += '<Point>\n';
+                    kml += `<coordinates>${this.repeaterLocation.lon},${this.repeaterLocation.lat},0</coordinates>\n`;
+                    kml += '</Point>\n';
+                    kml += '</Placemark>\n';
+                }
+
+                // Add stations
+                this.stations.forEach(station => {
+                    kml += '<Placemark>\n';
+                    kml += `<name>${station.callsign}</name>\n`;
+                    kml += `<description>Distance: ${station.distance ? station.distance.toFixed(2) : '?'} km\nTimestamp: ${station.timestamp || 'Unknown'}</description>\n`;
+                    kml += '<Point>\n';
+                    kml += `<coordinates>${station.lon},${station.lat},0</coordinates>\n`;
+                    kml += '</Point>\n';
+                    kml += '</Placemark>\n';
+                });
+
+                kml += '</Document>\n';
+                kml += '</kml>';
+
+                this.downloadFile(kml, 'aprs-stations.kml', 'application/vnd.google-earth.kml+xml');
+                this.showToast('Exportación', 'Datos exportados a KML', 'success');
+                document.getElementById('export-menu').classList.remove('show');
+            }
+
+            // Export to GPX (GPS format)
+            exportGPX() {
+                let gpx = '<?xml version="1.0" encoding="UTF-8"?>\n';
+                gpx += '<gpx version="1.1" creator="VX200 APRS Map">\n';
+                gpx += '<metadata>\n';
+                gpx += '<name>APRS Stations</name>\n';
+                gpx += `<time>${new Date().toISOString()}</time>\n`;
+                gpx += '</metadata>\n';
+
+                // Add repeater as waypoint
+                if (this.repeaterLocation) {
+                    gpx += `<wpt lat="${this.repeaterLocation.lat}" lon="${this.repeaterLocation.lon}">\n`;
+                    gpx += `<name>${this.repeaterLocation.callsign}</name>\n`;
+                    gpx += '<desc>Repeater</desc>\n';
+                    gpx += '</wpt>\n';
+                }
+
+                // Add stations as waypoints
+                this.stations.forEach(station => {
+                    gpx += `<wpt lat="${station.lat}" lon="${station.lon}">\n`;
+                    gpx += `<name>${station.callsign}</name>\n`;
+                    gpx += `<desc>Distance: ${station.distance ? station.distance.toFixed(2) : '?'} km</desc>\n`;
+                    gpx += `<time>${station.timestamp || ''}</time>\n`;
+                    gpx += '</wpt>\n';
+                });
+
+                gpx += '</gpx>';
+
+                this.downloadFile(gpx, 'aprs-stations.gpx', 'application/gpx+xml');
+                this.showToast('Exportación', 'Datos exportados a GPX', 'success');
+                document.getElementById('export-menu').classList.remove('show');
+            }
+
+            // Helper function to download file
+            downloadFile(content, filename, mimeType) {
+                const blob = new Blob([content], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
             }
         }
 
