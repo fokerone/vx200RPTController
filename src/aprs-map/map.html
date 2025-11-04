@@ -527,12 +527,46 @@
                         </div>
                         <div class="col-md-6 text-md-end">
                             <div class="btn-group btn-group-sm" role="group">
+                                <button id="toggle-heatmap" class="btn btn-outline-info" title="Mapa de Calor">
+                                    🔥 Calor
+                                </button>
+                                <button id="toggle-advanced-filters" class="btn btn-outline-secondary" title="Filtros Avanzados">
+                                    🔍 Avanzado
+                                </button>
                                 <button id="reset-filter" class="btn btn-outline-secondary">
                                     Reset
                                 </button>
                                 <button id="center-map" class="btn btn-outline-primary">
                                     Centrar
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Filters Panel (Initially Hidden) -->
+                    <div id="advanced-filters-panel" class="mt-3" style="display: none;">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label form-label-sm">Distancia (km):</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" id="filter-distance-min" class="form-control" placeholder="Mín" step="0.1" min="0">
+                                    <span class="input-group-text">-</span>
+                                    <input type="number" id="filter-distance-max" class="form-control" placeholder="Máx" step="0.1" min="0">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label form-label-sm">Fecha desde:</label>
+                                <input type="date" id="filter-date-from" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label form-label-sm">Fecha hasta:</label>
+                                <input type="date" id="filter-date-to" class="form-control form-control-sm">
+                            </div>
+                        </div>
+                        <div class="row g-2 mt-2">
+                            <div class="col-md-12">
+                                <button id="apply-advanced-filters" class="btn btn-sm btn-success me-2">Aplicar Filtros</button>
+                                <button id="clear-advanced-filters" class="btn btn-sm btn-outline-secondary">Limpiar</button>
                             </div>
                         </div>
                     </div>
@@ -719,7 +753,10 @@
     
     <!-- Font Awesome for map markers -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css">
-    
+
+    <!-- Leaflet.heat for heatmap -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
     <script>
         class APRSMap {
             constructor() {
@@ -728,9 +765,17 @@
                 this.coverageCircle = null;
                 this.coveragePolygon = null;
                 this.maxLinkLine = null;
+                this.heatmapLayer = null;
+                this.heatmapEnabled = false;
                 this.stationMarkers = [];
                 this.stations = [];
                 this.filteredCallsign = null;
+                this.advancedFilters = {
+                    distanceMin: null,
+                    distanceMax: null,
+                    dateFrom: null,
+                    dateTo: null
+                };
                 this.repeaterLocation = null;
                 this.updateInterval = null;
 
@@ -755,6 +800,23 @@
             }
 
             setupEventListeners() {
+                document.getElementById('toggle-heatmap').addEventListener('click', () => {
+                    this.toggleHeatmap();
+                });
+
+                document.getElementById('toggle-advanced-filters').addEventListener('click', () => {
+                    const panel = document.getElementById('advanced-filters-panel');
+                    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+                });
+
+                document.getElementById('apply-advanced-filters').addEventListener('click', () => {
+                    this.applyAdvancedFilters();
+                });
+
+                document.getElementById('clear-advanced-filters').addEventListener('click', () => {
+                    this.clearAdvancedFilters();
+                });
+
                 document.getElementById('reset-filter').addEventListener('click', () => {
                     this.resetFilter();
                 });
@@ -850,10 +912,8 @@
                     });
                 }
 
-                // Add station markers
-                const stationsToShow = this.filteredCallsign ? 
-                    this.stations.filter(s => s.callsign === this.filteredCallsign) : 
-                    this.stations;
+                // Add station markers with advanced filters applied
+                const stationsToShow = this.applyFilters(this.stations);
 
                 stationsToShow.forEach((station, index) => {
                     const marker = this.createStationMarker(station, index);
@@ -862,6 +922,11 @@
 
                 // Add coverage circle
                 this.updateCoverageCircle();
+
+                // Update heatmap if enabled
+                if (this.heatmapEnabled) {
+                    this.createHeatmap();
+                }
 
                 // Fit map to show all markers
                 if (stationsToShow.length > 0 && this.repeaterLocation) {
@@ -1076,6 +1141,109 @@
                 const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
                 const index = Math.round(bearing / 45) % 8;
                 return directions[index];
+            }
+
+            toggleHeatmap() {
+                this.heatmapEnabled = !this.heatmapEnabled;
+                const button = document.getElementById('toggle-heatmap');
+
+                if (this.heatmapEnabled) {
+                    button.classList.remove('btn-outline-info');
+                    button.classList.add('btn-info');
+                    this.createHeatmap();
+                } else {
+                    button.classList.remove('btn-info');
+                    button.classList.add('btn-outline-info');
+                    this.removeHeatmap();
+                }
+            }
+
+            createHeatmap() {
+                if (!this.stations || this.stations.length === 0) {
+                    return;
+                }
+
+                // Prepare heatmap data: [lat, lon, intensity]
+                // Intensity based on reception count
+                const heatmapData = this.stations.map(station => {
+                    // Use count as intensity (more receptions = hotter)
+                    const intensity = station.count || 1;
+                    return [station.lat, station.lon, Math.min(intensity / 10, 1)]; // Normalize to 0-1
+                });
+
+                // Remove existing heatmap if any
+                this.removeHeatmap();
+
+                // Create new heatmap layer
+                this.heatmapLayer = L.heatLayer(heatmapData, {
+                    radius: 25,
+                    blur: 15,
+                    maxZoom: 17,
+                    max: 1.0,
+                    gradient: {
+                        0.0: 'blue',
+                        0.2: 'cyan',
+                        0.4: 'lime',
+                        0.6: 'yellow',
+                        0.8: 'orange',
+                        1.0: 'red'
+                    }
+                }).addTo(this.map);
+
+                // Bring heatmap below markers
+                if (this.heatmapLayer._container) {
+                    this.heatmapLayer._container.style.zIndex = 400;
+                }
+            }
+
+            removeHeatmap() {
+                if (this.heatmapLayer) {
+                    this.map.removeLayer(this.heatmapLayer);
+                    this.heatmapLayer = null;
+                }
+            }
+
+            applyAdvancedFilters() {
+                this.advancedFilters.distanceMin = parseFloat(document.getElementById('filter-distance-min').value) || null;
+                this.advancedFilters.distanceMax = parseFloat(document.getElementById('filter-distance-max').value) || null;
+                this.advancedFilters.dateFrom = document.getElementById('filter-date-from').value || null;
+                this.advancedFilters.dateTo = document.getElementById('filter-date-to').value || null;
+                this.updateMap();
+            }
+
+            clearAdvancedFilters() {
+                this.advancedFilters = { distanceMin: null, distanceMax: null, dateFrom: null, dateTo: null };
+                document.getElementById('filter-distance-min').value = '';
+                document.getElementById('filter-distance-max').value = '';
+                document.getElementById('filter-date-from').value = '';
+                document.getElementById('filter-date-to').value = '';
+                this.updateMap();
+            }
+
+            applyFilters(stations) {
+                let filtered = stations;
+                // Apply callsign filter
+                if (this.filteredCallsign) {
+                    filtered = filtered.filter(s => s.callsign === this.filteredCallsign);
+                }
+                // Apply distance filters
+                if (this.advancedFilters.distanceMin !== null) {
+                    filtered = filtered.filter(s => (s.distance || 0) >= this.advancedFilters.distanceMin);
+                }
+                if (this.advancedFilters.distanceMax !== null) {
+                    filtered = filtered.filter(s => (s.distance || 0) <= this.advancedFilters.distanceMax);
+                }
+                // Apply date filters
+                if (this.advancedFilters.dateFrom) {
+                    const from = new Date(this.advancedFilters.dateFrom);
+                    filtered = filtered.filter(s => new Date(s.timestamp) >= from);
+                }
+                if (this.advancedFilters.dateTo) {
+                    const to = new Date(this.advancedFilters.dateTo);
+                    to.setHours(23, 59, 59);
+                    filtered = filtered.filter(s => new Date(s.timestamp) <= to);
+                }
+                return filtered;
             }
 
             updateStatistics(metadata) {
