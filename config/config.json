@@ -1,7 +1,7 @@
 {
   "system": {
     "callsign": "LU5MCD",
-    "version": "2.15.4",
+    "version": "2.16.0",
     "name": "VX200 Controller",
     "description": "Sistema de Control para Repetidora Simplex",
     "environment": "production"

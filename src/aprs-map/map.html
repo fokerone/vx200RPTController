@@ -373,16 +373,107 @@
             .detail-section h6 {
                 font-size: 0.8rem;
             }
-            
+
             .detail-item {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 0.25rem;
             }
-            
+
             .detail-value {
                 text-align: left;
                 font-size: 0.9rem;
+            }
+        }
+
+        /* Coverage Direction Panel */
+        .coverage-panel {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .coverage-panel h5 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .direction-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .direction-label {
+            width: 60px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #7f8c8d;
+        }
+
+        .direction-progress {
+            flex-grow: 1;
+            height: 24px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin: 0 0.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .direction-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db 0%, #2ecc71 100%);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 0.25rem;
+        }
+
+        .direction-fill.max {
+            background: linear-gradient(90deg, #e67e22 0%, #e74c3c 100%);
+        }
+
+        .direction-distance {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .direction-value {
+            min-width: 50px;
+            text-align: right;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .max-link-indicator {
+            display: inline-block;
+            margin-left: 0.25rem;
+            color: #e74c3c;
+            font-size: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .direction-label {
+                width: 50px;
+                font-size: 0.75rem;
+            }
+
+            .direction-value {
+                min-width: 45px;
+                font-size: 0.8rem;
+            }
+
+            .direction-progress {
+                height: 20px;
             }
         }
     </style>
@@ -596,6 +687,14 @@
                     </div>
                 </div>
 
+                <!-- Coverage by Direction -->
+                <div class="coverage-panel" id="coverage-panel">
+                    <h5 class="mb-2">📡 Cobertura por Dirección</h5>
+                    <div id="coverage-directions">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+
                 <!-- Station List -->
                 <div class="info-card">
                     <h5 class="mb-3">Estaciones Recibidas</h5>
@@ -627,12 +726,14 @@
                 this.map = null;
                 this.repeaterMarker = null;
                 this.coverageCircle = null;
+                this.coveragePolygon = null;
+                this.maxLinkLine = null;
                 this.stationMarkers = [];
                 this.stations = [];
                 this.filteredCallsign = null;
                 this.repeaterLocation = null;
                 this.updateInterval = null;
-                
+
                 this.init();
             }
 
@@ -826,49 +927,319 @@
             }
 
             updateCoverageCircle() {
+                // Remove existing coverage layers
                 if (this.coverageCircle) {
                     this.map.removeLayer(this.coverageCircle);
+                    this.coverageCircle = null;
+                }
+                if (this.coveragePolygon) {
+                    this.map.removeLayer(this.coveragePolygon);
+                    this.coveragePolygon = null;
+                }
+                if (this.maxLinkLine) {
+                    this.map.removeLayer(this.maxLinkLine);
+                    this.maxLinkLine = null;
                 }
 
                 if (this.stations.length > 0 && this.repeaterLocation) {
                     const maxDistance = Math.max(...this.stations.map(s => s.distance || 0));
-                    
+
                     if (maxDistance > 0) {
+                        // 1. Draw reference circle (theoretical coverage) in gray
                         this.coverageCircle = L.circle(
-                            [this.repeaterLocation.lat, this.repeaterLocation.lon], 
+                            [this.repeaterLocation.lat, this.repeaterLocation.lon],
                             {
                                 radius: maxDistance * 1000, // Convert km to meters
-                                fillColor: '#3498db',
-                                color: '#2980b9',
-                                weight: 2,
-                                opacity: 0.6,
-                                fillOpacity: 0.1
+                                fillColor: '#95a5a6',
+                                color: '#7f8c8d',
+                                weight: 1,
+                                opacity: 0.3,
+                                fillOpacity: 0.05,
+                                dashArray: '5, 10'
                             }
                         ).addTo(this.map);
+
+                        this.coverageCircle.bindPopup(`
+                            <div style="text-align: center;">
+                                <strong>⭕ Cobertura Teórica</strong><br>
+                                <small>Radio: ${maxDistance.toFixed(1)} km</small><br>
+                                <small class="text-muted">Área: ${(Math.PI * Math.pow(maxDistance, 2)).toFixed(1)} km²</small>
+                            </div>
+                        `);
+
+                        // 2. Calculate and draw convex hull polygon (real coverage)
+                        if (this.stations.length >= 3) {
+                            const hull = this.calculateConvexHull(this.stations);
+
+                            if (hull.length >= 3) {
+                                const polygonPoints = hull.map(p => [p.lat, p.lon]);
+
+                                this.coveragePolygon = L.polygon(polygonPoints, {
+                                    fillColor: '#3498db',
+                                    color: '#2980b9',
+                                    weight: 2,
+                                    opacity: 0.7,
+                                    fillOpacity: 0.15
+                                }).addTo(this.map);
+
+                                // Calculate actual covered area (polygon area)
+                                const area = this.calculatePolygonArea(hull);
+
+                                this.coveragePolygon.bindPopup(`
+                                    <div style="text-align: center;">
+                                        <strong>📐 Cobertura Real Probada</strong><br>
+                                        <small>Estaciones: ${hull.length}</small><br>
+                                        <small class="text-muted">Área: ~${area.toFixed(1)} km²</small>
+                                    </div>
+                                `);
+                            }
+                        }
+
+                        // 3. Draw line to max distance station (record link)
+                        const maxStation = this.stations.find(s => s.distance === maxDistance);
+                        if (maxStation) {
+                            this.maxLinkLine = L.polyline([
+                                [this.repeaterLocation.lat, this.repeaterLocation.lon],
+                                [maxStation.lat, maxStation.lon]
+                            ], {
+                                color: '#e74c3c',
+                                weight: 3,
+                                opacity: 0.7,
+                                dashArray: '10, 5'
+                            }).addTo(this.map);
+
+                            const bearing = this.calculateBearing(
+                                this.repeaterLocation.lat, this.repeaterLocation.lon,
+                                maxStation.lat, maxStation.lon
+                            );
+
+                            const directionName = this.getDirectionName(bearing);
+
+                            this.maxLinkLine.bindPopup(`
+                                <div style="text-align: center;">
+                                    <strong>⭐ Enlace Más Lejano</strong><br>
+                                    <div style="margin: 8px 0;">
+                                        <strong style="color: #e74c3c; font-size: 1.1em;">${maxDistance.toFixed(2)} km</strong>
+                                    </div>
+                                    <small>📡 ${maxStation.callsign}</small><br>
+                                    <small>🧭 ${directionName} (${bearing.toFixed(0)}°)</small><br>
+                                    <small>🕐 ${new Date(maxStation.timestamp).toLocaleString()}</small>
+                                </div>
+                            `);
+
+                            // Add marker at the max distance point
+                            const maxMarker = L.circleMarker([maxStation.lat, maxStation.lon], {
+                                radius: 8,
+                                fillColor: '#e74c3c',
+                                color: '#fff',
+                                weight: 2,
+                                opacity: 1,
+                                fillOpacity: 0.8
+                            }).addTo(this.map);
+
+                            maxMarker.bindPopup(`
+                                <div style="text-align: center;">
+                                    <strong>⭐ Récord de Distancia</strong><br>
+                                    <strong style="color: #e74c3c;">${maxDistance.toFixed(2)} km</strong>
+                                </div>
+                            `);
+                        }
                     }
                 }
+            }
+
+            calculatePolygonArea(points) {
+                // Calculate area of polygon using Shoelace formula
+                // Result is approximate (assumes flat Earth for small areas)
+                if (points.length < 3) return 0;
+
+                let area = 0;
+                for (let i = 0; i < points.length; i++) {
+                    const j = (i + 1) % points.length;
+                    area += points[i].lon * points[j].lat;
+                    area -= points[j].lon * points[i].lat;
+                }
+                area = Math.abs(area) / 2;
+
+                // Convert to km² (approximate)
+                // 1 degree latitude ≈ 111 km
+                // 1 degree longitude ≈ 111 km * cos(latitude)
+                const avgLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+                const latToKm = 111;
+                const lonToKm = 111 * Math.cos(avgLat * Math.PI / 180);
+                area = area * latToKm * lonToKm;
+
+                return area;
+            }
+
+            getDirectionName(bearing) {
+                const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+                const index = Math.round(bearing / 45) % 8;
+                return directions[index];
             }
 
             updateStatistics(metadata) {
                 if (!metadata) return;
 
-                document.getElementById('total-stations').textContent = 
+                document.getElementById('total-stations').textContent =
                     this.getUniqueCallsigns().length;
-                
-                document.getElementById('max-distance').textContent = 
+
+                document.getElementById('max-distance').textContent =
                     metadata.maxDistance ? `${metadata.maxDistance.distance.toFixed(1)} km` : '-';
-                
-                const lastStation = this.stations.length > 0 ? 
-                    this.stations.reduce((latest, current) => 
+
+                const lastStation = this.stations.length > 0 ?
+                    this.stations.reduce((latest, current) =>
                         new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest
                     ) : null;
-                
-                document.getElementById('last-station').textContent = 
+
+                document.getElementById('last-station').textContent =
                     lastStation ? lastStation.callsign : '-';
-                
+
                 const maxDist = Math.max(...this.stations.map(s => s.distance || 0));
-                document.getElementById('coverage-radius').textContent = 
+                document.getElementById('coverage-radius').textContent =
                     maxDist > 0 ? `${maxDist.toFixed(1)} km` : '-';
+
+                // Update coverage by direction
+                this.updateCoverageByDirection();
+            }
+
+            calculateConvexHull(points) {
+                // Graham Scan algorithm for Convex Hull
+                if (points.length < 3) return points;
+
+                // Find the lowest point (and leftmost if tie)
+                let lowest = points.reduce((min, p) =>
+                    p.lat < min.lat || (p.lat === min.lat && p.lon < min.lon) ? p : min
+                );
+
+                // Sort points by polar angle with respect to lowest point
+                const sorted = points.filter(p => p !== lowest).sort((a, b) => {
+                    const angleA = Math.atan2(a.lat - lowest.lat, a.lon - lowest.lon);
+                    const angleB = Math.atan2(b.lat - lowest.lat, b.lon - lowest.lon);
+                    if (angleA === angleB) {
+                        // If same angle, sort by distance
+                        const distA = Math.sqrt(Math.pow(a.lat - lowest.lat, 2) + Math.pow(a.lon - lowest.lon, 2));
+                        const distB = Math.sqrt(Math.pow(b.lat - lowest.lat, 2) + Math.pow(b.lon - lowest.lon, 2));
+                        return distA - distB;
+                    }
+                    return angleA - angleB;
+                });
+
+                // Build convex hull
+                const hull = [lowest, sorted[0]];
+
+                for (let i = 1; i < sorted.length; i++) {
+                    let top = hull[hull.length - 1];
+                    let middle = hull[hull.length - 2];
+                    let point = sorted[i];
+
+                    // Calculate cross product to determine turn direction
+                    while (hull.length > 1) {
+                        top = hull[hull.length - 1];
+                        middle = hull[hull.length - 2];
+
+                        const cross = (top.lon - middle.lon) * (point.lat - middle.lat) -
+                                     (top.lat - middle.lat) * (point.lon - middle.lon);
+
+                        if (cross > 0) break; // Left turn, keep going
+                        hull.pop(); // Right turn or collinear, remove top
+                    }
+
+                    hull.push(point);
+                }
+
+                return hull;
+            }
+
+            calculateCoverageByDirection() {
+                // Calculate coverage in 8 cardinal directions (N, NE, E, SE, S, SW, W, NW)
+                const directions = [
+                    { name: 'N', angle: 0, min: 337.5, max: 22.5 },
+                    { name: 'NE', angle: 45, min: 22.5, max: 67.5 },
+                    { name: 'E', angle: 90, min: 67.5, max: 112.5 },
+                    { name: 'SE', angle: 135, min: 112.5, max: 157.5 },
+                    { name: 'S', angle: 180, min: 157.5, max: 202.5 },
+                    { name: 'SW', angle: 225, min: 202.5, max: 247.5 },
+                    { name: 'W', angle: 270, min: 247.5, max: 292.5 },
+                    { name: 'NW', angle: 315, min: 292.5, max: 337.5 }
+                ];
+
+                const coverage = directions.map(dir => {
+                    const stationsInDir = this.stations.filter(station => {
+                        const bearing = this.calculateBearing(
+                            this.repeaterLocation.lat, this.repeaterLocation.lon,
+                            station.lat, station.lon
+                        );
+
+                        // Handle wraparound for North
+                        if (dir.name === 'N') {
+                            return bearing >= dir.min || bearing < dir.max;
+                        }
+                        return bearing >= dir.min && bearing < dir.max;
+                    });
+
+                    const maxDist = stationsInDir.length > 0 ?
+                        Math.max(...stationsInDir.map(s => s.distance || 0)) : 0;
+
+                    return {
+                        ...dir,
+                        distance: maxDist,
+                        count: stationsInDir.length
+                    };
+                });
+
+                return coverage;
+            }
+
+            calculateBearing(lat1, lon1, lat2, lon2) {
+                // Calculate bearing in degrees (0-360) from point 1 to point 2
+                const dLon = (lon2 - lon1) * Math.PI / 180;
+                const lat1Rad = lat1 * Math.PI / 180;
+                const lat2Rad = lat2 * Math.PI / 180;
+
+                const y = Math.sin(dLon) * Math.cos(lat2Rad);
+                const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                         Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+
+                let bearing = Math.atan2(y, x) * 180 / Math.PI;
+                bearing = (bearing + 360) % 360; // Normalize to 0-360
+
+                return bearing;
+            }
+
+            updateCoverageByDirection() {
+                if (this.stations.length === 0 || !this.repeaterLocation) {
+                    document.getElementById('coverage-directions').innerHTML =
+                        '<p class="text-muted text-center small">No hay datos de cobertura</p>';
+                    return;
+                }
+
+                const coverage = this.calculateCoverageByDirection();
+                const maxDistance = Math.max(...coverage.map(c => c.distance));
+
+                const container = document.getElementById('coverage-directions');
+                container.innerHTML = '';
+
+                coverage.forEach(dir => {
+                    const percentage = maxDistance > 0 ? (dir.distance / maxDistance) * 100 : 0;
+                    const isMax = dir.distance === maxDistance && dir.distance > 0;
+
+                    const barDiv = document.createElement('div');
+                    barDiv.className = 'direction-bar';
+                    barDiv.innerHTML = `
+                        <div class="direction-label">${dir.name} <small>(${dir.angle}°)</small></div>
+                        <div class="direction-progress">
+                            <div class="direction-fill ${isMax ? 'max' : ''}" style="width: ${percentage}%">
+                                ${dir.distance > 0 ? `<span class="direction-distance">${dir.distance.toFixed(1)} km</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="direction-value">
+                            ${dir.distance.toFixed(1)} km
+                            ${isMax ? '<span class="max-link-indicator">⭐</span>' : ''}
+                        </div>
+                    `;
+                    container.appendChild(barDiv);
+                });
             }
 
             updateStationList() {
