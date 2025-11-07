@@ -422,6 +422,15 @@ class VX200Controller {
                     });
                 }
             });
+
+            this.modules.weatherAlerts.on('alerts_cleared', () => {
+                if (this.display) {
+                    this.display.updateWeatherData({
+                        alertCount: 0,
+                        lastAlert: null
+                    });
+                }
+            });
         }
     }
 

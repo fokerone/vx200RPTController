@@ -622,6 +622,15 @@ class WeatherAlerts extends EventEmitter {
                 }
             });
 
+            // Emitir evento para actualizar OLED (solo la primera alerta que se mostrará en display)
+            if (alerts.length > 0) {
+                this.emit('alert_announced', {
+                    title: alerts[0].title || 'Alerta meteorológica',
+                    level: alerts[0].level,
+                    zone: alerts[0].zone
+                });
+            }
+
             // NUEVO: Anunciar clima actual después de las alertas
             if (this.weatherModule) {
                 try {
@@ -1291,13 +1300,16 @@ class WeatherAlerts extends EventEmitter {
 
             this.logger.info(`Limpiadas ${expiredAlerts.length} alertas expiradas`);
 
-            // Si no quedan alertas activas, limpiar timer de repetición
+            // Si no quedan alertas activas, limpiar timer de repetición y actualizar OLED
             if (this.activeAlerts.size === 0) {
                 if (this.repeatTimer) {
                     clearTimeout(this.repeatTimer);
                     this.repeatTimer = null;
                     this.logger.info('Timer de repetición detenido: no hay alertas activas');
                 }
+
+                // Notificar al OLED que no hay alertas
+                this.emit('alerts_cleared', { alertCount: 0 });
             }
 
             // Actualizar comment APRS de forma asíncrona
