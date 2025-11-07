@@ -631,6 +631,11 @@ class WeatherAlerts extends EventEmitter {
                     // Ejecutar comando de clima como si fuera *4
                     await this.weatherModule.execute('*4');
 
+                    // IMPORTANTE: Esperar un momento adicional para que el AudioManager
+                    // termine completamente de procesar el audio y limpie el estado del canal
+                    await delay(2000); // 2 segundos de margen para limpieza completa
+                    this.logger.debug('Anuncio de clima completado, canal libre');
+
                 } catch (error) {
                     this.logger.warn('Error anunciando clima después de alertas:', error.message);
                     // No propagamos el error para que la alerta se complete aunque falle el clima
