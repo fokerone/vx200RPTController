@@ -48,8 +48,8 @@ class WeatherAlerts extends EventEmitter {
             },
             
             // Timers
-            checkInterval: 87 * 60 * 1000,      // 1h 27min (evita múltiples colisiones)  
-            repeatInterval: 101 * 60 * 1000,    // 1h 41min (evita colisión con baliza)
+            checkInterval: 87 * 60 * 1000,      // 1h 27min (evita múltiples colisiones)
+            repeatInterval: 120 * 60 * 1000,    // 2 horas exactas (evita colisión con baliza horaria)
             weatherUpdateInterval: 17 * 60 * 1000, // 17 minutos (evita solapamiento exacto con APRS)
             
             // TTS
@@ -1252,7 +1252,7 @@ class WeatherAlerts extends EventEmitter {
     cleanExpiredAlerts() {
         const now = Date.now();
         const expiredAlerts = [];
-        
+
         for (const [id, alert] of this.activeAlerts) {
             // Considerar expirada si tiene más de 24 horas
             const age = now - alert.firstSeen;
@@ -1260,16 +1260,26 @@ class WeatherAlerts extends EventEmitter {
                 expiredAlerts.push(id);
             }
         }
-        
+
         if (expiredAlerts.length > 0) {
             expiredAlerts.forEach(id => {
                 this.activeAlerts.delete(id);
                 this.lastAnnouncedAlerts.delete(id);
             });
-            
+
             this.logger.info(`Limpiadas ${expiredAlerts.length} alertas expiradas`);
+
+            // Si no quedan alertas activas, limpiar timer de repetición
+            if (this.activeAlerts.size === 0) {
+                if (this.repeatTimer) {
+                    clearTimeout(this.repeatTimer);
+                    this.repeatTimer = null;
+                    this.logger.info('Timer de repetición detenido: no hay alertas activas');
+                }
+            }
+
             // Actualizar comment APRS de forma asíncrona
-            this.updateAPRSComment().catch(error => 
+            this.updateAPRSComment().catch(error =>
                 this.logger.debug('Error actualizando APRS comment:', error.message)
             );
         }

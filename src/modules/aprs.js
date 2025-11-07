@@ -28,7 +28,7 @@ class APRS extends EventEmitter {
             beacon: {
                 enabled: Config.aprs.beacon.enabled,
                 interval: Config.aprs.beacon.interval * 60 * 1000, // convertir a ms
-                offset: 7.5 * 60 * 1000, // 7.5 minutos de offset para evitar choque con baliza
+                offset: 10 * 60 * 1000, // 10 minutos de offset para evitar choque con baliza horaria
                 comment: Config.aprs.beacon.comment,
                 symbol: Config.aprs.beacon.symbol
             },

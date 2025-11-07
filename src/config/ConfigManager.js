@@ -170,7 +170,7 @@ class ConfigManager {
                 },
                 beacon: {
                     enabled: true,
-                    interval: 15, // minutos
+                    interval: 20, // minutos (evita colisión con baliza horaria)
                     comment: 'VX200 RPT',
                     symbol: '/-'
                 },
