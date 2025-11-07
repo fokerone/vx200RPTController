@@ -621,7 +621,24 @@ class WeatherAlerts extends EventEmitter {
                     this.activeAlerts.get(alert.id).announced = true;
                 }
             });
-            
+
+            // NUEVO: Anunciar clima actual después de las alertas
+            if (this.weatherModule) {
+                try {
+                    this.logger.info('Anunciando clima actual después de alertas...');
+                    await delay(1500); // Pausa de 1.5 segundos entre alerta y clima
+
+                    // Ejecutar comando de clima como si fuera *4
+                    await this.weatherModule.execute('*4');
+
+                } catch (error) {
+                    this.logger.warn('Error anunciando clima después de alertas:', error.message);
+                    // No propagamos el error para que la alerta se complete aunque falle el clima
+                }
+            } else {
+                this.logger.debug('Módulo de clima no disponible, saltando anuncio de clima');
+            }
+
         } catch (error) {
             this.logger.error('Error anunciando alertas:', error.message);
         }
