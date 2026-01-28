@@ -44,6 +44,7 @@ class AudioManager extends EventEmitter {
         // Cola de audio con prioridades
         this.audioQueue = [];
         this.isProcessingAudio = false;
+        this.isTransmittingNow = false;  // Flag centralizado de transmisión
         this.currentAudioProcess = null;
         this.queueProcessingPaused = false;
         
@@ -395,119 +396,127 @@ class AudioManager extends EventEmitter {
     }
 
     async speakWithEspeak(text, options = {}) {
-        return new Promise((resolve, reject) => {
-            // LÓGICA SIMPLEX: Pausar escucha durante TTS
-            const wasRecording = this.isRecording;
-            if (wasRecording) {
-                this.pauseRecording();
-                this.logger.debug('SIMPLEX: Escucha pausada para TTS');
-            }
-            
-            // Emitir evento de transmisión iniciada
-            this.emit('transmission_started', {
-                type: 'tts',
-                text: text.substring(0, 50),
-                timestamp: Date.now()
-            });
-            
-            // Configuración con defaults desde variables de entorno
-            const voice = options.voice || getValue('tts.voice');
-            const speed = options.speed || getValue('tts.speed');
-            const amplitude = options.amplitude || process.env.TTS_AMPLITUDE || '100';
-            
-            // Sanitizar texto para evitar problemas de shell
-            const sanitizedText = text.replace(/["`$\\]/g, '').substring(0, 500);
-            
-            const args = [
-                '-v', voice,
-                '-s', speed,
-                '-a', amplitude,
-                sanitizedText
-            ];
-            
-            this.logger.debug(`Ejecutando espeak: ${sanitizedText.substring(0, 30)}...`);
-            const espeak = spawn('espeak', args);
+        this.isTransmittingNow = true;
+        this.logger.debug('CHANNEL_LOCK: speakWithEspeak bloqueado');
 
-            let stderr = '';
-            let timeout = null;
+        try {
+            await new Promise((resolve, reject) => {
+                // LÓGICA SIMPLEX: Pausar escucha durante TTS
+                const wasRecording = this.isRecording;
+                if (wasRecording) {
+                    this.pauseRecording();
+                    this.logger.debug('SIMPLEX: Escucha pausada para TTS');
+                }
 
-            espeak.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-            
-            espeak.on('close', (code) => {
-                if (timeout) {clearTimeout(timeout);}
-                
-                // Emitir evento de transmisión terminada
-                this.emit('transmission_ended', {
+                // Emitir evento de transmisión iniciada
+                this.emit('transmission_started', {
                     type: 'tts',
+                    text: text.substring(0, 50),
                     timestamp: Date.now()
                 });
-                
-                // LÓGICA SIMPLEX: Reanudar escucha después de TTS
-                if (wasRecording && !this.isRecording) {
-                    setTimeout(() => {
-                        this.resumeRecording();
-                        this.logger.debug('SIMPLEX: Escucha reanudada post-TTS');
-                    }, 100); // 100ms delay
-                }
-                
-                if (code === 0) {
-                    this.logger.debug('TTS completado exitosamente');
-                    resolve();
-                } else {
-                    const error = new Error(`espeak falló con código ${code}: ${stderr}`);
-                    this.logger.error('Error en espeak:', error.message);
-                    reject(error);
-                }
-            });
-            
-            espeak.on('error', (err) => {
-                if (timeout) {clearTimeout(timeout);}
-                
-                // Emitir evento de transmisión terminada (con error)
-                this.emit('transmission_ended', {
-                    type: 'tts',
-                    error: true,
-                    timestamp: Date.now()
-                });
-                
-                // LÓGICA SIMPLEX: Reanudar escucha en caso de error
-                if (wasRecording && !this.isRecording) {
-                    setTimeout(() => {
-                        this.resumeRecording();
-                        this.logger.debug('SIMPLEX: Escucha reanudada post-error TTS');
-                    }, 100);
-                }
-                
-                this.logger.error('Error iniciando espeak:', err.message);
-                reject(err);
-            });
 
-            // Timeout de seguridad mejorado
-            timeout = setTimeout(() => {
-                if (!espeak.killed) {
-                    espeak.kill('SIGTERM');
-                    
-                    // Emitir evento de transmisión terminada (timeout)
+                // Configuración con defaults desde variables de entorno
+                const voice = options.voice || getValue('tts.voice');
+                const speed = options.speed || getValue('tts.speed');
+                const amplitude = options.amplitude || process.env.TTS_AMPLITUDE || '100';
+
+                // Sanitizar texto para evitar problemas de shell
+                const sanitizedText = text.replace(/["`$\\]/g, '').substring(0, 500);
+
+                const args = [
+                    '-v', voice,
+                    '-s', speed,
+                    '-a', amplitude,
+                    sanitizedText
+                ];
+
+                this.logger.debug(`Ejecutando espeak: ${sanitizedText.substring(0, 30)}...`);
+                const espeak = spawn('espeak', args);
+
+                let stderr = '';
+                let timeout = null;
+
+                espeak.stderr.on('data', (data) => {
+                    stderr += data.toString();
+                });
+
+                espeak.on('close', (code) => {
+                    if (timeout) {clearTimeout(timeout);}
+
+                    // Emitir evento de transmisión terminada
                     this.emit('transmission_ended', {
                         type: 'tts',
-                        timeout: true,
                         timestamp: Date.now()
                     });
-                    
-                    // LÓGICA SIMPLEX: Reanudar escucha en caso de timeout
+
+                    // LÓGICA SIMPLEX: Reanudar escucha después de TTS
                     if (wasRecording && !this.isRecording) {
                         setTimeout(() => {
                             this.resumeRecording();
-                            this.logger.debug('SIMPLEX: Escucha reanudada post-timeout TTS');
+                            this.logger.debug('SIMPLEX: Escucha reanudada post-TTS');
+                        }, 100); // 100ms delay
+                    }
+
+                    if (code === 0) {
+                        this.logger.debug('TTS completado exitosamente');
+                        resolve();
+                    } else {
+                        const error = new Error(`espeak falló con código ${code}: ${stderr}`);
+                        this.logger.error('Error en espeak:', error.message);
+                        reject(error);
+                    }
+                });
+
+                espeak.on('error', (err) => {
+                    if (timeout) {clearTimeout(timeout);}
+
+                    // Emitir evento de transmisión terminada (con error)
+                    this.emit('transmission_ended', {
+                        type: 'tts',
+                        error: true,
+                        timestamp: Date.now()
+                    });
+
+                    // LÓGICA SIMPLEX: Reanudar escucha en caso de error
+                    if (wasRecording && !this.isRecording) {
+                        setTimeout(() => {
+                            this.resumeRecording();
+                            this.logger.debug('SIMPLEX: Escucha reanudada post-error TTS');
                         }, 100);
                     }
-                    
-                    reject(new Error('TTS timeout - proceso terminado forzosamente'));
-                }
-            }, 30000);
-        });
+
+                    this.logger.error('Error iniciando espeak:', err.message);
+                    reject(err);
+                });
+
+                // Timeout de seguridad mejorado
+                timeout = setTimeout(() => {
+                    if (!espeak.killed) {
+                        espeak.kill('SIGTERM');
+
+                        // Emitir evento de transmisión terminada (timeout)
+                        this.emit('transmission_ended', {
+                            type: 'tts',
+                            timeout: true,
+                            timestamp: Date.now()
+                        });
+
+                        // LÓGICA SIMPLEX: Reanudar escucha en caso de timeout
+                        if (wasRecording && !this.isRecording) {
+                            setTimeout(() => {
+                                this.resumeRecording();
+                                this.logger.debug('SIMPLEX: Escucha reanudada post-timeout TTS');
+                            }, 100);
+                        }
+
+                        reject(new Error('TTS timeout - proceso terminado forzosamente'));
+                    }
+                }, 30000);
+            });
+        } finally {
+            this.isTransmittingNow = false;
+            this.logger.debug('CHANNEL_LOCK: speakWithEspeak liberado');
+        }
     }
 
     // ===== REPRODUCCIÓN DE AUDIO =====
@@ -572,6 +581,7 @@ class AudioManager extends EventEmitter {
         }
 
         this.isProcessingAudio = true;
+        this.isTransmittingNow = true;
         this.logger.debug(`Procesando cola de audio: ${this.audioQueue.length} elementos`);
         
         // LÓGICA SIMPLEX: Pausar escucha durante transmisión
@@ -622,6 +632,7 @@ class AudioManager extends EventEmitter {
         }
 
         this.isProcessingAudio = false;
+        this.isTransmittingNow = false;
         this.logger.debug('Cola de audio procesada completamente');
         
         // Emitir evento de que terminamos de transmitir
@@ -708,151 +719,167 @@ class AudioManager extends EventEmitter {
     }
 
     async playWithAplay(filePath, expectedDuration) {
-        return new Promise((resolve, reject) => {
-            // Detectar formato de archivo
-            const isMP3 = filePath.toLowerCase().endsWith('.mp3');
+        this.isTransmittingNow = true;
+        this.logger.debug('CHANNEL_LOCK: playWithAplay bloqueado');
 
-            let player, playerArgs;
+        try {
+            await new Promise((resolve, reject) => {
+                // Detectar formato de archivo
+                const isMP3 = filePath.toLowerCase().endsWith('.mp3');
 
-            if (isMP3) {
-                // Para MP3, usar mpg123 con salida ALSA
-                player = 'mpg123';
-                playerArgs = [
-                    '-q',      // quiet mode
-                    '-f', '65536'  // scale factor (volumen), 65536 = 200% (amplificado)
-                ];
+                let player, playerArgs;
 
-                // Especificar dispositivo ALSA si está configurado
-                if (this.device && this.device !== 'default') {
-                    playerArgs.push('-a', this.device);
-                }
-                playerArgs.push(filePath);
-            } else {
-                // Para WAV, usar aplay
-                player = 'aplay';
-                playerArgs = ['-q'];
+                if (isMP3) {
+                    // Para MP3, usar mpg123 con salida ALSA
+                    player = 'mpg123';
+                    playerArgs = [
+                        '-q',      // quiet mode
+                        '-f', '65536'  // scale factor (volumen), 65536 = 200% (amplificado)
+                    ];
 
-                if (this.device && this.device !== 'default') {
-                    playerArgs.push('-D', this.device);
-                }
-                playerArgs.push(filePath);
-            }
-
-            // Determinar tipo de transmisión basado en el nombre del archivo
-            let transmissionType = 'audio';
-            if (filePath.includes('baliza')) {
-                transmissionType = 'baliza';
-            } else if (filePath.includes('weather') || filePath.includes('alert') || filePath.includes('alerta')) {
-                transmissionType = 'weather_alert';
-            } else if (filePath.includes('seismic') || filePath.includes('sismo')) {
-                transmissionType = 'seismic_alert';
-            }
-
-            // Emitir evento de transmisión iniciada
-            this.emit('transmission_started', {
-                type: transmissionType,
-                file: path.basename(filePath),
-                timestamp: Date.now()
-            });
-
-            this.logger.debug(`Reproduciendo con ${player}: ${path.basename(filePath)}`);
-            const audioPlayer = spawn(player, playerArgs);
-            let playerTimeout = null;
-            let stderr = '';
-
-            // Capturar stderr para diagnóstico
-            audioPlayer.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-
-            // Timeout de seguridad con margen generoso (50% extra + 5s mínimo)
-            const timeoutMs = Math.max(expectedDuration * 1.5 + 5000, 10000);
-            playerTimeout = setTimeout(() => {
-                if (!audioPlayer.killed) {
-                    audioPlayer.kill('SIGTERM');
-                    reject(new Error(`${player} timeout (${timeoutMs}ms)`));
-                }
-            }, timeoutMs);
-
-            audioPlayer.on('close', (code) => {
-                if (playerTimeout) {clearTimeout(playerTimeout);}
-
-                // Emitir evento de transmisión terminada
-                this.emit('transmission_ended', {
-                    type: transmissionType,
-                    file: path.basename(filePath),
-                    success: code === 0,
-                    timestamp: Date.now()
-                });
-
-                if (code === 0) {
-                    this.logger.debug(`${player} completado exitosamente`);
-                    resolve();
-                } else {
-                    let errorMsg = `${player} falló con código ${code}`;
-                    if (stderr.trim()) {
-                        errorMsg += `: ${stderr.trim()}`;
+                    // Especificar dispositivo ALSA si está configurado
+                    if (this.device && this.device !== 'default') {
+                        playerArgs.push('-a', this.device);
                     }
-                    reject(new Error(errorMsg));
+                    playerArgs.push(filePath);
+                } else {
+                    // Para WAV, usar aplay
+                    player = 'aplay';
+                    playerArgs = ['-q'];
+
+                    if (this.device && this.device !== 'default') {
+                        playerArgs.push('-D', this.device);
+                    }
+                    playerArgs.push(filePath);
                 }
-            });
 
-            audioPlayer.on('error', (err) => {
-                if (playerTimeout) {clearTimeout(playerTimeout);}
+                // Determinar tipo de transmisión basado en el nombre del archivo
+                let transmissionType = 'audio';
+                if (filePath.includes('baliza')) {
+                    transmissionType = 'baliza';
+                } else if (filePath.includes('weather') || filePath.includes('alert') || filePath.includes('alerta')) {
+                    transmissionType = 'weather_alert';
+                } else if (filePath.includes('seismic') || filePath.includes('sismo')) {
+                    transmissionType = 'seismic_alert';
+                }
 
-                // Emitir evento de transmisión terminada con error
-                this.emit('transmission_ended', {
+                // Emitir evento de transmisión iniciada
+                this.emit('transmission_started', {
                     type: transmissionType,
                     file: path.basename(filePath),
-                    error: true,
                     timestamp: Date.now()
                 });
 
-                reject(err);
+                this.logger.debug(`Reproduciendo con ${player}: ${path.basename(filePath)}`);
+                const audioPlayer = spawn(player, playerArgs);
+                let playerTimeout = null;
+                let stderr = '';
+
+                // Capturar stderr para diagnóstico
+                audioPlayer.stderr.on('data', (data) => {
+                    stderr += data.toString();
+                });
+
+                // Timeout de seguridad con margen generoso (50% extra + 5s mínimo)
+                const timeoutMs = Math.max(expectedDuration * 1.5 + 5000, 10000);
+                playerTimeout = setTimeout(() => {
+                    if (!audioPlayer.killed) {
+                        audioPlayer.kill('SIGTERM');
+                        reject(new Error(`${player} timeout (${timeoutMs}ms)`));
+                    }
+                }, timeoutMs);
+
+                audioPlayer.on('close', (code) => {
+                    if (playerTimeout) {clearTimeout(playerTimeout);}
+
+                    // Emitir evento de transmisión terminada
+                    this.emit('transmission_ended', {
+                        type: transmissionType,
+                        file: path.basename(filePath),
+                        success: code === 0,
+                        timestamp: Date.now()
+                    });
+
+                    if (code === 0) {
+                        this.logger.debug(`${player} completado exitosamente`);
+                        resolve();
+                    } else {
+                        let errorMsg = `${player} falló con código ${code}`;
+                        if (stderr.trim()) {
+                            errorMsg += `: ${stderr.trim()}`;
+                        }
+                        reject(new Error(errorMsg));
+                    }
+                });
+
+                audioPlayer.on('error', (err) => {
+                    if (playerTimeout) {clearTimeout(playerTimeout);}
+
+                    // Emitir evento de transmisión terminada con error
+                    this.emit('transmission_ended', {
+                        type: transmissionType,
+                        file: path.basename(filePath),
+                        error: true,
+                        timestamp: Date.now()
+                    });
+
+                    reject(err);
+                });
             });
-        });
+        } finally {
+            this.isTransmittingNow = false;
+            this.logger.debug('CHANNEL_LOCK: playWithAplay liberado');
+        }
     }
 
     async playWithPaplay(filePath) {
-        return new Promise((resolve, reject) => {
-            // Intentar con paplay sin especificar dispositivo para usar el default
-            const paplay = spawn('paplay', ['--volume=65536', filePath]);
-            let paplayTimeout = null;
-            let stderr = '';
-            
-            // Capturar stderr para diagnóstico
-            paplay.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-            
-            // Timeout de seguridad más generoso
-            paplayTimeout = setTimeout(() => {
-                if (!paplay.killed) {
-                    paplay.kill('SIGTERM');
-                    reject(new Error('paplay timeout'));
-                }
-            }, 8000);
-            
-            paplay.on('close', (code) => {
-                if (paplayTimeout) {clearTimeout(paplayTimeout);}
-                
-                if (code === 0) {
-                    this.logger.debug('paplay completado exitosamente');
-                    resolve();
-                } else {
-                    let errorMsg = `paplay falló con código ${code}`;
-                    if (stderr.trim()) {
-                        errorMsg += `: ${stderr.trim()}`;
+        this.isTransmittingNow = true;
+        this.logger.debug('CHANNEL_LOCK: playWithPaplay bloqueado');
+
+        try {
+            await new Promise((resolve, reject) => {
+                // Intentar con paplay sin especificar dispositivo para usar el default
+                const paplay = spawn('paplay', ['--volume=65536', filePath]);
+                let paplayTimeout = null;
+                let stderr = '';
+
+                // Capturar stderr para diagnóstico
+                paplay.stderr.on('data', (data) => {
+                    stderr += data.toString();
+                });
+
+                // Timeout de seguridad más generoso
+                paplayTimeout = setTimeout(() => {
+                    if (!paplay.killed) {
+                        paplay.kill('SIGTERM');
+                        reject(new Error('paplay timeout'));
                     }
-                    reject(new Error(errorMsg));
-                }
+                }, 8000);
+
+                paplay.on('close', (code) => {
+                    if (paplayTimeout) {clearTimeout(paplayTimeout);}
+
+                    if (code === 0) {
+                        this.logger.debug('paplay completado exitosamente');
+                        resolve();
+                    } else {
+                        let errorMsg = `paplay falló con código ${code}`;
+                        if (stderr.trim()) {
+                            errorMsg += `: ${stderr.trim()}`;
+                        }
+                        reject(new Error(errorMsg));
+                    }
+                });
+
+                paplay.on('error', (err) => {
+                    if (paplayTimeout) {clearTimeout(paplayTimeout);}
+                    reject(err);
+                });
             });
-            
-            paplay.on('error', (err) => {
-                if (paplayTimeout) {clearTimeout(paplayTimeout);}
-                reject(err);
-            });
-        });
+        } finally {
+            this.isTransmittingNow = false;
+            this.logger.debug('CHANNEL_LOCK: playWithPaplay liberado');
+        }
     }
 
     /**
@@ -860,119 +887,83 @@ class AudioManager extends EventEmitter {
      * con timeout extendido para permitir mensajes largos
      */
     async playWeatherAlertWithPaplay(audioInput) {
-        // Detectar si es un playlist de múltiples fragmentos
-        if (audioInput && typeof audioInput === 'object' && audioInput.__isPlaylist) {
-            this.logger.info(`Reproduciendo playlist secuencial: ${audioInput.totalFragments} fragmentos`);
-            return this.playSequentialPlaylist(audioInput.files);
-        }
-        
-        // Reproducción normal de un solo archivo
-        const filePath = audioInput;
-        return new Promise((resolve, reject) => {
-            // LÓGICA SIMPLEX: Pausar escucha durante transmisión de alerta
-            const wasRecording = this.isRecording;
-            if (wasRecording) {
-                this.pauseRecording();
-                this.logger.debug('SIMPLEX: Escucha pausada para alerta meteorológica');
+        this.isTransmittingNow = true;
+        this.logger.debug('CHANNEL_LOCK: playWeatherAlertWithPaplay bloqueado');
+
+        try {
+            // Detectar si es un playlist de múltiples fragmentos
+            if (audioInput && typeof audioInput === 'object' && audioInput.__isPlaylist) {
+                this.logger.info(`Reproduciendo playlist secuencial: ${audioInput.totalFragments} fragmentos`);
+                return await this.playSequentialPlaylist(audioInput.files);
             }
-            
-            // Emitir evento de transmisión iniciada
-            this.emit('transmission_started', {
-                type: 'weather_alert',
-                file: path.basename(filePath),
-                timestamp: Date.now()
-            });
-            
-            // Intentar con paplay sin especificar dispositivo para usar el default
-            const paplay = spawn('paplay', ['--volume=65536', filePath]);
-            let paplayTimeout = null;
-            let stderr = '';
-            
-            // Capturar stderr para diagnóstico
-            paplay.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-            
-            // Timeout dinámico para alertas meteorológicas (basado en tamaño del archivo)
-            let timeoutDuration = 120000; // 2 minutos por defecto
-            
-            try {
-                const stats = fs.statSync(filePath);
-                const fileSizeMB = stats.size / (1024 * 1024);
-                // Calcular timeout: 30s por cada MB + 90s base (máximo 5 minutos)
-                timeoutDuration = Math.min(90000 + (fileSizeMB * 30000), 300000);
-                this.logger.debug(`Timeout calculado: ${timeoutDuration}ms para archivo de ${fileSizeMB.toFixed(2)}MB`);
-            } catch (error) {
-                this.logger.debug('No se pudo calcular tamaño de archivo, usando timeout por defecto');
-            }
-            
-            paplayTimeout = setTimeout(() => {
-                if (!paplay.killed) {
-                    this.logger.warn(`Timeout de ${timeoutDuration}ms alcanzado para alerta meteorológica`);
-                    paplay.kill('SIGTERM');
-                    
-                    // SIMPLEX: Reanudar escucha después de timeout
-                    if (wasRecording && !this.isRecording) {
-                        setTimeout(() => {
-                            this.resumeRecording();
-                            this.logger.debug('SIMPLEX: Escucha reanudada post-timeout alerta');
-                        }, 100);
-                    }
-                    
-                    reject(new Error(`paplay timeout (${timeoutDuration}ms) para alerta meteorológica`));
+
+            // Reproducción normal de un solo archivo
+            const filePath = audioInput;
+            await new Promise((resolve, reject) => {
+                // LÓGICA SIMPLEX: Pausar escucha durante transmisión de alerta
+                const wasRecording = this.isRecording;
+                if (wasRecording) {
+                    this.pauseRecording();
+                    this.logger.debug('SIMPLEX: Escucha pausada para alerta meteorológica');
                 }
-            }, timeoutDuration);
-            
-            paplay.on('close', async (code) => {
-                if (paplayTimeout) {clearTimeout(paplayTimeout);}
 
-                if (code === 0) {
-                    // SIMPLEX: Reanudar escucha después de transmisión
-                    if (wasRecording && !this.isRecording) {
-                        setTimeout(() => {
-                            this.resumeRecording();
-                            this.logger.debug('SIMPLEX: Escucha reanudada post-alerta meteorológica');
-                        }, 100); // 100ms delay
+                // Emitir evento de transmisión iniciada
+                this.emit('transmission_started', {
+                    type: 'weather_alert',
+                    file: path.basename(filePath),
+                    timestamp: Date.now()
+                });
+
+                // Intentar con paplay sin especificar dispositivo para usar el default
+                const paplay = spawn('paplay', ['--volume=65536', filePath]);
+                let paplayTimeout = null;
+                let stderr = '';
+
+                // Capturar stderr para diagnóstico
+                paplay.stderr.on('data', (data) => {
+                    stderr += data.toString();
+                });
+
+                // Timeout dinámico para alertas meteorológicas (basado en tamaño del archivo)
+                let timeoutDuration = 120000; // 2 minutos por defecto
+
+                try {
+                    const stats = fs.statSync(filePath);
+                    const fileSizeMB = stats.size / (1024 * 1024);
+                    // Calcular timeout: 30s por cada MB + 90s base (máximo 5 minutos)
+                    timeoutDuration = Math.min(90000 + (fileSizeMB * 30000), 300000);
+                    this.logger.debug(`Timeout calculado: ${timeoutDuration}ms para archivo de ${fileSizeMB.toFixed(2)}MB`);
+                } catch (error) {
+                    this.logger.debug('No se pudo calcular tamaño de archivo, usando timeout por defecto');
+                }
+
+                paplayTimeout = setTimeout(() => {
+                    if (!paplay.killed) {
+                        this.logger.warn(`Timeout de ${timeoutDuration}ms alcanzado para alerta meteorológica`);
+                        paplay.kill('SIGTERM');
+
+                        // SIMPLEX: Reanudar escucha después de timeout
+                        if (wasRecording && !this.isRecording) {
+                            setTimeout(() => {
+                                this.resumeRecording();
+                                this.logger.debug('SIMPLEX: Escucha reanudada post-timeout alerta');
+                            }, 100);
+                        }
+
+                        reject(new Error(`paplay timeout (${timeoutDuration}ms) para alerta meteorológica`));
                     }
+                }, timeoutDuration);
 
-                    // Emitir evento de transmisión terminada
-                    this.emit('transmission_ended', {
-                        type: 'weather_alert',
-                        file: path.basename(filePath),
-                        timestamp: Date.now()
-                    });
+                paplay.on('close', async (code) => {
+                    if (paplayTimeout) {clearTimeout(paplayTimeout);}
 
-                    this.logger.debug(`paplay para alerta meteorológica completado exitosamente (timeout era ${timeoutDuration}ms)`);
-                    resolve();
-                } else {
-                    // paplay falló, intentar con aplay como fallback
-                    let errorMsg = `paplay para alerta meteorológica falló con código ${code}`;
-                    if (stderr.trim()) {
-                        errorMsg += `: ${stderr.trim()}`;
-                    }
-                    this.logger.warn(errorMsg);
-                    this.logger.info('Intentando reproducir con aplay (fallback)...');
-
-                    try {
-                        // Calcular duración estimada del archivo para timeout de aplay
-                        // Para MP3: ~1KB por segundo de audio aproximadamente
-                        // Para WAV: depende del bitrate, asumimos 128kbps = 16KB/s
-                        const stats = fs.statSync(filePath);
-                        const fileSizeKB = stats.size / 1024;
-                        const isMP3 = filePath.endsWith('.mp3');
-                        const estimatedSeconds = isMP3 ? fileSizeKB : (fileSizeKB / 16);
-                        const estimatedDuration = Math.max(5000, estimatedSeconds * 1000);
-
-                        this.logger.debug(`Estimando duración de ${fileSizeKB.toFixed(1)}KB: ~${estimatedSeconds.toFixed(1)}s`);
-
-                        await this.playWithAplay(filePath, estimatedDuration);
-
+                    if (code === 0) {
                         // SIMPLEX: Reanudar escucha después de transmisión
                         if (wasRecording && !this.isRecording) {
                             setTimeout(() => {
                                 this.resumeRecording();
-                                this.logger.debug('SIMPLEX: Escucha reanudada post-alerta meteorológica (aplay)');
-                            }, 100);
+                                this.logger.debug('SIMPLEX: Escucha reanudada post-alerta meteorológica');
+                            }, 100); // 100ms delay
                         }
 
                         // Emitir evento de transmisión terminada
@@ -982,37 +973,81 @@ class AudioManager extends EventEmitter {
                             timestamp: Date.now()
                         });
 
-                        this.logger.info('Alerta meteorológica reproducida exitosamente con aplay');
+                        this.logger.debug(`paplay para alerta meteorológica completado exitosamente (timeout era ${timeoutDuration}ms)`);
                         resolve();
-                    } catch (aplayError) {
-                        // SIMPLEX: Reanudar escucha después de error
-                        if (wasRecording && !this.isRecording) {
-                            setTimeout(() => {
-                                this.resumeRecording();
-                                this.logger.debug('SIMPLEX: Escucha reanudada post-error alerta');
-                            }, 100);
+                    } else {
+                        // paplay falló, intentar con aplay como fallback
+                        let errorMsg = `paplay para alerta meteorológica falló con código ${code}`;
+                        if (stderr.trim()) {
+                            errorMsg += `: ${stderr.trim()}`;
                         }
+                        this.logger.warn(errorMsg);
+                        this.logger.info('Intentando reproducir con aplay (fallback)...');
 
-                        this.logger.error(`Aplay también falló: ${aplayError.message}`);
-                        reject(new Error(`Falló paplay y aplay: ${errorMsg}`));
+                        try {
+                            // Calcular duración estimada del archivo para timeout de aplay
+                            // Para MP3: ~1KB por segundo de audio aproximadamente
+                            // Para WAV: depende del bitrate, asumimos 128kbps = 16KB/s
+                            const stats = fs.statSync(filePath);
+                            const fileSizeKB = stats.size / 1024;
+                            const isMP3 = filePath.endsWith('.mp3');
+                            const estimatedSeconds = isMP3 ? fileSizeKB : (fileSizeKB / 16);
+                            const estimatedDuration = Math.max(5000, estimatedSeconds * 1000);
+
+                            this.logger.debug(`Estimando duración de ${fileSizeKB.toFixed(1)}KB: ~${estimatedSeconds.toFixed(1)}s`);
+
+                            await this.playWithAplay(filePath, estimatedDuration);
+
+                            // SIMPLEX: Reanudar escucha después de transmisión
+                            if (wasRecording && !this.isRecording) {
+                                setTimeout(() => {
+                                    this.resumeRecording();
+                                    this.logger.debug('SIMPLEX: Escucha reanudada post-alerta meteorológica (aplay)');
+                                }, 100);
+                            }
+
+                            // Emitir evento de transmisión terminada
+                            this.emit('transmission_ended', {
+                                type: 'weather_alert',
+                                file: path.basename(filePath),
+                                timestamp: Date.now()
+                            });
+
+                            this.logger.info('Alerta meteorológica reproducida exitosamente con aplay');
+                            resolve();
+                        } catch (aplayError) {
+                            // SIMPLEX: Reanudar escucha después de error
+                            if (wasRecording && !this.isRecording) {
+                                setTimeout(() => {
+                                    this.resumeRecording();
+                                    this.logger.debug('SIMPLEX: Escucha reanudada post-error alerta');
+                                }, 100);
+                            }
+
+                            this.logger.error(`Aplay también falló: ${aplayError.message}`);
+                            reject(new Error(`Falló paplay y aplay: ${errorMsg}`));
+                        }
                     }
-                }
+                });
+
+                paplay.on('error', (err) => {
+                    if (paplayTimeout) {clearTimeout(paplayTimeout);}
+
+                    // SIMPLEX: Reanudar escucha después de error
+                    if (wasRecording && !this.isRecording) {
+                        setTimeout(() => {
+                            this.resumeRecording();
+                            this.logger.debug('SIMPLEX: Escucha reanudada post-error alerta');
+                        }, 100);
+                    }
+
+                    reject(err);
+                });
             });
-            
-            paplay.on('error', (err) => {
-                if (paplayTimeout) {clearTimeout(paplayTimeout);}
-                
-                // SIMPLEX: Reanudar escucha después de error
-                if (wasRecording && !this.isRecording) {
-                    setTimeout(() => {
-                        this.resumeRecording();
-                        this.logger.debug('SIMPLEX: Escucha reanudada post-error alerta');
-                    }, 100);
-                }
-                
-                reject(err);
-            });
-        });
+        } finally {
+            this.isTransmittingNow = false;
+            this.logger.debug('CHANNEL_LOCK: playWeatherAlertWithPaplay liberado');
+        }
     }
 
     /**
@@ -1413,15 +1448,19 @@ class AudioManager extends EventEmitter {
     }
 
     isSafeToTransmit() {
-        // Seguro transmitir solo si no hay actividad de entrada ni transmisión en curso
-        return !this.channelActivity.isActive && 
-               !this.isProcessingAudio && 
-               this.audioQueue.length === 0;
+        const safe = !this.channelActivity.isActive &&
+                     !this.isProcessingAudio &&
+                     !this.isTransmittingNow &&
+                     this.audioQueue.length === 0;
+
+        if (!safe) {
+            this.logger.debug(`isSafeToTransmit: false (active=${this.channelActivity.isActive}, processing=${this.isProcessingAudio}, transmitting=${this.isTransmittingNow}, queue=${this.audioQueue.length})`);
+        }
+        return safe;
     }
 
     isTransmitting() {
-        // Verificar si está transmitiendo (procesando audio o hay elementos en cola)
-        return this.isProcessingAudio || this.audioQueue.length > 0;
+        return this.isProcessingAudio || this.isTransmittingNow || this.audioQueue.length > 0;
     }
 
     // ===== DEBUG AUDIO =====
@@ -1637,6 +1676,7 @@ class AudioManager extends EventEmitter {
         // Determinar si el canal está ocupado (entrada O transmisión)
         const isChannelBusy = this.channelActivity.isActive ||
                              this.isProcessingAudio ||
+                             this.isTransmittingNow ||
                              this.audioQueue.length > 0;
 
         return {
@@ -1644,6 +1684,7 @@ class AudioManager extends EventEmitter {
                 captureAvailable: this.captureAvailable,
                 isRecording: this.isRecording,
                 isProcessingAudio: this.isProcessingAudio,
+                isTransmittingNow: this.isTransmittingNow,
                 audioQueueLength: this.audioQueue.length,
                 status: this.isRecording ? 'active' : (this.captureAvailable ? 'ready' : 'output-only')
             },
@@ -1653,7 +1694,7 @@ class AudioManager extends EventEmitter {
                 threshold: this.channelActivity.threshold,
                 busy: isChannelBusy,
                 inputActivity: this.channelActivity.isActive,
-                transmitting: this.isProcessingAudio || this.audioQueue.length > 0,
+                transmitting: this.isProcessingAudio || this.isTransmittingNow || this.audioQueue.length > 0,
                 dtmfEnabled: this.captureAvailable
             },
             rogerBeep: this.rogerBeep ? this.rogerBeep.getStatus() : { enabled: false }
@@ -1997,10 +2038,11 @@ class AudioManager extends EventEmitter {
         
         // Limpiar cola de audio
         this.clearAudioQueue();
-        
+
         // Limpiar referencias
         this.dtmfBuffer = '';
         this.channelActivity.isActive = false;
+        this.isTransmittingNow = false;
         
         // Remover listeners
         this.removeAllListeners();
