@@ -61,8 +61,10 @@ class AutoUpdater extends EventEmitter {
             lastUpdate: null
         };
 
-        // Timers
+        // Timers (guardar referencias para cleanup)
         this.checkTimer = null;
+        this.initialCheckTimer = null;
+        this.autoInstallTimer = null;
 
         this.logger.info(`Auto-updater inicializado - Versión actual: ${this.updateStatus.currentVersion}`);
         if (!this.config.enabled) {
@@ -104,8 +106,11 @@ class AutoUpdater extends EventEmitter {
         this.logger.info(`Auto-updater iniciado - Verificación cada ${Math.round(this.config.checkInterval / 1000 / 60)} minutos`);
         this.logger.info(`Repositorio: ${this.config.github.owner}/${this.config.github.repo}`);
 
-        // Primera verificación inmediata
-        setTimeout(() => this.checkForUpdates(), 30000); // 30 segundos después del arranque
+        // Primera verificación después de 30 segundos (guardar referencia para cleanup)
+        this.initialCheckTimer = setTimeout(() => {
+            this.initialCheckTimer = null; // Limpiar referencia después de ejecutar
+            this.checkForUpdates();
+        }, 30000);
 
         // Programar verificaciones periódicas
         this.checkTimer = setInterval(() => {
@@ -119,9 +124,22 @@ class AutoUpdater extends EventEmitter {
      * Detener sistema de auto-update
      */
     stop() {
+        // Limpiar timer de verificación inicial
+        if (this.initialCheckTimer) {
+            clearTimeout(this.initialCheckTimer);
+            this.initialCheckTimer = null;
+        }
+
+        // Limpiar timer de verificación periódica
         if (this.checkTimer) {
             clearInterval(this.checkTimer);
             this.checkTimer = null;
+        }
+
+        // Limpiar timer de auto-instalación
+        if (this.autoInstallTimer) {
+            clearTimeout(this.autoInstallTimer);
+            this.autoInstallTimer = null;
         }
 
         this.state = MODULE_STATES.IDLE;
@@ -183,7 +201,11 @@ class AutoUpdater extends EventEmitter {
                 // Auto-instalar si está habilitado
                 if (this.config.autoInstall) {
                     this.logger.info('Auto-instalación habilitada, descargando actualización...');
-                    setTimeout(() => this.downloadAndInstall(release), 5000);
+                    // Guardar referencia para poder cancelar si se detiene el módulo
+                    this.autoInstallTimer = setTimeout(() => {
+                        this.autoInstallTimer = null;
+                        this.downloadAndInstall(release);
+                    }, 5000);
                 }
 
                 return release;

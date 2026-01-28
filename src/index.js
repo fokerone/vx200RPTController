@@ -31,7 +31,13 @@ class VX200Controller {
         this.isRunning = false;
         this.startTime = Date.now();
         this.initializationErrors = [];
-        
+
+        // Referencias a event handlers para poder limpiarlos en stop()
+        this.boundHandlers = {
+            audio: {},
+            modules: {}
+        };
+
         this.logger.debug('Constructor completado, inicialización pendiente...');
     }
     
@@ -289,23 +295,24 @@ class VX200Controller {
     }
 
     setupEventHandlers() {
-        this.audio.on('dtmf', async (sequence) => {
+        // Crear handlers con referencias para poder limpiarlos después
+        this.boundHandlers.audio.dtmf = async (sequence) => {
             await this.handleDTMF(sequence);
-        });
+        };
 
-        this.audio.on('channel_active', (data) => {
+        this.boundHandlers.audio.channel_active = (data) => {
             // Channel activity logged
-        });
+        };
 
-        this.audio.on('channel_inactive', (data) => {
+        this.boundHandlers.audio.channel_inactive = (data) => {
             // Channel inactive logged
-        });
+        };
 
-        this.audio.on('signal_level', (data) => {
+        this.boundHandlers.audio.signal_level = (data) => {
             // Signal level logged
-        });
+        };
 
-        this.audio.on('transmission_started', (data) => {
+        this.boundHandlers.audio.transmission_started = (data) => {
             this.logger.debug('Transmisión iniciada:', data);
 
             // Update display
@@ -333,9 +340,9 @@ class VX200Controller {
                     transmissionType: txType
                 });
             }
-        });
+        };
 
-        this.audio.on('transmission_ended', (data) => {
+        this.boundHandlers.audio.transmission_ended = (data) => {
             this.logger.debug('Transmisión terminada:', data);
 
             // Update display
@@ -344,17 +351,26 @@ class VX200Controller {
                     isTransmitting: false
                 });
             }
-        });
+        };
+
+        // Registrar handlers de audio
+        this.audio.on('dtmf', this.boundHandlers.audio.dtmf);
+        this.audio.on('channel_active', this.boundHandlers.audio.channel_active);
+        this.audio.on('channel_inactive', this.boundHandlers.audio.channel_inactive);
+        this.audio.on('signal_level', this.boundHandlers.audio.signal_level);
+        this.audio.on('transmission_started', this.boundHandlers.audio.transmission_started);
+        this.audio.on('transmission_ended', this.boundHandlers.audio.transmission_ended);
 
         this.setupEvents();
     }
 
     setupEvents() {
-        this.modules.baliza.on('transmitted', (data) => {
+        // Crear handlers con referencias para módulos
+        this.boundHandlers.modules.baliza_transmitted = (data) => {
             this.logger.debug('Baliza transmitida:', data);
-        });
+        };
 
-        this.modules.aprs.on('position_received', (position) => {
+        this.boundHandlers.modules.aprs_position_received = (position) => {
             this.logger.info(`APRS Position: ${position.callsign} at ${position.lat},${position.lon}`);
 
             // Update display
@@ -363,9 +379,9 @@ class VX200Controller {
                     packetsReceived: this.modules.aprs.stats.positionsReceived
                 });
             }
-        });
+        };
 
-        this.modules.aprs.on('beacon_sent', (beacon) => {
+        this.boundHandlers.modules.aprs_beacon_sent = (beacon) => {
             this.logger.info('APRS Beacon sent:', beacon);
 
             // Update display
@@ -377,21 +393,21 @@ class VX200Controller {
                     lastBeacon: timeStr
                 });
             }
-        });
+        };
 
-        this.modules.aprs.on('tnc_connected', () => {
+        this.boundHandlers.modules.aprs_tnc_connected = () => {
             this.logger.info('APRS TNC connected');
-        });
+        };
 
-        this.modules.aprs.on('tnc_disconnected', () => {
+        this.boundHandlers.modules.aprs_tnc_disconnected = () => {
             this.logger.warn('APRS TNC disconnected');
-        });
+        };
 
-        this.modules.aprs.on('positions_updated', (data) => {
+        this.boundHandlers.modules.aprs_positions_updated = (data) => {
             this.logger.info(`APRS: ${data.newPositions} nuevas posiciones desde ${data.fromFile}`);
-        });
+        };
 
-        this.modules.inpres.on('seism_detected', (seism) => {
+        this.boundHandlers.modules.inpres_seism_detected = (seism) => {
             this.logger.info(`Sismo detectado: ${seism.magnitude} - ${seism.location}`);
 
             // Actualizar display con datos del sismo
@@ -405,15 +421,25 @@ class VX200Controller {
                     time: timeStr
                 });
             }
-        });
+        };
 
-        this.modules.inpres.on('seism_announced', (seism) => {
+        this.boundHandlers.modules.inpres_seism_announced = (seism) => {
             this.logger.info(`Sismo anunciado: ${seism.magnitude} - ${seism.location}`);
-        });
+        };
+
+        // Registrar handlers de módulos
+        this.modules.baliza.on('transmitted', this.boundHandlers.modules.baliza_transmitted);
+        this.modules.aprs.on('position_received', this.boundHandlers.modules.aprs_position_received);
+        this.modules.aprs.on('beacon_sent', this.boundHandlers.modules.aprs_beacon_sent);
+        this.modules.aprs.on('tnc_connected', this.boundHandlers.modules.aprs_tnc_connected);
+        this.modules.aprs.on('tnc_disconnected', this.boundHandlers.modules.aprs_tnc_disconnected);
+        this.modules.aprs.on('positions_updated', this.boundHandlers.modules.aprs_positions_updated);
+        this.modules.inpres.on('seism_detected', this.boundHandlers.modules.inpres_seism_detected);
+        this.modules.inpres.on('seism_announced', this.boundHandlers.modules.inpres_seism_announced);
 
         // Weather alerts events for display
         if (this.modules.weatherAlerts) {
-            this.modules.weatherAlerts.on('alert_announced', (data) => {
+            this.boundHandlers.modules.weatherAlerts_alert_announced = (data) => {
                 if (this.display) {
                     const activeAlerts = this.modules.weatherAlerts.getActiveAlerts();
                     this.display.updateWeatherData({
@@ -421,17 +447,80 @@ class VX200Controller {
                         lastAlert: data.title || 'Alerta meteorológica'
                     });
                 }
-            });
+            };
 
-            this.modules.weatherAlerts.on('alerts_cleared', () => {
+            this.boundHandlers.modules.weatherAlerts_alerts_cleared = () => {
                 if (this.display) {
                     this.display.updateWeatherData({
                         alertCount: 0,
                         lastAlert: null
                     });
                 }
+            };
+
+            this.modules.weatherAlerts.on('alert_announced', this.boundHandlers.modules.weatherAlerts_alert_announced);
+            this.modules.weatherAlerts.on('alerts_cleared', this.boundHandlers.modules.weatherAlerts_alerts_cleared);
+        }
+    }
+
+    /**
+     * Limpiar todos los event handlers para evitar memory leaks
+     * Se llama en stop() antes de detener los módulos
+     */
+    cleanupEventHandlers() {
+        this.logger.debug('Limpiando event handlers...');
+
+        // Limpiar handlers de audio
+        if (this.audio) {
+            Object.entries(this.boundHandlers.audio).forEach(([event, handler]) => {
+                this.audio.off(event, handler);
             });
         }
+
+        // Limpiar handlers de módulos
+        if (this.modules.baliza && this.boundHandlers.modules.baliza_transmitted) {
+            this.modules.baliza.off('transmitted', this.boundHandlers.modules.baliza_transmitted);
+        }
+
+        if (this.modules.aprs) {
+            if (this.boundHandlers.modules.aprs_position_received) {
+                this.modules.aprs.off('position_received', this.boundHandlers.modules.aprs_position_received);
+            }
+            if (this.boundHandlers.modules.aprs_beacon_sent) {
+                this.modules.aprs.off('beacon_sent', this.boundHandlers.modules.aprs_beacon_sent);
+            }
+            if (this.boundHandlers.modules.aprs_tnc_connected) {
+                this.modules.aprs.off('tnc_connected', this.boundHandlers.modules.aprs_tnc_connected);
+            }
+            if (this.boundHandlers.modules.aprs_tnc_disconnected) {
+                this.modules.aprs.off('tnc_disconnected', this.boundHandlers.modules.aprs_tnc_disconnected);
+            }
+            if (this.boundHandlers.modules.aprs_positions_updated) {
+                this.modules.aprs.off('positions_updated', this.boundHandlers.modules.aprs_positions_updated);
+            }
+        }
+
+        if (this.modules.inpres) {
+            if (this.boundHandlers.modules.inpres_seism_detected) {
+                this.modules.inpres.off('seism_detected', this.boundHandlers.modules.inpres_seism_detected);
+            }
+            if (this.boundHandlers.modules.inpres_seism_announced) {
+                this.modules.inpres.off('seism_announced', this.boundHandlers.modules.inpres_seism_announced);
+            }
+        }
+
+        if (this.modules.weatherAlerts) {
+            if (this.boundHandlers.modules.weatherAlerts_alert_announced) {
+                this.modules.weatherAlerts.off('alert_announced', this.boundHandlers.modules.weatherAlerts_alert_announced);
+            }
+            if (this.boundHandlers.modules.weatherAlerts_alerts_cleared) {
+                this.modules.weatherAlerts.off('alerts_cleared', this.boundHandlers.modules.weatherAlerts_alerts_cleared);
+            }
+        }
+
+        // Resetear referencias
+        this.boundHandlers = { audio: {}, modules: {} };
+        this.logger.debug('Event handlers limpiados');
     }
 
 
@@ -649,6 +738,9 @@ class VX200Controller {
         this.systemOutput.printShutdown();
 
         this.isRunning = false;
+
+        // Limpiar event handlers PRIMERO para evitar callbacks durante shutdown
+        this.cleanupEventHandlers();
 
         if (this.display) {
             this.display.stop();

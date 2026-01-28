@@ -42,6 +42,13 @@ class APRS extends EventEmitter {
         // Base de datos de posiciones recibidas (callsign -> array de posiciones históricas)
         this.receivedPositions = new Map();
         this.logFile = path.join(__dirname, '../../logs/aprs-positions.json');
+
+        // Límites de memoria para evitar crecimiento indefinido
+        this.memoryLimits = {
+            maxPositionsPerCallsign: 100,  // Máximo 100 posiciones históricas por estación
+            maxTotalStations: 1000,        // Máximo 1000 estaciones en memoria
+            cleanupThreshold: 0.9          // Limpiar cuando se alcance 90% del límite
+        };
         
         // Conexión TNC
         this.tncConnection = null;
@@ -50,7 +57,16 @@ class APRS extends EventEmitter {
         // Timers
         this.beaconTimer = null;
         this.logMonitorTimer = null;
-        
+        this.initialBeaconTimer = null;
+
+        // Socket KISS (inicializar en null)
+        this.kissSocket = null;
+
+        // Reconexión automática
+        this.reconnectTimer = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 10;
+
         // Control de archivos de log procesados
         this.processedLogFiles = new Set();
         this.lastLogCheck = Date.now();
@@ -110,57 +126,119 @@ class APRS extends EventEmitter {
     }
 
     /**
-     * Inicializar conexión KISS TNC con TCP directo (temporal debug)
+     * Limpiar socket KISS existente antes de reconexión
+     */
+    cleanupKISSSocket() {
+        if (this.kissSocket) {
+            // Remover todos los listeners para evitar duplicados
+            this.kissSocket.removeAllListeners();
+
+            // Destruir socket si no está ya destruido
+            if (!this.kissSocket.destroyed) {
+                this.kissSocket.destroy();
+            }
+
+            this.kissSocket = null;
+        }
+    }
+
+    /**
+     * Inicializar conexión KISS TNC con TCP directo
      */
     async initializeKISSConnection() {
         try {
+            // Limpiar socket existente si hay uno (evita listeners duplicados)
+            this.cleanupKISSSocket();
+
             const net = require('net');
-            
+
             // Crear conexión TCP directa al puerto KISS
             this.kissSocket = new net.Socket();
             this.kissSocket.setTimeout(0); // Sin timeout
-            
+
             this.kissSocket.on('connect', () => {
-                this.logger.info('🔗 Conectado a Direwolf KISS TNC (TCP directo)');
+                this.logger.info('Conectado a Direwolf KISS TNC (TCP directo)');
                 this.tncConnection = true;
+                this.reconnectAttempts = 0; // Reset contador de reconexiones
                 this.emit('tnc_connected');
             });
-            
+
             this.kissSocket.on('close', () => {
                 this.logger.warn('Desconectado de Direwolf KISS TNC');
                 this.tncConnection = false;
                 this.emit('tnc_disconnected');
+
+                // Intentar reconexión automática si el módulo sigue activo
+                if (this.isRunning) {
+                    this.scheduleReconnect();
+                }
             });
-            
+
             this.kissSocket.on('data', (data) => {
                 this.logger.info('Datos KISS recibidos:', data.length, 'bytes, hex:', data.toString('hex').substring(0, 100));
-                
+
                 // Si recibimos datos, significa que estamos conectados
                 if (!this.tncConnection) {
                     this.logger.info('Conexión TNC detectada por recepción de datos');
                     this.tncConnection = true;
+                    this.reconnectAttempts = 0;
                     this.emit('tnc_connected');
                 }
-                
+
                 // Procesar frame KISS (remover header KISS y procesar AX.25)
                 this.handleKISSFrame(data);
             });
-            
+
             this.kissSocket.on('error', (error) => {
                 this.logger.error('Error en conexión KISS TCP:', error.message);
                 this.tncConnection = false;
-                this.emit('tnc_disconnected');
+                // No emitir tnc_disconnected aquí, se emite en 'close'
             });
-            
+
             // Conectar al puerto KISS
             this.kissSocket.connect(this.config.direwolf.kissPort, 'localhost');
-            
+
             this.logger.info('Socket KISS TCP configurado para puerto', this.config.direwolf.kissPort);
-            
+
         } catch (error) {
             this.logger.error('Error configurando conexión KISS:', error.message);
             throw error;
         }
+    }
+
+    /**
+     * Programar reconexión automática con backoff exponencial
+     */
+    scheduleReconnect() {
+        // Limpiar timer de reconexión existente
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+
+        this.reconnectAttempts++;
+
+        if (this.reconnectAttempts > this.maxReconnectAttempts) {
+            this.logger.error(`Máximo de intentos de reconexión alcanzado (${this.maxReconnectAttempts})`);
+            return;
+        }
+
+        // Backoff exponencial: 1s, 2s, 4s, 8s, 16s, 32s, 60s max
+        const baseDelay = 1000;
+        const delay = Math.min(baseDelay * Math.pow(2, this.reconnectAttempts - 1), 60000);
+
+        this.logger.info(`Reconexión TNC programada en ${delay / 1000}s (intento ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+        this.reconnectTimer = setTimeout(async () => {
+            this.reconnectTimer = null;
+            try {
+                await this.initializeKISSConnection();
+                this.logger.info('Reconexión TNC exitosa');
+            } catch (error) {
+                this.logger.error('Reconexión TNC fallida:', error.message);
+                // scheduleReconnect se llamará desde el evento 'close' del socket
+            }
+        }, delay);
     }
 
     /**
@@ -1445,14 +1523,23 @@ class APRS extends EventEmitter {
         const offset = this.config.beacon.offset || 0; // offset para evitar colisiones
 
         // Enviar primer beacon después del offset
-        setTimeout(async () => {
-            await this.sendBeaconSafe();
-            
+        this.initialBeaconTimer = setTimeout(async () => {
+            this.initialBeaconTimer = null;
+            try {
+                await this.sendBeaconSafe();
+            } catch (error) {
+                this.logger.error('Error en beacon inicial:', error.message);
+            }
+
             // Luego enviar cada intervalo
             this.beaconTimer = setInterval(async () => {
-                await this.sendBeaconSafe();
+                try {
+                    await this.sendBeaconSafe();
+                } catch (error) {
+                    this.logger.error('Error en beacon periódico:', error.message);
+                }
             }, interval);
-            
+
         }, offset);
 
         // Iniciar monitoreo de archivos de log
@@ -1474,7 +1561,11 @@ class APRS extends EventEmitter {
         const monitorInterval = 2 * 60 * 1000; // 2 minutos
         
         this.logMonitorTimer = setInterval(async () => {
-            await this.checkForNewLogFiles();
+            try {
+                await this.checkForNewLogFiles();
+            } catch (error) {
+                this.logger.error('Error en monitoreo de logs:', error.message);
+            }
         }, monitorInterval);
 
         this.logger.info('Monitoreo de logs activado: revisión cada 2 minutos');
@@ -1536,35 +1627,46 @@ class APRS extends EventEmitter {
         if (!this.isRunning) {
             return;
         }
-        
+
         try {
-            // Desconectar TNC (TCP directo)
-            if (this.kissSocket && !this.kissSocket.destroyed) {
-                this.kissSocket.end();
-                this.kissSocket.destroy();
+            // Marcar como no running PRIMERO para evitar reconexiones
+            this.isRunning = false;
+
+            // Limpiar timer de reconexión
+            if (this.reconnectTimer) {
+                clearTimeout(this.reconnectTimer);
+                this.reconnectTimer = null;
             }
-            
+
+            // Desconectar TNC usando cleanup seguro
+            this.cleanupKISSSocket();
+
             // Limpiar timers
+            if (this.initialBeaconTimer) {
+                clearTimeout(this.initialBeaconTimer);
+                this.initialBeaconTimer = null;
+            }
+
             if (this.beaconTimer) {
                 clearInterval(this.beaconTimer);
                 this.beaconTimer = null;
             }
-            
+
             if (this.logMonitorTimer) {
                 clearInterval(this.logMonitorTimer);
                 this.logMonitorTimer = null;
             }
-            
+
             if (this.cleanupTimer) {
                 clearInterval(this.cleanupTimer);
                 this.cleanupTimer = null;
             }
-            
-            this.isRunning = false;
+
             this.tncConnection = false;
-            
+            this.reconnectAttempts = 0;
+
             this.logger.info('Sistema APRS detenido');
-            
+
         } catch (error) {
             this.logger.error('Error deteniendo APRS:', error.message);
         }
@@ -1712,12 +1814,74 @@ class APRS extends EventEmitter {
     }
 
     /**
+     * Aplicar límites de memoria para evitar crecimiento indefinido
+     * Se llama automáticamente después de agregar nuevas posiciones
+     */
+    enforceMemoryLimits() {
+        const { maxPositionsPerCallsign, maxTotalStations, cleanupThreshold } = this.memoryLimits;
+        let totalRemoved = 0;
+
+        // 1. Limitar posiciones por callsign
+        for (const [callsign, positions] of this.receivedPositions.entries()) {
+            if (Array.isArray(positions) && positions.length > maxPositionsPerCallsign) {
+                // Ordenar por timestamp/lastHeard (más recientes primero)
+                positions.sort((a, b) => {
+                    const timeA = a.lastHeard?.getTime?.() || a.timestamp || 0;
+                    const timeB = b.lastHeard?.getTime?.() || b.timestamp || 0;
+                    return timeB - timeA;
+                });
+
+                // Mantener solo las más recientes
+                const removed = positions.length - maxPositionsPerCallsign;
+                positions.splice(maxPositionsPerCallsign);
+                this.receivedPositions.set(callsign, positions);
+                totalRemoved += removed;
+            }
+        }
+
+        // 2. Limitar número total de estaciones
+        if (this.receivedPositions.size > maxTotalStations * cleanupThreshold) {
+            // Crear lista de estaciones con su última actividad
+            const stationsWithActivity = [];
+            for (const [callsign, positions] of this.receivedPositions.entries()) {
+                let lastActivity = 0;
+                if (Array.isArray(positions) && positions.length > 0) {
+                    const lastPos = positions[positions.length - 1];
+                    lastActivity = lastPos.lastHeard?.getTime?.() || lastPos.timestamp || 0;
+                }
+                stationsWithActivity.push({ callsign, lastActivity });
+            }
+
+            // Ordenar por última actividad (más antiguas primero)
+            stationsWithActivity.sort((a, b) => a.lastActivity - b.lastActivity);
+
+            // Eliminar el 10% más antiguo
+            const toRemove = Math.floor(maxTotalStations * 0.1);
+            const stationsToRemove = stationsWithActivity.slice(0, toRemove);
+
+            for (const station of stationsToRemove) {
+                this.receivedPositions.delete(station.callsign);
+                totalRemoved++;
+            }
+
+            if (stationsToRemove.length > 0) {
+                this.logger.info(`Límites de memoria: eliminadas ${stationsToRemove.length} estaciones antiguas`);
+            }
+        }
+
+        if (totalRemoved > 0) {
+            this.logger.debug(`Memoria APRS: ${totalRemoved} posiciones/estaciones eliminadas para mantener límites`);
+        }
+    }
+
+    /**
      * Programar limpieza automática
      */
     scheduleCleanup() {
         // Limpiar cada 6 horas
         this.cleanupTimer = setInterval(() => {
             this.cleanupOldPositions();
+            this.enforceMemoryLimits();
         }, 6 * 60 * 60 * 1000);
     }
 

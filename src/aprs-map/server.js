@@ -15,9 +15,23 @@ class APRSMapServer {
         this.rateLimiter = new Map();
         this.rateLimitWindow = 60000; // 1 minuto
         this.rateLimitMax = 100;
-        
+
+        // Timer para limpiar rate limiter (guardar referencia para cleanup)
+        this.rateLimiterCleanupTimer = null;
+    }
+
+    /**
+     * Iniciar timer de limpieza del rate limiter
+     * Se llama en start() para evitar timers huérfanos
+     */
+    startRateLimiterCleanup() {
+        // Limpiar timer existente si hay uno
+        if (this.rateLimiterCleanupTimer) {
+            clearInterval(this.rateLimiterCleanupTimer);
+        }
+
         // Limpiar rate limiter cada 5 minutos
-        setInterval(() => {
+        this.rateLimiterCleanupTimer = setInterval(() => {
             this.rateLimiter.clear();
         }, 5 * 60000);
     }
@@ -39,12 +53,25 @@ class APRSMapServer {
             this.server.listen(this.port, '0.0.0.0', () => {
                 this.logger.info(`APRS Map server running on http://localhost:${this.port}`);
                 this.isRunning = true;
+
+                // Iniciar timer de limpieza del rate limiter
+                this.startRateLimiterCleanup();
+
                 resolve();
             });
         });
     }
 
     stop() {
+        // Limpiar timer del rate limiter PRIMERO
+        if (this.rateLimiterCleanupTimer) {
+            clearInterval(this.rateLimiterCleanupTimer);
+            this.rateLimiterCleanupTimer = null;
+        }
+
+        // Limpiar el Map del rate limiter
+        this.rateLimiter.clear();
+
         if (this.server) {
             this.server.close();
             this.isRunning = false;

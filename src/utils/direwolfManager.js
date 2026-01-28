@@ -14,7 +14,18 @@ class DirewolfManager {
         this.isRunning = false;
         this.configPath = path.join(__dirname, '../../config/direwolf.conf');
         this.logPath = path.join(__dirname, '../../logs/direwolf.log');
-        
+
+        // Referencias a handlers para poder limpiarlos (evitar memory leaks)
+        this.processHandlers = {
+            stdout: null,
+            stderr: null,
+            close: null,
+            error: null
+        };
+
+        // Timer para forzar kill (guardar referencia)
+        this.forceKillTimer = null;
+
         // Configuración desde ConfigManager
         const { Config } = require('../config');
         this.config = {
@@ -131,32 +142,37 @@ TXTAIL 1
                 detached: false
             });
 
-            // Manejar eventos del proceso
-            this.process.stdout.on('data', (data) => {
+            // Crear handlers con referencias para poder limpiarlos después
+            this.processHandlers.stdout = (data) => {
                 const output = data.toString().trim();
                 if (output) {
                     this.logger.info('Direwolf stdout:', output);
                 }
-            });
+            };
 
-            this.process.stderr.on('data', (data) => {
+            this.processHandlers.stderr = (data) => {
                 const output = data.toString().trim();
                 if (output && !output.includes('DNS-SD: Avahi')) {
                     this.logger.warn('Direwolf stderr:', output);
                 }
-            });
+            };
 
-            this.process.on('close', (code) => {
+            this.processHandlers.close = (code) => {
                 this.logger.info(`Direwolf terminado con código: ${code}`);
                 this.isRunning = false;
-                this.process = null;
-            });
+                // No null-ear process aquí, se hace en cleanupProcess()
+            };
 
-            this.process.on('error', (error) => {
+            this.processHandlers.error = (error) => {
                 this.logger.error('Error en proceso Direwolf:', error.message);
                 this.isRunning = false;
-                this.process = null;
-            });
+            };
+
+            // Registrar handlers
+            this.process.stdout.on('data', this.processHandlers.stdout);
+            this.process.stderr.on('data', this.processHandlers.stderr);
+            this.process.on('close', this.processHandlers.close);
+            this.process.on('error', this.processHandlers.error);
 
             // Esperar un momento para que se inicie
             await new Promise(resolve => setTimeout(resolve, 3000));
@@ -176,6 +192,43 @@ TXTAIL 1
     }
 
     /**
+     * Limpiar proceso y handlers
+     */
+    cleanupProcess() {
+        // Limpiar timer de force kill si existe
+        if (this.forceKillTimer) {
+            clearTimeout(this.forceKillTimer);
+            this.forceKillTimer = null;
+        }
+
+        // Remover listeners del proceso para evitar memory leaks
+        if (this.process) {
+            if (this.processHandlers.stdout) {
+                this.process.stdout.removeListener('data', this.processHandlers.stdout);
+            }
+            if (this.processHandlers.stderr) {
+                this.process.stderr.removeListener('data', this.processHandlers.stderr);
+            }
+            if (this.processHandlers.close) {
+                this.process.removeListener('close', this.processHandlers.close);
+            }
+            if (this.processHandlers.error) {
+                this.process.removeListener('error', this.processHandlers.error);
+            }
+        }
+
+        // Resetear referencias
+        this.processHandlers = {
+            stdout: null,
+            stderr: null,
+            close: null,
+            error: null
+        };
+
+        this.process = null;
+    }
+
+    /**
      * Detener Direwolf
      */
     stop() {
@@ -186,21 +239,33 @@ TXTAIL 1
 
         try {
             this.logger.info('Deteniendo Direwolf TNC...');
-            
-            // Enviar SIGTERM
-            this.process.kill('SIGTERM');
-            
-            // Esperar un momento
-            setTimeout(() => {
-                if (this.process && !this.process.killed) {
-                    this.logger.warn('Forzando terminación de Direwolf...');
-                    this.process.kill('SIGKILL');
-                }
-            }, 5000);
+
+            // Guardar referencia al proceso antes de limpiar
+            const proc = this.process;
+
+            // Remover listeners ANTES de matar el proceso
+            this.cleanupProcess();
+
+            // Enviar SIGTERM al proceso
+            if (proc && !proc.killed) {
+                proc.kill('SIGTERM');
+
+                // Timeout para forzar kill si no termina
+                this.forceKillTimer = setTimeout(() => {
+                    this.forceKillTimer = null;
+                    if (proc && !proc.killed) {
+                        this.logger.warn('Forzando terminación de Direwolf...');
+                        try {
+                            proc.kill('SIGKILL');
+                        } catch (e) {
+                            // Ignorar errores al forzar kill
+                        }
+                    }
+                }, 5000);
+            }
 
             this.isRunning = false;
-            this.process = null;
-            
+
             this.logger.info('Direwolf TNC detenido');
             return true;
 

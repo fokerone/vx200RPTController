@@ -27,10 +27,11 @@ class Baliza extends EventEmitter {
         };
         
         this.timer = null;
+        this.syncTimer = null; // Timer de sincronización inicial (separado del timer recurrente)
         this.isRunning = false;
         this.lastTransmission = null;
         this.transmissionCount = 0;
-        
+
         this.validateConfiguration();
     }
 
@@ -135,15 +136,16 @@ class Baliza extends EventEmitter {
         
         this.logger.info('Baliza iniciada - Sincronizando con horas de reloj');
         this.logger.info(`Próxima baliza: ${nextHour.format('HH:mm:ss')} (en ${Math.round(timeToNextHour/1000/60)} minutos)`);
-        
-        // Programar primera baliza en la próxima hora en punto
-        setTimeout(() => {
+
+        // Programar primera baliza en la próxima hora en punto (guardar referencia para cleanup)
+        this.syncTimer = setTimeout(() => {
+            this.syncTimer = null; // Limpiar referencia después de ejecutar
             if (this.isRunning) {
                 this.transmit();
                 this.scheduleNext();
             }
         }, timeToNextHour);
-        
+
         this.emit('started', { 
             interval: this.config.interval,
             nextTransmission: nextHour.format('HH:mm:ss'),
@@ -156,11 +158,18 @@ class Baliza extends EventEmitter {
      * Detener baliza automática
      */
     stop() {
+        // Limpiar timer de sincronización inicial
+        if (this.syncTimer) {
+            clearTimeout(this.syncTimer);
+            this.syncTimer = null;
+        }
+
+        // Limpiar timer recurrente
         if (this.timer) {
             clearTimeout(this.timer);
             this.timer = null;
         }
-        
+
         const wasRunning = this.isRunning;
         this.isRunning = false;
         this.state = MODULE_STATES.IDLE;

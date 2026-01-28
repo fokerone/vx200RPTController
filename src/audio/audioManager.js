@@ -1150,9 +1150,24 @@ class AudioManager extends EventEmitter {
                 const paplay = spawn('paplay', ['--format=s16le', '--rate=44100', '--channels=1', '-']);
                 let completed = false;
                 
+                // Agregar error handlers para los streams antes del pipe
+                sox.stdout.on('error', (err) => {
+                    // EPIPE es esperado si paplay termina antes que sox
+                    if (err.code !== 'EPIPE') {
+                        this.logger.debug('Error en stdout de sox:', err.message);
+                    }
+                });
+
+                paplay.stdin.on('error', (err) => {
+                    // EPIPE es esperado cuando paplay termina antes que sox
+                    if (err.code !== 'EPIPE') {
+                        this.logger.debug('Error en stdin de paplay:', err.message);
+                    }
+                });
+
                 // Conectar sox output a paplay input
                 sox.stdout.pipe(paplay.stdin);
-                
+
                 const cleanup = () => {
                     if (!completed) {
                         completed = true;
@@ -1490,9 +1505,19 @@ class AudioManager extends EventEmitter {
 
                 const tempRecorder = recorder.record(recordingOptions);
                 const fileStream = fs.createWriteStream(filepath);
-                
-                tempRecorder.stream().pipe(fileStream);
-                
+
+                // Agregar error handlers para los streams
+                const recorderStream = tempRecorder.stream();
+                recorderStream.on('error', (err) => {
+                    this.logger.warn('Error en stream de grabación temporal:', err.message);
+                });
+
+                fileStream.on('error', (err) => {
+                    this.logger.warn('Error escribiendo archivo temporal:', err.message);
+                });
+
+                recorderStream.pipe(fileStream);
+
                 // Timeout para detener grabación
                 const recordingTimeout = setTimeout(() => {
                     try {
