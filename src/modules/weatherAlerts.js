@@ -631,26 +631,28 @@ class WeatherAlerts extends EventEmitter {
                 });
             }
 
-            // NUEVO: Anunciar clima actual después de las alertas
+            // Anunciar clima actual y pronóstico después de las alertas
             if (this.weatherModule) {
                 try {
-                    this.logger.info('Anunciando clima actual después de alertas...');
-                    await delay(1500); // Pausa de 1.5 segundos entre alerta y clima
+                    this.logger.info('Anunciando clima actual y pronóstico después de alertas...');
+                    await delay(1500);
 
-                    // Ejecutar comando de clima como si fuera *4
+                    // 1. Clima actual
                     await this.weatherModule.execute('*4');
 
-                    // IMPORTANTE: Esperar un momento adicional para que el AudioManager
-                    // termine completamente de procesar el audio y limpie el estado del canal
-                    await delay(2000); // 2 segundos de margen para limpieza completa
-                    this.logger.debug('Anuncio de clima completado, canal libre');
+                    // 2. Pronóstico del día
+                    await delay(1500);
+                    this.logger.info('Anunciando pronóstico del día...');
+                    await this.weatherModule.speakForecast24h();
+
+                    await delay(2000);
+                    this.logger.debug('Anuncio de clima y pronóstico completado, canal libre');
 
                 } catch (error) {
-                    this.logger.warn('Error anunciando clima después de alertas:', error.message);
-                    // No propagamos el error para que la alerta se complete aunque falle el clima
+                    this.logger.warn('Error anunciando clima/pronóstico después de alertas:', error.message);
                 }
             } else {
-                this.logger.debug('Módulo de clima no disponible, saltando anuncio de clima');
+                this.logger.debug('Módulo de clima no disponible, saltando anuncio');
             }
 
         } catch (error) {
