@@ -30,21 +30,17 @@ class WeatherAlerts extends EventEmitter {
             mainFeedUrl: 'https://ssl.smn.gob.ar/CAP/AR.php',
             shortTermFeedUrl: 'https://ssl.smn.gob.ar/feeds/avisocorto_GeoRSS.xml',
             
-            // Coordenadas de Mendoza para filtrado geográfico - Cobertura completa provincial
+            // Coordenadas del Gran Mendoza para filtrado geográfico
+            // Departamentos: Capital, Godoy Cruz, Guaymallén, Las Heras, Luján de Cuyo, Maipú
             mendozaRegion: {
-                // Límites completos de la provincia de Mendoza:
-                // Latitud: 32°00' a 37°35' Sur
-                // Longitud: 66°30' a 70°35' Oeste
                 bounds: {
-                    north: -32.0,    // 32° Sur (límite norte)
-                    south: -37.6,    // 37°35' Sur (límite sur) 
-                    west: -70.6,     // 70°35' Oeste (límite oeste)
-                    east: -66.5      // 66°30' Oeste (límite este)
+                    north: -32.60,   // Las Heras norte
+                    south: -33.35,   // Luján de Cuyo sur
+                    west: -69.15,    // Precordillera oeste
+                    east: -68.35     // Maipú/Guaymallén este
                 },
-                // Centro geográfico aproximado de la provincia
-                center: { lat: -34.8, lon: -68.5 },
-                // Radio de seguridad (no usado con bounds, pero mantenido para compatibilidad)
-                radius: 200 // km de radio de cobertura total
+                center: { lat: -32.89, lon: -68.83 },
+                radius: 40 // km de radio Gran Mendoza
             },
             
             // Timers
@@ -520,16 +516,13 @@ class WeatherAlerts extends EventEmitter {
     alertMentionsMendoza(alert) {
         const text = `${alert.title} ${alert.description}`.toLowerCase();
         const mendozaKeywords = [
-            // Términos específicos de Mendoza
-            'mendoza', 'cuyo', 'precordillera', 'cordillera mendocina',
-            'alta montaña mendoza', 'valle de uco', 'región cuyo',
-            // Términos geográficos generales que afectan Mendoza
-            'viento zonda', 'cordillera', 'alta montaña', 'montaña',
-            // Departamentos principales de Mendoza
+            // Términos generales
+            'mendoza', 'gran mendoza', 'cuyo',
+            // Fenómenos que afectan al Gran Mendoza
+            'viento zonda', 'precordillera',
+            // Departamentos del Gran Mendoza
             'godoy cruz', 'las heras', 'luján de cuyo', 'maipú',
-            'guaymallén', 'san rafael', 'general alvear', 'malargüe',
-            'tunuyán', 'tupungato', 'san martín', 'rivadavia',
-            'junín', 'santa rosa', 'la paz', 'lavalle'
+            'guaymallén', 'capital'
         ];
         
         return mendozaKeywords.some(keyword => text.includes(keyword));
