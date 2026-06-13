@@ -156,7 +156,7 @@ class WeatherWU {
      */
     async speakWithHybridVoice(text, options = {}) {
         try {
-            const audioFile = await this.voiceManager.generateSpeech(text, options);
+            const audioFile = await this.voiceManager.generateLongSpeech(text, options);
             await this.voiceManager.playAudio(audioFile);
 
             if (this.audioManager.rogerBeep && this.audioManager.rogerBeep.enabled) {
