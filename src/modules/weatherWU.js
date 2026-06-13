@@ -1,7 +1,9 @@
 const axios = require('axios');
+const fs = require('fs');
 const { delay, sanitizeTextForTTS } = require('../utils');
 const { createLogger } = require('../logging/Logger');
 const { MODULE_STATES } = require('../constants');
+const HybridVoiceManager = require('../audio/HybridVoiceManager');
 
 class WeatherWU {
     constructor(audioManager) {
@@ -16,6 +18,9 @@ class WeatherWU {
             cacheDuration: 600000, // 10 minutos en ms
             apiUrl: 'https://api.weather.com/v2/pws/observations/current'
         };
+
+        // Inicializar sistema hibrido de voz
+        this.voiceManager = new HybridVoiceManager(this.audioManager);
 
         // Cache para evitar llamadas excesivas a la API
         this.cache = {
@@ -114,7 +119,7 @@ class WeatherWU {
         await delay(300);
 
         // Construir mensaje
-        let mensaje = 'Clima actual en Las Heras. ';
+        let mensaje = 'Clima actual. ';
         mensaje += `Temperatura ${temperatura} grados, sensacion termica ${sensacion} grados. `;
         mensaje += `Humedad ${humedad} por ciento. `;
 
@@ -133,7 +138,7 @@ class WeatherWU {
         mensaje += 'Fuente: Estacion Meteorologica victor 6.';
 
         const mensajeLimpio = sanitizeTextForTTS(mensaje);
-        await this.audioManager.speak(mensajeLimpio, { voice: 'es' });
+        await this.speakWithHybridVoice(mensajeLimpio);
     }
 
     /**
@@ -143,7 +148,34 @@ class WeatherWU {
         await this.audioManager.playTone(400, 500, 0.8);
         await delay(300);
         const mensajeLimpio = sanitizeTextForTTS(mensaje);
-        await this.audioManager.speak(mensajeLimpio, { voice: 'es' });
+        await this.speakWithHybridVoice(mensajeLimpio);
+    }
+
+    /**
+     * Generar y reproducir voz usando sistema hibrido
+     */
+    async speakWithHybridVoice(text, options = {}) {
+        try {
+            const audioFile = await this.voiceManager.generateSpeech(text, options);
+            await this.voiceManager.playAudio(audioFile);
+
+            if (this.audioManager.rogerBeep && this.audioManager.rogerBeep.enabled) {
+                await this.audioManager.rogerBeep.executeAfterTransmission();
+            }
+
+            setTimeout(() => {
+                try {
+                    if (fs.existsSync(audioFile)) {
+                        fs.unlinkSync(audioFile);
+                    }
+                } catch (error) {
+                    this.logger.warn('Error eliminando archivo temporal:', error.message);
+                }
+            }, 30000);
+        } catch (error) {
+            this.logger.error('Error en speakWithHybridVoice:', error.message);
+            await this.audioManager.speak(text, options);
+        }
     }
 
     /**
@@ -206,6 +238,9 @@ class WeatherWU {
      */
     destroy() {
         this.clearCache();
+        if (this.voiceManager && typeof this.voiceManager.destroy === 'function') {
+            this.voiceManager.destroy();
+        }
         this.state = MODULE_STATES.DISABLED;
         this.logger.info('Modulo WeatherWU destruido');
     }
