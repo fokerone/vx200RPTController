@@ -74,7 +74,7 @@ class SystemOutput {
             '*9': 'baliza',
             '*3': 'inpres',
             '*4': 'weather',
-            '*5': 'weather-voice',
+            '*5': 'weather-wu',
             '*7': 'weather-alerts'
         };
         Object.entries(commands).forEach(([dtmf, module]) => {

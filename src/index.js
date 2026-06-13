@@ -2,6 +2,7 @@ const AudioManager = require('./audio/audioManager');
 const Baliza = require('./modules/baliza');
 const DateTime = require('./modules/datetime');
 const Weather = require('./modules/weather-voice');
+const WeatherWU = require('./modules/weatherWU');
 const WeatherAlerts = require('./modules/weatherAlerts');
 const InpresSismic = require('./modules/inpres');
 const APRS = require('./modules/aprs');
@@ -156,7 +157,8 @@ class VX200Controller {
         this.modules.baliza = new Baliza(this.audio);
         this.modules.datetime = new DateTime(this.audio);
         this.modules.weather = new Weather(this.audio);
-        
+        this.modules.weatherWU = new WeatherWU(this.audio);
+
         this.logger.info('Módulos básicos inicializados');
     }
 
@@ -529,7 +531,7 @@ class VX200Controller {
             '*1': { module: 'datetime', handler: () => this.modules.datetime.execute(sequence) },
             '*3': { module: 'inpres', handler: () => this.modules.inpres?.execute(sequence) },
             '*4': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
-            '*5': { module: 'weather', handler: () => this.modules.weather.execute(sequence) },
+            '*5': { module: 'weatherWU', handler: () => this.modules.weatherWU.execute(sequence) },
             '*7': { module: 'weatherAlerts', handler: () => this.modules.weatherAlerts?.execute(sequence) },
             '*0': { module: 'weatherAlerts', handler: () => this.modules.weatherAlerts?.execute(sequence) },
             '*9': { module: 'baliza', handler: () => this.modules.baliza.execute(sequence) }
