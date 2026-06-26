@@ -141,7 +141,7 @@ class VX200Controller {
                 // Esperar estabilización del TNC
                 await new Promise(resolve => setTimeout(resolve, 2000));
             } else {
-                this.logger.warn('Error iniciando Direwolf TNC');
+                this.logger.error('Error iniciando Direwolf TNC');
                 this.initializationErrors.push('Direwolf');
             }
         } catch (error) {
@@ -172,7 +172,7 @@ class VX200Controller {
             if (aprsInitialized) {
                 this.logger.info('Módulo APRS inicializado');
             } else {
-                this.logger.warn('Error inicializando módulo APRS');
+                this.logger.error('Error inicializando módulo APRS');
                 this.initializationErrors.push('APRS');
             }
         } catch (error) {
@@ -302,18 +302,6 @@ class VX200Controller {
             await this.handleDTMF(sequence);
         };
 
-        this.boundHandlers.audio.channel_active = (data) => {
-            // Channel activity logged
-        };
-
-        this.boundHandlers.audio.channel_inactive = (data) => {
-            // Channel inactive logged
-        };
-
-        this.boundHandlers.audio.signal_level = (data) => {
-            // Signal level logged
-        };
-
         this.boundHandlers.audio.transmission_started = (data) => {
             this.logger.debug('Transmisión iniciada:', data);
 
@@ -357,9 +345,6 @@ class VX200Controller {
 
         // Registrar handlers de audio
         this.audio.on('dtmf', this.boundHandlers.audio.dtmf);
-        this.audio.on('channel_active', this.boundHandlers.audio.channel_active);
-        this.audio.on('channel_inactive', this.boundHandlers.audio.channel_inactive);
-        this.audio.on('signal_level', this.boundHandlers.audio.signal_level);
         this.audio.on('transmission_started', this.boundHandlers.audio.transmission_started);
         this.audio.on('transmission_ended', this.boundHandlers.audio.transmission_ended);
 
@@ -541,18 +526,6 @@ class VX200Controller {
             const { module, handler } = commands[sequence];
             this.systemOutput.printDTMFDetected(sequence, module);
             await this.safeExecute(handler);
-        } else {
-            await this.handleUnknownCommand(sequence);
-        }
-    }
-
-    async handleUnknownCommand(sequence) {
-        try {
-            // Tono de confirmación deshabilitado para evitar retroalimentación
-            // que causa falsos positivos DTMF cuando operadores hablan
-            // await this.audio.playTone(400, 200, 0.5);
-        } catch (error) {
-            
         }
     }
 

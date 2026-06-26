@@ -27,7 +27,7 @@ class DirewolfManager {
         this.forceKillTimer = null;
 
         // Configuración desde ConfigManager
-        const { Config } = require('../config');
+        const { Config, getValue } = require('../config');
         this.config = {
             callsign: Config.aprs.callsign,
             location: Config.aprs.location,
@@ -39,6 +39,13 @@ class DirewolfManager {
             ports: {
                 kiss: Config.aprs.direwolf.kissPort,
                 agw: Config.aprs.direwolf.agwPort
+            },
+            protocol: {
+                txdelay: getValue('aprs.direwolf.protocol.txdelay', 60),
+                txtail: getValue('aprs.direwolf.protocol.txtail', 1),
+                dwait: getValue('aprs.direwolf.protocol.dwait', 10),
+                slottime: getValue('aprs.direwolf.protocol.slottime', 10),
+                persist: getValue('aprs.direwolf.protocol.persist', 63)
             }
         };
     }
@@ -47,6 +54,14 @@ class DirewolfManager {
      * Generar archivo de configuración de Direwolf
      */
     generateConfig() {
+        // Validar callsign antes de escribir al archivo de configuración
+        const callsignRegex = /^[A-Z0-9]{3,6}(-\d{1,2})?$/;
+        if (!callsignRegex.test(this.config.callsign)) {
+            this.logger.error(`Callsign inválido: "${this.config.callsign}" - debe ser 3-6 caracteres alfanuméricos con SSID opcional`);
+            return false;
+        }
+
+        const proto = this.config.protocol;
         const config = `# Configuracion Direwolf para VX200 RPT Controller
 # Generado automaticamente
 
@@ -75,11 +90,11 @@ AGWPORT ${this.config.ports.agw}
 LOGDIR ${path.dirname(this.logPath)}
 
 # Configuraciones del protocolo
-DWAIT 10
-SLOTTIME 10
-PERSIST 63
-TXDELAY 30
-TXTAIL 1
+DWAIT ${proto.dwait}
+SLOTTIME ${proto.slottime}
+PERSIST ${proto.persist}
+TXDELAY ${proto.txdelay}
+TXTAIL ${proto.txtail}
 
 # Sin filtros especificos
 

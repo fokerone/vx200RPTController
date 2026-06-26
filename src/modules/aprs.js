@@ -995,10 +995,19 @@ class APRS extends EventEmitter {
         try {
             const logsDir = path.join(__dirname, '../../logs');
             if (!fs.existsSync(logsDir)) {return;}
-            
+
             const currentLogFiles = fs.readdirSync(logsDir)
                 .filter(f => f.endsWith('.log'))
                 .sort();
+
+            // Pruning: eliminar del Set archivos que ya no existen en el filesystem
+            const currentFileSet = new Set(currentLogFiles);
+            for (const processedFile of this.processedLogFiles) {
+                if (!currentFileSet.has(processedFile)) {
+                    this.processedLogFiles.delete(processedFile);
+                    this.logger.debug(`processedLogFiles pruned: ${processedFile} (ya no existe)`);
+                }
+            }
             
             let newFilesProcessed = 0;
             let positionsAdded = 0;

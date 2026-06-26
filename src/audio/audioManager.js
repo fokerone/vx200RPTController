@@ -63,8 +63,7 @@ class AudioManager extends EventEmitter {
         this.soundsDir = path.join(__dirname, '../../sounds');
         this.tempDir = path.join(__dirname, '../../temp');
         
-        // Debug: grabación continua para análisis
-        this.debugRecording = null;
+        // Debug: buffer para análisis de audio
         this.debugBuffer = [];
         
         // Throttled broadcast para rendimiento

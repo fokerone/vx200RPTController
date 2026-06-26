@@ -22,6 +22,7 @@ class DTMFDecoder {
         
         // Validación anti-falsos positivos
         this.detectionHistory = new Map(); // Historial de detecciones por tono
+        this.detectSequenceCallCount = 0; // Contador para pruning periódico
         this.minDetectionCount = 1; // Empezar con 1 para probar
         this.maxDetectionWindow = 600; // Ventana más corta
         this.voiceActivityThreshold = 0.25; // Umbral más alto para reducir falsos positivos de voz
@@ -149,9 +150,16 @@ class DTMFDecoder {
         if (!audioBuffer || audioBuffer.length === 0) {
             return;
         }
-        
+
         // Guardar el callback para usar en handleDetection
         this.onDetection = callback;
+
+        // Pruning periódico de detectionHistory para evitar crecimiento indefinido
+        this.detectSequenceCallCount++;
+        if (this.detectSequenceCallCount >= 1000) {
+            this.detectSequenceCallCount = 0;
+            this.pruneDetectionHistory();
+        }
         
         // Detectar actividad de voz antes de procesar DTMF
         const voiceActivity = this.detectVoiceActivity(audioBuffer);
@@ -318,6 +326,26 @@ class DTMFDecoder {
         }
     }
     
+    /**
+     * Eliminar entradas vacías o sin actividad reciente del historial de detecciones
+     */
+    pruneDetectionHistory() {
+        const now = Date.now();
+        const maxIdleTime = 60000; // 1 minuto sin actividad
+        let pruned = 0;
+
+        for (const [tone, timestamps] of this.detectionHistory.entries()) {
+            if (!timestamps || timestamps.length === 0 || (now - timestamps[timestamps.length - 1]) > maxIdleTime) {
+                this.detectionHistory.delete(tone);
+                pruned++;
+            }
+        }
+
+        if (pruned > 0) {
+            this.logger.debug(`detectionHistory pruned: ${pruned} entradas eliminadas`);
+        }
+    }
+
     forceReset() {
         this.audioBuffer = [];
         this.lastDetection = '';

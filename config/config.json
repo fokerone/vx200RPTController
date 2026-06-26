@@ -174,7 +174,14 @@
     },
     "direwolf": {
       "kissPort": 8001,
-      "agwPort": 8000
+      "agwPort": 8000,
+      "protocol": {
+        "txdelay": 60,
+        "txtail": 1,
+        "dwait": 10,
+        "slottime": 10,
+        "persist": 63
+      }
     }
   }
 }

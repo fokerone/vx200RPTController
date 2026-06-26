@@ -38,8 +38,8 @@ function getValue(path, defaultValue = null) {
         // Intentar con el nuevo sistema primero
         return configService.get(path, defaultValue);
     } catch (error) {
-        // Fallback al sistema anterior
-        console.warn(`[Config] Fallback para getValue(${path}):`, error.message);
+        // Fallback al sistema anterior (esperado durante migración)
+        console.debug(`[Config] Fallback para getValue(${path}):`, error.message);
         return configManager.getValue(path, defaultValue);
     }
 }
