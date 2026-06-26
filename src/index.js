@@ -269,7 +269,7 @@ class VX200Controller {
 
     configureFromFile() {
         if (Config.rogerBeepEnabled) {
-            this.audio.configureRogerBeep(Config.rogerBeep);
+            this.audio.configureRogerBeep({ ...Config.rogerBeep, callsign: Config.callsign });
         }
         
         if (Config.balizaEnabled) {

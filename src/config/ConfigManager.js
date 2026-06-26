@@ -73,11 +73,10 @@ class ConfigManager {
             // ===== ROGER BEEP =====
             rogerBeep: {
                 enabled: true,
-                type: 'kenwood',
+                type: 'mdc1200',
                 volume: 0.7,
-                duration: 250,
+                duration: 200,
                 delay: 100,
-                frequencies: [1500, 1200, 1000],
                 minVolume: 0.1,
                 maxVolume: 1.0,
                 minDuration: 50,

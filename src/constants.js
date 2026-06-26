@@ -19,11 +19,19 @@ const AUDIO = {
     MAX_WAIT_TIME: 30000
 };
 
-// Roger Beep Constants
+// Roger Beep Constants (MDC-1200)
 const ROGER_BEEP = {
-    KENWOOD_FREQUENCIES: [1500, 1200, 1000],
+    // MDC-1200 AFSK parameters
+    MARK_FREQ: 1800,        // Mark frequency (bit 1) in Hz
+    SPACE_FREQ: 1200,       // Space frequency (bit 0) in Hz
+    BAUD_RATE: 1200,        // Baud rate in bps
+    SAMPLE_RATE: 48000,     // Audio sample rate in Hz
+    PREAMBLE_BYTE: 0x55,    // Preamble byte (alternating bits)
+    PREAMBLE_COUNT: 7,      // Number of preamble bytes
+    SYNC_WORD: [0x07, 0x09, 0x2A, 0x44, 0x6F], // MDC-1200 sync word
+    // General roger beep settings
     DEFAULT_VOLUME: 0.7,
-    DEFAULT_DURATION: 250,
+    DEFAULT_DURATION: 200,
     DEFAULT_DELAY: 100,
     MIN_VOLUME: 0.1,
     MAX_VOLUME: 1.0,

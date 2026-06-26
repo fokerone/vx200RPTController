@@ -59,9 +59,9 @@ class ConfigurationService {
             
             // ===== ROGER BEEP =====
             'rogerBeep.enabled': true,
-            'rogerBeep.type': 'kenwood',
+            'rogerBeep.type': 'mdc1200',
             'rogerBeep.volume': 0.7,
-            'rogerBeep.duration': 250,
+            'rogerBeep.duration': 200,
             'rogerBeep.delay': 100,
             
             // ===== BALIZA =====
